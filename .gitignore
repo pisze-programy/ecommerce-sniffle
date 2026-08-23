@@ -1,0 +1,29 @@
+# Research / scratch (gitignored)
+_internal/
+.DS_Store
+.playwright-cli/
+
+# Dependencies
+node_modules/
+.pnp/
+
+# Build output
+dist/
+build/
+
+# Wrangler / Cloudflare
+.wrangler/
+.dev.vars
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Test output
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*

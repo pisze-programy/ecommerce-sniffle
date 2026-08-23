@@ -1,0 +1,21 @@
+{
+  "name": "@ecommerce-sniffle/orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "undici": "^6.19.0"
+  },
+  "devDependencies": {
+    "@ecommerce-sniffle/providers": "0.1.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
+}

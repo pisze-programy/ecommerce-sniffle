@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>ecommerce-sniffle — forcer.pl</title>
+<style>
+  :root {
+    --border: #d5d5d5;
+    --muted: #6b6b6b;
+    --good: #1a7f37;
+    --bad: #b42318;
+    --warn: #9a6700;
+    --bg: #fafafa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    margin: 0; background: var(--bg); color: #1a1a1a; font-size: 14px;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 24px 20px 60px; }
+
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 18px; }
+  h1 { font-size: 19px; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; }
+
+  /* headline answer */
+  .headline { background: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 18px; }
+  .headline .big { font-size: 30px; font-weight: 700; }
+  .headline .big small { font-size: 14px; color: var(--muted); font-weight: 400; }
+  .headline .line { margin-top: 6px; color: #333; }
+  .headline .trend { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  .headline .trend .up { color: var(--good); }
+  .headline .trend .down { color: var(--bad); }
+
+  /* Minimalne KPI — klik rozwija */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
+  .kpi { border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  .kpi summary { padding: 10px 12px; display: block; }
+  .kpi summary .label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .kpi summary .value { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .kpi:hover { border-color: #999; }
+  .kpi .in { padding: 0 12px 10px; }
+
+  details { border: 1px solid var(--border); border-radius: 8px; background: #fff; margin-bottom: 10px; }
+  summary { cursor: pointer; padding: 12px 14px; font-size: 13px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "▸"; color: var(--muted); transition: transform .12s; }
+  details[open] summary::after { transform: rotate(90deg); }
+  .in { padding: 4px 14px 14px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #777; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .down { color: var(--good); }
+  .up { color: var(--bad); }
+  .muted { color: var(--muted); }
+  .conf { font-size: 10px; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+  .conf.masked { border-color: #d0b000; background: #fffbeb; }
+
+  /* drill-down: row expands */
+  tr.product summary { padding: 6px 8px; font-size: 13px; font-weight: 600; }
+  tr.product > td { padding: 0; }
+  .mini { display: flex; gap: 8px; font-size: 11px; color: var(--muted); }
+  .mini .bar { height: 34px; display: flex; align-items: flex-end; gap: 3px; flex: 1; }
+  .mini .bar span { flex: 1; background: #c9c9c9; border-radius: 2px 2px 0 0; }
+
+  .note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .muted-note { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>forcer.pl</h1>
+    <span class="sub">24.08.2026 · 2 snapshots dziennie</span>
+  </header>
+
+  <!-- Jedna, główna odpowiedź -->
+  <div class="headline">
+    <div class="big">85 <small>szt. sprzedanych dziś</small></div>
+    <div class="line">Przychód ≈ 34 200 PLN · 3 wyprzedane · 12 promocji</div>
+    <div class="trend">wczoraj <span class="down">61</span> → dziś <span class="up">85</span> <span class="muted">(+39%)</span></div>
+  </div>
+
+  <!-- Minimalne KPI — klik rozwija -->
+  <div class="kpis">
+    <details class="kpi">
+      <summary><div class="label">Sprzedaż</div><div class="value">85 szt.</div></summary>
+      <div class="in"><span class="muted-note">Dolna granica. 65 dokładnie, 20 zamaskowanych restockiem.</span></div>
+    </details>
+    <details class="kpi">
+      <summary><div class="label">Przychód</div><div class="value">34 200</div></summary>
+      <div class="in"><span class="muted-note">PLN. Szacunek przy cenach z snapshotu; promocje uwzględnione.</span></div>
+    </details>
+    <details class="kpi">
+      <summary><div class="label">Restock</div><div class="value">40 szt.</div></summary>
+      <div class="in"><span class="muted-note">Dostawy i zwroty. Tam sprzedaż jest zamaskowana.</span></div>
+    </details>
+    <details class="kpi">
+      <summary><div class="label">Wyprzedane</div><div class="value">3</div></summary>
+      <div class="in"><span class="muted-note">Produkty, których stan spadł do 0.</span></div>
+    </details>
+  </div>
+
+  <!-- Wszystko poniżej = na żądanie -->
+  <details open>
+    <summary>Zmiany w czasie (23)</summary>
+    <div class="in">
+      <table>
+        <thead><tr><th>Produkt</th><th class="num">Przed</th><th class="num">Po</th><th class="num">Δ</th><th class="num">Cena</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Płaszcz Aurora / M</td><td class="num">12</td><td class="num">7</td><td class="num down">−5</td><td class="num">3 500</td><td>sprzedaż</td></tr>
+          <tr><td>Set Air / SHORT</td><td class="num">9</td><td class="num">0</td><td class="num down">−9</td><td class="num">1 190</td><td>wyprzedany</td></tr>
+          <tr><td>Kurtka Snow / L</td><td class="num">0</td><td class="num">3</td><td class="num up">+3</td><td class="num">2 590</td><td class="muted">restock · <span class="conf masked">masked</span></td></tr>
+          <tr><td>Sukienka Faith / czarna</td><td class="num">5</td><td class="num">4</td><td class="num down">−1</td><td class="num">990</td><td>sprzedaż</td></tr>
+          <tr><td>Sukienka Faith / bordo</td><td class="num">1 290</td><td class="num">990</td><td class="num">0</td><td class="num down">−300</td><td>promocja</td></tr>
+          <tr><td>Kurtka Tailor / szarość</td><td class="num">—</td><td class="num">4</td><td class="num up">+4</td><td class="num">2 590</td><td>nowy</td></tr>
+        </tbody>
+      </table>
+      <p class="muted-note">Pełna lista 23 wierszy. Kliknij produkt, aby zobaczyć historię.</p>
+      <details>
+        <summary>Przykład drill-down: Płaszcz Aurora / M</summary>
+        <div class="in">
+          <div class="mini">
+            <div>stock</div>
+            <div class="bar"><span style="height:100%"></span><span style="height:86%"></span><span style="height:86%"></span><span style="height:64%"></span><span style="height:50%"></span></div>
+            <div>cena</div>
+            <div class="bar"><span style="height:100%"></span><span style="height:100%"></span><span style="height:74%"></span><span style="height:74%"></span><span style="height:74%"></span></div>
+          </div>
+          <div class="note">20.08 → 24.08 · stock 14→7 · cena 3500→2590 (promocja od 22.08)</div>
+        </div>
+      </details>
+    </div>
+  </details>
+
+  <details>
+    <summary>Wyprzedane (3)</summary>
+    <div class="in">
+      <table>
+        <thead><tr><th>Produkt</th><th class="num">Ostatni stan</th><th>Moment</th></tr></thead>
+        <tbody>
+          <tr><td>Set Air / SHORT</td><td class="num">9 → 0</td><td>20:04</td></tr>
+          <tr><td>Sukienka Emma / czarna</td><td class="num">2 → 0</td><td>06:12</td></tr>
+          <tr><td>Koszula Nova / S</td><td class="num">1 → 0</td><td>05:55</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>Restock (40 szt.)</summary>
+    <div class="in">
+      <table>
+        <thead><tr><th>Produkt</th><th class="num">Dostawa</th><th>Uwaga</th></tr></thead>
+        <tbody>
+          <tr><td>Kurtka Snow / L</td><td class="num">+3</td><td class="muted">sprzedaż w oknie zamaskowana</td></tr>
+          <tr><td>Set Air / REGULAR</td><td class="num">+12</td><td class="muted">nowa partia</td></tr>
+          <tr><td>Płaszcz Tailor / czarny</td><td class="num">+25</td><td class="muted">nowa partia</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>Promocje (12)</summary>
+    <div class="in">
+      <table>
+        <thead><tr><th>Produkt</th><th class="num">Była</th><th class="num">Jest</th><th class="num">−</th></tr></thead>
+        <tbody>
+          <tr><td>Sukienka Faith / bordo</td><td class="num">1 290</td><td class="num">990</td><td class="num down">−300</td></tr>
+          <tr><td>Kurtka Aurora / szarość</td><td class="num">3 500</td><td class="num">2 590</td><td class="num down">−910</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>Zdarzenia (8)</summary>
+    <div class="in">
+      <p class="muted-note">Czas = okno snapshotów, w którym zmiana została wykryta (nie dokładny moment sprzedaży). Przy 2 snapshotach dziennie precyzja to 06:00 i 20:00.</p>
+      <table>
+        <thead><tr><th>Okno</th><th>Typ</th><th>Szczegóły</th></tr></thead>
+        <tbody>
+          <tr><td>06:00–20:00</td><td>wyprzedany</td><td>Set Air / SHORT</td></tr>
+          <tr><td>06:00–20:00</td><td>promocja start</td><td>Sukienka Faith / bordo</td></tr>
+          <tr><td>20:00–06:00</td><td>restock</td><td>Kurtka Snow / L +3</td></tr>
+          <tr><td>20:00–06:00</td><td>nowy produkt</td><td>Kurtka Tailor / szarość</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+  <details>
+    <summary>Jak to liczymy</summary>
+    <div class="in">
+      <p class="muted-note">Sprzedaż = spadek stanu między snapshotami. Gdy stan rośnie (restock), sprzedaż w tym oknie jest nieznana i oznaczona jako "masked". Liczby "dolna granica" nie zawierają sprzedaży zamaskowanej. Przychód = sprzedane × cena z snapshotu (promocja uwzględniona).</p>
+    </div>
+  </details>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "ecommerce-sniffle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/providers",
+    "backend",
+    "orchestrator",
+    "packages/analysis"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/providers && npm run build -w backend && npm run build -w orchestrator",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b",
+    "dev:backend": "npm run dev -w backend",
+    "dev:orchestrator": "npm run dev -w orchestrator"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
+}
