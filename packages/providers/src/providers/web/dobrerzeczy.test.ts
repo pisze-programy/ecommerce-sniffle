@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { Logger, LogRecord } from "../../logger.ts";
 import {
@@ -6,6 +6,7 @@ import {
   parseNuxtPayload,
   parseProduct,
   parseSitemapUrls,
+  dobrerzeczyModule,
 } from "./dobrerzeczy.ts";
 
 interface Capture {
@@ -27,6 +28,18 @@ function silentLogger(): Logger {
   return createLogger(() => {
     // discard records in tests
   });
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function response(ok: boolean, status: number, body: string) {
+  return {
+    ok,
+    status,
+    text: async () => body,
+  };
 }
 
 function payload(): unknown[] {
@@ -145,5 +158,49 @@ describe("parseProduct", () => {
 
   it("returns null when no product object exists", () => {
     expect(parseProduct(htmlFor([["ShallowReactive", 1]]), "https://dobrerzeczy.pl/produkt/x", silentLogger())).toBeNull();
+  });
+});
+
+describe("dobrerzeczyModule", () => {
+  const SITEMAP =
+    "<urlset><url><loc>https://dobrerzeczy.pl/produkt/kubek/</loc></url></urlset>";
+  const PRODUCT_HTML =
+    '<html><head><title>Kubek</title></head><body><script type="application/json" id="__NUXT_DATA__">' +
+    JSON.stringify(payload()) +
+    "</script></body></html>";
+
+  it("retries a rate limited sitemap and succeeds", async () => {
+    const capture = capturingLogger();
+    let sitemapAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        if (url === "https://dobrerzeczy.pl/sitemap.xml") {
+          sitemapAttempts += 1;
+          if (sitemapAttempts < 3) {
+            return response(false, 429, "rate limited");
+          }
+          return response(true, 200, SITEMAP);
+        }
+        return response(true, 200, PRODUCT_HTML);
+      }),
+    );
+    const provider = dobrerzeczyModule.build({ logger: capture.logger });
+    const catalog = await provider.fetchCatalog();
+    expect(catalog.products).toHaveLength(1);
+    expect(sitemapAttempts).toBe(3);
+  });
+
+  it("logs an error when the sitemap stays rate limited", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(response(false, 429, "rate limited")),
+    );
+    const provider = dobrerzeczyModule.build({ logger: capture.logger });
+    await expect(provider.fetchCatalog()).rejects.toThrow("failed with status 429");
+    expect(
+      capture.records.some((record) => record.message === "Provider.fetchCatalog failed"),
+    ).toBe(true);
   });
 });

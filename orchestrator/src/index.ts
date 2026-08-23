@@ -20,6 +20,7 @@ export async function main(): Promise<void> {
     logger.info("orchestrator finish", {
       providers: result.processed,
       failed: result.failed.length,
+      ingested: result.ingested,
     });
   } finally {
     releaseLock(logger);

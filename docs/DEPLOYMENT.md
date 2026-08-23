@@ -51,11 +51,16 @@ No Docker. The VPS runs Node only.
 ```
 WEBSHARE_URL=http://user:pass@p.webshare.io:80
 CAPTCHA_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+BACKEND_URL=https://ecommerce-sniffle-backend.<account>.workers.dev
+INGEST_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 The values are secrets. Do not put them in the repo.
 `CAPTCHA_KEY` is the 2captcha API key. It is used only when a shop
 shows a solvable Turnstile widget. A missing key disables solving.
+`BACKEND_URL` and `INGEST_SECRET` point the orchestrator at the ingest
+endpoint. The secret must match the one set with
+`wrangler secret put INGEST_SECRET`.
 
 4. Create a launcher `run.sh` in the orchestrator folder:
 
@@ -71,11 +76,14 @@ if [ -n "$WEBSHARE_URL" ]; then
   export NODE_USE_ENV_PROXY="1"
 fi
 export CAPTCHA_KEY
+export BACKEND_URL
+export INGEST_SECRET
 exec node dist/index.js
 ```
 
 `NODE_USE_ENV_PROXY` makes Node route every fetch through the proxy.
 `export CAPTCHA_KEY` passes the 2captcha key to the Node process.
+`export BACKEND_URL` and `export INGEST_SECRET` pass the ingest target.
 Mutations go through the webshare residential proxy.
 The launcher holds no secrets.
 

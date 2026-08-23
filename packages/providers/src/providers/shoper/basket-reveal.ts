@@ -177,6 +177,7 @@ export async function revealVariant(
   domain: string,
   stockId: number,
   logger: Logger,
+  options: Readonly<Record<string, string>> = {},
 ): Promise<number | null> {
   const origin = `https://${domain}`;
   const baseHeaders: Readonly<Record<string, string>> = {
@@ -191,7 +192,7 @@ export async function revealVariant(
     const addResponse = await fetch(`${basket}/`, {
       method: "POST",
       headers: baseHeaders,
-      body: JSON.stringify({ quantity: 1, stock_id: stockId, options: {} }),
+      body: JSON.stringify({ quantity: 1, stock_id: stockId, options }),
     });
     const addText = await addResponse.text();
     if (isCloudflareChallenge(addText)) {
@@ -260,6 +261,147 @@ export async function revealVariant(
   }
 }
 
+export interface OptionCombo {
+  readonly options: Readonly<Record<string, string>>;
+  readonly label: string;
+}
+
+interface OptionValue {
+  readonly id: string;
+  readonly name: string;
+}
+
+interface OptionGroup {
+  readonly id: string;
+  readonly name: string;
+  readonly values: readonly OptionValue[];
+}
+
+function parseOptionGroups(configuration: unknown): OptionGroup[] {
+  if (!Array.isArray(configuration)) {
+    return [];
+  }
+  const groups: OptionGroup[] = [];
+  for (const rawGroup of configuration) {
+    if (typeof rawGroup !== "object" || rawGroup === null) {
+      continue;
+    }
+    const group = rawGroup as Readonly<Record<string, unknown>>;
+    const rawId = group["id"];
+    const name = group["name"];
+    const rawValues = group["values"];
+    if ((typeof rawId !== "number" && typeof rawId !== "string") || typeof name !== "string") {
+      continue;
+    }
+    if (!Array.isArray(rawValues)) {
+      continue;
+    }
+    const values: OptionValue[] = [];
+    for (const rawValue of rawValues) {
+      if (typeof rawValue !== "object" || rawValue === null) {
+        continue;
+      }
+      const value = rawValue as Readonly<Record<string, unknown>>;
+      const valueId = value["id"];
+      const valueName = value["name"];
+      if ((typeof valueId !== "number" && typeof valueId !== "string") || typeof valueName !== "string") {
+        continue;
+      }
+      values.push({ id: String(valueId), name: valueName });
+    }
+    if (values.length === 0) {
+      continue;
+    }
+    groups.push({ id: String(rawId), name, values });
+  }
+  return groups;
+}
+
+export function buildOptionCombos(configuration: unknown): OptionCombo[] {
+  const groups = parseOptionGroups(configuration);
+  if (groups.length === 0) {
+    return [];
+  }
+  const combos: OptionCombo[] = [];
+  function walk(index: number, options: Record<string, string>, parts: string[]): void {
+    if (index >= groups.length) {
+      combos.push({ options: { ...options }, label: parts.join(", ") });
+      return;
+    }
+    const group = groups[index];
+    if (group === undefined) {
+      return;
+    }
+    for (const value of group.values) {
+      walk(index + 1, { ...options, [group.id]: value.id }, [...parts, `${group.name}: ${value.name}`]);
+    }
+  }
+  walk(0, {}, []);
+  return combos;
+}
+
+async function fetchOptionConfiguration(
+  domain: string,
+  productId: string,
+  logger: Logger,
+): Promise<unknown> {
+  const origin = `https://${domain}`;
+  try {
+    const response = await fetch(
+      `${origin}/webapi/front/pl_PL/products/PLN/${productId}`,
+      { headers: { "User-Agent": USER_AGENT, Accept: "application/json" } },
+    );
+    if (!response.ok) {
+      logger.warn("basketreveal.product detail failed", {
+        domain,
+        productId,
+        status: response.status,
+      });
+      return null;
+    }
+    const data = (await response.json()) as Readonly<Record<string, unknown>>;
+    return data["options_configuration"];
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn("basketreveal.product detail error", { domain, productId, error: message });
+    return null;
+  }
+}
+
+async function revealProduct(domain: string, product: Product, logger: Logger): Promise<Variant[]> {
+  const baseVariant = product.variants[0];
+  if (baseVariant === undefined) {
+    return [];
+  }
+  const stockId = Number(baseVariant.id);
+  const simple = await revealVariant(domain, stockId, logger);
+  if (simple !== null) {
+    return [{ ...baseVariant, quantity: simple, available: simple > 0 }];
+  }
+  const configuration = await fetchOptionConfiguration(domain, product.id, logger);
+  const combos = buildOptionCombos(configuration);
+  if (combos.length === 0) {
+    return [...product.variants];
+  }
+  const revealed: Variant[] = [];
+  for (const combo of combos) {
+    const quantity = await revealVariant(domain, stockId, logger, combo.options);
+    if (quantity !== null) {
+      revealed.push({
+        ...baseVariant,
+        id: combo.label,
+        title: combo.label,
+        quantity,
+        available: quantity > 0,
+      });
+    }
+  }
+  if (revealed.length === 0) {
+    return [...product.variants];
+  }
+  return revealed;
+}
+
 export function buildBasketRevealProvider(
   config: ProviderConfig,
   logger: Logger,
@@ -276,15 +418,7 @@ export function buildBasketRevealProvider(
         if (wanted.size > 0 && !wanted.has(product.id)) {
           continue;
         }
-        const variants: Variant[] = [];
-        for (const variant of product.variants) {
-          const quantity = await revealVariant(config.domain, Number(variant.id), logger);
-          if (quantity !== null) {
-            variants.push({ ...variant, quantity, available: quantity > 0 });
-          } else {
-            variants.push(variant);
-          }
-        }
+        const variants = await revealProduct(config.domain, product, logger);
         products.push({ ...product, variants });
       }
       return { domain: config.domain, fetchedAt: new Date().toISOString(), products };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createLogger } from "@ecommerce-sniffle/providers";
 import type { Logger, Provider, ProviderConfig, Catalog } from "@ecommerce-sniffle/providers";
-import { runShopPipeline, catalogToSnapshot } from "./pipeline.ts";
+import { runShopPipeline } from "./pipeline.ts";
 import type { Storage, SeriesPoint } from "./storage.ts";
 import type { DailyStats, Snapshot, StockEvent } from "@ecommerce-sniffle/analysis";
 
@@ -100,22 +100,6 @@ function silentLogger(): Logger {
     // discard
   });
 }
-
-describe("catalogToSnapshot", () => {
-  it("flattens catalog variants into snapshot variants", () => {
-    const snapshot = catalogToSnapshot(catalog(10), "morning", "2026-08-24T06:00:00.000Z");
-    expect(snapshot.shop).toBe("mock.pl");
-    expect(snapshot.variants).toHaveLength(1);
-    expect(snapshot.variants[0]).toEqual({
-      productId: "p1",
-      variantId: "v1",
-      quantity: 10,
-      price: 100,
-      regularPrice: null,
-      available: true,
-    });
-  });
-});
 
 describe("runShopPipeline", () => {
   it("seeds when there is no previous snapshot", async () => {

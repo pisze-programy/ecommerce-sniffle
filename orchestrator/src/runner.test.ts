@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ALL_MODULES, createLogger } from "@ecommerce-sniffle/providers";
-import type { Logger, LogRecord } from "@ecommerce-sniffle/providers";
+import { ALL_MODULES, buildStockRevealer, createLogger } from "@ecommerce-sniffle/providers";
+import type { Logger, LogRecord, ProviderConfig, ProviderModule } from "@ecommerce-sniffle/providers";
 import { isStockRevealer, runVpsPass } from "./runner.ts";
 
 interface Capture {
@@ -32,6 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function findModule(id: string) {
@@ -40,6 +41,28 @@ function findModule(id: string) {
     throw new Error(`missing module ${id}`);
   }
   return module;
+}
+
+function fakeMutationModule(): ProviderModule {
+  const config: ProviderConfig = {
+    id: "fake-mutation",
+    domain: "fake.pl",
+    platform: "custom",
+    schedule: "30 4 * * *",
+    mode: "vps-mutation",
+    stockSource: "html",
+    ratePerSecond: 1,
+    requiresProxy: true,
+    endpoint: "https://fake.pl",
+    enabled: true,
+  };
+  const catalog = { domain: "fake.pl", fetchedAt: "2026-08-24T06:00:00.000Z", products: [] };
+  return {
+    config,
+    build({ logger }) {
+      return buildStockRevealer(config, logger, async () => catalog, async () => catalog);
+    },
+  };
 }
 
 describe("isStockRevealer", () => {
@@ -92,5 +115,29 @@ describe("runVpsPass", () => {
     expect(result.failed).toHaveLength(9);
     const warns = capture.records.filter((record) => record.message === "reveal provider failed");
     expect(warns).toHaveLength(9);
+  });
+
+  it("sends a snapshot for a successful reveal", async () => {
+    vi.stubEnv("BACKEND_URL", "https://backend.example.com");
+    vi.stubEnv("INGEST_SECRET", "s3cret");
+    const capture = capturingLogger();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{"ok":true}' });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runVpsPass(capture.logger, { modules: [fakeMutationModule()] });
+    expect(result.processed).toBe(1);
+    expect(result.failed).toHaveLength(0);
+    expect(result.ingested).toBe(1);
+    expect(capture.records.some((record) => record.message === "ingest.sent")).toBe(true);
+  });
+
+  it("does not send when the ingest env is missing", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "{}" }));
+    const result = await runVpsPass(capture.logger, { modules: [fakeMutationModule()] });
+    expect(result.processed).toBe(1);
+    expect(result.ingested).toBe(0);
+    expect(capture.records.some((record) => record.message === "ingest disabled: BACKEND_URL or INGEST_SECRET not set")).toBe(
+      true,
+    );
   });
 });

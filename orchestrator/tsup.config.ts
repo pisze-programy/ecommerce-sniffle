@@ -8,5 +8,5 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   dts: false,
-  noExternal: ["@ecommerce-sniffle/providers"],
+  noExternal: ["@ecommerce-sniffle/providers", "@ecommerce-sniffle/analysis"],
 });

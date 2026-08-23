@@ -5,6 +5,7 @@ import type { Provider, ProviderModule } from "@ecommerce-sniffle/providers";
 import type { Logger } from "@ecommerce-sniffle/providers";
 import { createApi } from "./api.ts";
 import type { AppVariables } from "./api.ts";
+import type { Env } from "../env/types.ts";
 import type { D1Like, D1Statement, Storage, SeriesPoint } from "../services/storage.ts";
 import type { DailyStats, Snapshot, StockEvent } from "@ecommerce-sniffle/analysis";
 
@@ -103,8 +104,11 @@ function silentLogger(): Logger {
   });
 }
 
-function buildApp(storage: Storage, modules: readonly ProviderModule[] = []): Hono<{ Variables: AppVariables }> {
-  const app = new Hono<{ Variables: AppVariables }>();
+function buildApp(
+  storage: Storage,
+  modules: readonly ProviderModule[] = [],
+): Hono<{ Bindings: Env; Variables: AppVariables }> {
+  const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
   app.use("*", async (c, next) => {
     c.set("logger", silentLogger());
     c.set("storage", storage);
@@ -114,6 +118,26 @@ function buildApp(storage: Storage, modules: readonly ProviderModule[] = []): Ho
   });
   app.route("/", createApi());
   return app;
+}
+
+function testEnv(): Env {
+  return {
+    DB: undefined as never,
+    STATE: undefined as never,
+    INGEST_SECRET: "test-secret",
+  };
+}
+
+function snapshotBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    shop: "sklepskolim.pl",
+    snapshotAt: "2026-08-24T06:00:00.000Z",
+    window: "morning",
+    variants: [
+      { productId: "p1", variantId: "v1", quantity: 13, price: 45, regularPrice: null, available: true },
+    ],
+    ...overrides,
+  };
 }
 
 describe("api", () => {
@@ -229,6 +253,102 @@ describe("api /run", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { results: { ok: boolean }[] };
     expect(body.results).toHaveLength(1);
+  });
+});
+
+describe("api /ingest", () => {
+  it("rejects when no secret is configured", async () => {
+    const app = buildApp(new MemoryStorage());
+    const response = await app.request(
+      "/ingest",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      { ...testEnv(), INGEST_SECRET: "" },
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects a wrong secret", async () => {
+    const app = buildApp(new MemoryStorage());
+    const response = await app.request(
+      "/ingest",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer wrong" },
+        body: JSON.stringify(snapshotBody()),
+      },
+      testEnv(),
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it("seeds a snapshot via ingest", async () => {
+    const storage = new MemoryStorage();
+    const app = buildApp(storage);
+    const response = await app.request(
+      "/ingest",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer test-secret" },
+        body: JSON.stringify(snapshotBody()),
+      },
+      testEnv(),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: { seeded: boolean } };
+    expect(body.result.seeded).toBe(true);
+    expect(storage.snapshots).toHaveLength(1);
+  });
+
+  it("diffs and writes stats on the second ingest", async () => {
+    const storage = new MemoryStorage();
+    const app = buildApp(storage);
+    const first = snapshotBody();
+    const second = snapshotBody({
+      variants: [{ productId: "p1", variantId: "v1", quantity: 10, price: 45, regularPrice: null, available: true }],
+    });
+    await app.request(
+      "/ingest",
+      { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-secret" }, body: JSON.stringify(first) },
+      testEnv(),
+    );
+    const response = await app.request(
+      "/ingest",
+      { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer test-secret" }, body: JSON.stringify(second) },
+      testEnv(),
+    );
+    const body = (await response.json()) as { result: { seeded: boolean; events: number; stats: DailyStats } };
+    expect(body.result.seeded).toBe(false);
+    expect(body.result.events).toBeGreaterThan(0);
+    expect(body.result.stats.unitsSold).toBe(3);
+    expect(storage.events.length).toBeGreaterThan(0);
+  });
+
+  it("rejects an invalid snapshot body", async () => {
+    const app = buildApp(new MemoryStorage());
+    const response = await app.request(
+      "/ingest",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer test-secret" },
+        body: JSON.stringify({ shop: 123 }),
+      },
+      testEnv(),
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a malformed json body", async () => {
+    const app = buildApp(new MemoryStorage());
+    const response = await app.request(
+      "/ingest",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer test-secret" },
+        body: "not-json",
+      },
+      testEnv(),
+    );
+    expect(response.status).toBe(400);
   });
 });
 

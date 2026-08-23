@@ -2,16 +2,19 @@ import {
   ALL_MODULES,
   createRegistry,
 } from "@ecommerce-sniffle/providers";
-import type { Logger, Provider, StockRevealer } from "@ecommerce-sniffle/providers";
+import type { Logger, Provider, ProviderModule, StockRevealer } from "@ecommerce-sniffle/providers";
 import { checkMemory, MIN_AVAILABLE_MB } from "./guard.ts";
+import { catalogToIngestSnapshot, readIngestConfig, sendSnapshot } from "./ingest.ts";
 
 export interface VpsPassResult {
   readonly processed: number;
   readonly failed: readonly string[];
+  readonly ingested: number;
 }
 
 export interface VpsPassOptions {
   readonly checkMemoryFn?: () => boolean;
+  readonly modules?: readonly ProviderModule[];
 }
 
 export function isStockRevealer(provider: Provider): provider is StockRevealer {
@@ -24,12 +27,17 @@ export async function runVpsPass(
 ): Promise<VpsPassResult> {
   const checkMemoryFn =
     options.checkMemoryFn === undefined ? () => checkMemory(logger, MIN_AVAILABLE_MB) : options.checkMemoryFn;
-  const registry = createRegistry(ALL_MODULES);
-  const modules = registry.modules.filter(
+  const allModules =
+    options.modules === undefined
+      ? createRegistry(ALL_MODULES).modules
+      : options.modules;
+  const modules = allModules.filter(
     (module) => module.config.mode === "vps-mutation" && module.config.enabled,
   );
+  const ingestConfig = readIngestConfig();
   const failed: string[] = [];
   let processed = 0;
+  let ingested = 0;
 
   for (const module of modules) {
     if (!checkMemoryFn()) {
@@ -44,7 +52,18 @@ export async function runVpsPass(
     }
     try {
       logger.info("reveal provider", { providerId: provider.config.id, domain: provider.config.domain });
-      await provider.revealStock({ productIds: [] });
+      const catalog = await provider.revealStock({ productIds: [] });
+      if (ingestConfig === null) {
+        logger.warn("ingest disabled: BACKEND_URL or INGEST_SECRET not set", {
+          providerId: provider.config.id,
+        });
+        continue;
+      }
+      const snapshot = catalogToIngestSnapshot(catalog);
+      const sent = await sendSnapshot(snapshot, ingestConfig, logger);
+      if (sent) {
+        ingested += 1;
+      }
     } catch (error: unknown) {
       failed.push(provider.config.id);
       logger.error("reveal provider failed", {
@@ -54,5 +73,5 @@ export async function runVpsPass(
     }
   }
 
-  return { processed, failed };
+  return { processed, failed, ingested };
 }

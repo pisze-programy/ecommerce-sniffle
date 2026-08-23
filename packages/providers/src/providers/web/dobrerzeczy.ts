@@ -11,6 +11,8 @@ const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const MAX_DEPTH = 50;
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 500;
 
 export function parseSitemapUrls(xml: string): string[] {
   const urls: string[] = [];
@@ -160,11 +162,21 @@ export function parseProduct(html: string, url: string, logger: Logger): Product
 }
 
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!response.ok) {
+  let attempt = 0;
+  while (true) {
+    attempt += 1;
+    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    if (response.ok) {
+      return response.text();
+    }
+    if (response.status === 429 || response.status === 403 || response.status >= 500) {
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+        continue;
+      }
+    }
     throw new Error(`GET ${url} failed with status ${response.status}`);
   }
-  return response.text();
 }
 
 export const dobrerzeczyModule: ProviderModule = {

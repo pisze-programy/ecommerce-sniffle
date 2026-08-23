@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
-import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant } from "./basket-reveal.ts";
+import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos } from "./basket-reveal.ts";
 
 interface Capture {
   readonly records: LogRecord[];
@@ -158,6 +158,33 @@ describe("revealVariant", () => {
     expect(
       capture.records.some((record) => record.message === "basketreveal.challenge blocked"),
     ).toBe(true);
+  });
+});
+
+describe("buildOptionCombos", () => {
+  it("builds a single combo from one group", () => {
+    const combos = buildOptionCombos([
+      { id: 59, name: "Rozmiar", values: [{ id: "472", name: "XL" }] },
+    ]);
+    expect(combos).toHaveLength(1);
+    expect(combos[0]?.options).toEqual({ "59": "472" });
+    expect(combos[0]?.label).toBe("Rozmiar: XL");
+  });
+
+  it("builds the cartesian product across groups", () => {
+    const combos = buildOptionCombos([
+      { id: 1, name: "Rozmiar", values: [{ id: "s", name: "S" }, { id: "m", name: "M" }] },
+      { id: 2, name: "Kolor", values: [{ id: "cz", name: "czarny" }] },
+    ]);
+    expect(combos).toHaveLength(2);
+    expect(combos[0]?.label).toBe("Rozmiar: S, Kolor: czarny");
+    expect(combos[1]?.label).toBe("Rozmiar: M, Kolor: czarny");
+  });
+
+  it("returns an empty array for a malformed configuration", () => {
+    expect(buildOptionCombos(null)).toEqual([]);
+    expect(buildOptionCombos([{ id: 1, values: [] }])).toEqual([]);
+    expect(buildOptionCombos("nope")).toEqual([]);
   });
 });
 
