@@ -21,6 +21,21 @@ export function isStockRevealer(provider: Provider): provider is StockRevealer {
   return "revealStock" in provider;
 }
 
+export function readMutationShops(): Set<string> | null {
+  const value = process.env["MUTATION_SHOPS"];
+  if (value === undefined || value.length === 0) {
+    return null;
+  }
+  const ids = new Set<string>();
+  for (const part of value.split(",")) {
+    const id = part.trim();
+    if (id.length > 0) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
 export async function runVpsPass(
   logger: Logger,
   options: VpsPassOptions = {},
@@ -31,9 +46,16 @@ export async function runVpsPass(
     options.modules === undefined
       ? createRegistry(ALL_MODULES).modules
       : options.modules;
-  const modules = allModules.filter(
-    (module) => module.config.mode === "vps-mutation" && module.config.enabled,
-  );
+  const shopFilter = readMutationShops();
+  const modules = allModules.filter((module) => {
+    if (module.config.mode !== "vps-mutation" || !module.config.enabled) {
+      return false;
+    }
+    if (shopFilter !== null && !shopFilter.has(module.config.id)) {
+      return false;
+    }
+    return true;
+  });
   const ingestConfig = readIngestConfig();
   const failed: string[] = [];
   let processed = 0;

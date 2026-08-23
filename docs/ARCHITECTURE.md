@@ -44,10 +44,13 @@ It does MUTATIONS (the risky work):
 - Shopify cart-probe (exact stock)
 
 Mutations go through a residential proxy (webshare).
-The VPS writes its results to the same storage.
+The VPS sends the revealed stock to the CF worker.
+It POSTs a snapshot to `BACKEND_URL/ingest` with a bearer secret.
+The CF worker stores it in D1 and runs the diff.
 
 The orchestrator is agnostic. It does not know about Cloudflare.
-It can be copied to another VPS and run as-is.
+It only needs a URL and a secret. It can be copied to another VPS
+and run as-is.
 
 ## Why this split
 
@@ -64,13 +67,14 @@ So the split is:
 
 ## Flow for one day
 
-1. Cron starts the CF worker at 04:00.
+1. The CF worker cron runs at 04:00 and 16:00.
 2. The CF worker fetches catalogs and prices (GETs).
-3. The VPS orchestrator runs on its own schedule.
+3. The VPS orchestrator runs at 04:30 and 04:45.
 4. The VPS does basket reveals and cart probes (through the proxy).
-5. Both write normalized snapshots to storage.
-6. The diff step compares today with the last snapshot.
-7. The diff emits events: price change, stock change, new, removed.
+5. The VPS POSTs the revealed snapshots to `BACKEND_URL/ingest`.
+6. The CF worker stores both snapshot kinds in D1.
+7. The diff step compares today with the last snapshot.
+8. The diff emits events: price change, stock change, new, removed.
 
 ## Providers
 

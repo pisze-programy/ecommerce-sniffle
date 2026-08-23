@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
-import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos } from "./basket-reveal.ts";
+import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos, revealProduct } from "./basket-reveal.ts";
+import type { Product } from "@ecommerce-sniffle/providers";
 
 interface Capture {
   readonly records: LogRecord[];
@@ -185,6 +186,101 @@ describe("buildOptionCombos", () => {
     expect(buildOptionCombos(null)).toEqual([]);
     expect(buildOptionCombos([{ id: 1, values: [] }])).toEqual([]);
     expect(buildOptionCombos("nope")).toEqual([]);
+  });
+});
+
+describe("revealProduct", () => {
+  const variantProduct: Product = {
+    id: "31",
+    title: "Bluza",
+    url: "https://sklepskolim.pl/pl/p/bluza/31",
+    variants: [
+      {
+        id: "39",
+        title: "default",
+        sku: null,
+        price: { amount: 179, currency: "PLN" },
+        regularPrice: null,
+        available: true,
+        quantity: null,
+      },
+    ],
+  };
+
+  const detailJson = JSON.stringify({
+    options_configuration: [
+      { id: 59, name: "Rozmiar", values: [{ id: "472", name: "XL" }] },
+    ],
+  });
+  const addEmpty = '{"added":[],"_flash_messenger":{"error":["wybierz wariant"]}}';
+  const addOk = '{"added":[{"id":1,"variant":"Rozmiar: XL"}]}';
+  const putOk =
+    '{"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: Bluza - 7 szt. ."]}}';
+
+  function okResponse(body: string, setCookie: string | null = null) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => setCookie },
+      text: async () => body,
+      json: async () => JSON.parse(body),
+    };
+  }
+
+  it("expands a variant product with a unique per-product id", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(okResponse(addEmpty))
+        .mockResolvedValueOnce(okResponse(detailJson))
+        .mockResolvedValueOnce(okResponse(addOk, "Shop5=abc"))
+        .mockResolvedValueOnce(okResponse(putOk))
+        .mockResolvedValueOnce(okResponse("{}")),
+    );
+    const variants = await revealProduct("sklepskolim.pl", variantProduct, capture.logger);
+    expect(variants).toHaveLength(1);
+    expect(variants[0]?.id).toBe("31-Rozmiar: XL");
+    expect(variants[0]?.title).toBe("Rozmiar: XL");
+    expect(variants[0]?.quantity).toBe(7);
+  });
+
+  it("keeps ids distinct across products with the same option label", async () => {
+    const capture = capturingLogger();
+    const otherProduct: Product = { ...variantProduct, id: "32" };
+    const bodies = [addEmpty, detailJson, addOk, putOk, "{}"];
+    const cookies = [null, null, "Shop5=abc", null, null];
+    let callIndex = 0;
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      const index = callIndex % bodies.length;
+      callIndex += 1;
+      const body = bodies[index];
+      const cookie = cookies[index];
+      return okResponse(body === undefined ? "" : body, cookie === undefined ? null : cookie);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const first = await revealProduct("sklepskolim.pl", variantProduct, capture.logger);
+    const second = await revealProduct("sklepskolim.pl", otherProduct, capture.logger);
+    expect(first[0]?.id).toBe("31-Rozmiar: XL");
+    expect(second[0]?.id).toBe("32-Rozmiar: XL");
+    expect(first[0]?.id).not.toBe(second[0]?.id);
+  });
+
+  it("keeps the base variant masked and logs when the detail fetch fails", async () => {
+    const capture = capturingLogger();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okResponse(addEmpty))
+      .mockRejectedValueOnce(new Error("detail network down"));
+    vi.stubGlobal("fetch", fetchMock);
+    const variants = await revealProduct("sklepskolim.pl", variantProduct, capture.logger);
+    expect(variants).toHaveLength(1);
+    expect(variants[0]?.id).toBe("39");
+    expect(variants[0]?.quantity).toBeNull();
+    expect(
+      capture.records.some((record) => record.message === "basketreveal.product detail error"),
+    ).toBe(true);
   });
 });
 

@@ -368,7 +368,7 @@ async function fetchOptionConfiguration(
   }
 }
 
-async function revealProduct(domain: string, product: Product, logger: Logger): Promise<Variant[]> {
+export async function revealProduct(domain: string, product: Product, logger: Logger): Promise<Variant[]> {
   const baseVariant = product.variants[0];
   if (baseVariant === undefined) {
     return [];
@@ -389,7 +389,7 @@ async function revealProduct(domain: string, product: Product, logger: Logger): 
     if (quantity !== null) {
       revealed.push({
         ...baseVariant,
-        id: combo.label,
+        id: `${product.id}-${combo.label}`,
         title: combo.label,
         quantity,
         available: quantity > 0,

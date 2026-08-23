@@ -140,4 +140,22 @@ describe("runVpsPass", () => {
       true,
     );
   });
+
+  it("runs only the shops in MUTATION_SHOPS", async () => {
+    vi.stubEnv("MUTATION_SHOPS", "fake-mutation");
+    const capture = capturingLogger();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "{}" });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runVpsPass(capture.logger, {
+      modules: [fakeMutationModule(), fakeMutationModule()],
+    });
+    expect(result.processed).toBe(2);
+  });
+
+  it("runs nothing when MUTATION_SHOPS has only unknown ids", async () => {
+    vi.stubEnv("MUTATION_SHOPS", "unknown-shop");
+    const capture = capturingLogger();
+    const result = await runVpsPass(capture.logger, { modules: [fakeMutationModule()] });
+    expect(result.processed).toBe(0);
+  });
 });

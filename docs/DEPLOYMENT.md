@@ -94,12 +94,18 @@ Copy it to any other VPS and it runs the same way.
 
 ### VPS cron
 
-Add a cron line on the VPS. Use `flock` to prevent two runs at once.
-Use `timeout` to cap the run.
+Add cron lines on the VPS. Use `flock` to prevent two runs at once.
+Use `timeout` to cap each run. Use `MUTATION_SHOPS` to split the shops
+so every run fits the timeout. The value is a comma-separated list of
+provider ids. An empty value runs all mutation shops.
 
 ```
-30 4 * * * flock -n /tmp/ecp.lock timeout 600 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
+30 4 * * * flock -n /tmp/ecp-cron.lock timeout 600 MUTATION_SHOPS=booso,gymglamour,hdrey,wakenbake /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
+45 4 * * * flock -n /tmp/ecp-cron2.lock timeout 600 MUTATION_SHOPS=arustamian,e-daag,emereedivine,sklepskolim,wkdzik /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
 ```
+
+The cart-probe shops run at 04:30. The basket-reveal shops run at 04:45.
+Each pass fits in the 10 minute timeout.
 
 ### Memory limit on the VPS
 

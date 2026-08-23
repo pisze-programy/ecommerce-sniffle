@@ -105,8 +105,19 @@ The provider puts a huge quantity in the basket.
    The number N is the exact stock.
 4. `DELETE .../basket/{currency}/{itemId}/`. This keeps the basket clean.
 
-Variant products need option values. The provider skips them for now.
-Their quantity stays masked.
+Variant products need option values. The provider fetches the product
+detail, builds the option combinations, and probes each one.
+Each variant gets an id like `{productId}-Rozmiar: XL`.
+
+## Known coverage limits
+
+- booso.pl can answer with a Cloudflare challenge. The provider logs
+  and skips the variant. Exact stock is masked on challenged probes.
+- e-daag.com.pl and sklepskolim.pl have broken list pagination.
+  The API returns the same first page for every page value.
+  Only the exposed products are tracked (about 10 per shop).
+- Some Shoper shops hide stock counts. The basket warning has no number.
+  The variant stays masked.
 
 ## Cloudflare challenges
 
