@@ -155,7 +155,12 @@ Each variant gets an id like `{productId}-Rozmiar: XL`.
   The provider uses `limit=500&offset=N` to fetch the full catalog.
 - Shoper warnings come in Polish or English. The parser reads both.
   Products that are inactive or `can_buy: false` get quantity 0.
-  Products with a text option (like engraving) get a placeholder value.
+  The basket add sets two cookies. The reveal keeps every one of them
+  with `getSetCookie`. A missing session cookie stops the clamp and
+  masks every variant of the product.
+  Shoper bundle products (a `PAKIET` pack) stay masked. The basket add
+  needs the bundle children data and answers
+  `Nieprawidłowe dane produktów składowych` without it.
 - hdrey.com hides exact stock from every GET source. The cart probe is
   the only way. The probe runs at a calm pace and retries challenged
   variants after a cooldown. A few challenges can stay masked on a run.
