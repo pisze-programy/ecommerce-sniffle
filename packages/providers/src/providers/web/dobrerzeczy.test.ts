@@ -2,10 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { Logger, LogRecord } from "../../logger.ts";
 import {
-  findProduct,
+  findAllProducts,
   parseNuxtPayload,
-  parseProduct,
-  parseSitemapUrls,
+  parseProductFromPayload,
   dobrerzeczyModule,
 } from "./dobrerzeczy.ts";
 
@@ -42,13 +41,17 @@ function response(ok: boolean, status: number, body: string) {
   };
 }
 
+function htmlFor(data: unknown): string {
+  return `<script type="application/json" data-nuxt-data="nuxt-app" data-ssr="true" id="__NUXT_DATA__">${JSON.stringify(data)}</script>`;
+}
+
 function payload(): unknown[] {
   return [
     ["ShallowReactive", 1],
     { pinia: 3 },
     ["ShallowReactive", 4],
     { shop: 5 },
-    { product: 6 },
+    { product: 5 },
     { _id: 6, name: 7, price: 8, sizes: 9, slug: 10, isPreorder: 11 },
     "prod-1",
     "Koszulka classic",
@@ -57,7 +60,7 @@ function payload(): unknown[] {
     "koszulka-classic",
     false,
     { size: 13, stock: 15, _id: 16 },
-    { _id: 14, name: 18, __v: 19, tag: 20 },
+    { _id: 14, name: 18, sizes: 9 },
     "size-meta-s",
     3,
     "size-entry-s",
@@ -65,31 +68,13 @@ function payload(): unknown[] {
     "S",
     0,
     "",
-    { _id: 22, name: 25, __v: 19, tag: 20 },
+    { _id: 22, name: 25 },
     "size-meta-m",
     0,
     "size-entry-m",
     "M",
   ];
 }
-
-function htmlFor(data: unknown): string {
-  return `<script type="application/json" data-nuxt-data="nuxt-app" data-ssr="true" id="__NUXT_DATA__">${JSON.stringify(data)}</script>`;
-}
-
-describe("parseSitemapUrls", () => {
-  it("extracts product urls only", () => {
-    const xml =
-      "<urlset><url><loc>https://dobrerzeczy.pl/</loc></url>" +
-      "<url><loc>https://dobrerzeczy.pl/faq</loc></url>" +
-      "<url><loc>https://dobrerzeczy.pl/produkt/koszulka</loc></url></urlset>";
-    expect(parseSitemapUrls(xml)).toEqual(["https://dobrerzeczy.pl/produkt/koszulka"]);
-  });
-
-  it("returns an empty array for no product urls", () => {
-    expect(parseSitemapUrls("<urlset></urlset>")).toEqual([]);
-  });
-});
 
 describe("parseNuxtPayload", () => {
   it("parses a valid nuxt payload", () => {
@@ -118,20 +103,42 @@ describe("parseNuxtPayload", () => {
   });
 });
 
-describe("findProduct", () => {
-  it("finds the product object in the payload", () => {
-    const product = findProduct(payload());
-    expect(product).not.toBeNull();
-    expect(product?.["_id"]).toBe(6);
-    expect(product?.["slug"]).toBe(10);
+describe("findAllProducts", () => {
+  it("finds every product in a cyclic payload without hanging", () => {
+    const products = findAllProducts(payload());
+    expect(products).toHaveLength(1);
+    expect(products[0]?.["_id"]).toBe(6);
+    expect(products[0]?.["slug"]).toBe(10);
+  });
+
+  it("finds multiple products in one payload", () => {
+    const data = payload();
+    data.push(
+      { _id: 40, name: 41, price: 42, sizes: 43, slug: 44, isPreorder: 45 },
+      "prod-2",
+      "Tees Soma",
+      42,
+      [],
+      "tees-soma",
+      false,
+    );
+    const products = findAllProducts(data);
+    expect(products).toHaveLength(2);
+    expect(products[1]?.["_id"]).toBe(40);
+  });
+
+  it("returns an empty array for a payload with no products", () => {
+    expect(findAllProducts([["ShallowReactive", 1], { pinia: 3 }])).toEqual([]);
   });
 });
 
-describe("parseProduct", () => {
+describe("parseProductFromPayload", () => {
   it("parses a product with exact stock per size", () => {
-    const product = parseProduct(htmlFor(payload()), "https://dobrerzeczy.pl/produkt/koszulka", silentLogger());
+    const data = payload();
+    const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, "dobrerzeczy.pl", silentLogger());
     expect(product?.id).toBe("prod-1");
     expect(product?.title).toBe("Koszulka classic");
+    expect(product?.url).toBe("https://dobrerzeczy.pl/produkt/koszulka-classic");
     expect(product?.variants).toHaveLength(2);
     const sizeS = product?.variants[0];
     expect(sizeS?.title).toBe("S");
@@ -147,103 +154,81 @@ describe("parseProduct", () => {
   it("marks a preorder product as buyable with quantity 1", () => {
     const data = payload();
     data[11] = true;
-    const product = parseProduct(htmlFor(data), "https://dobrerzeczy.pl/produkt/koszulka", silentLogger());
+    const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, "dobrerzeczy.pl", silentLogger());
     expect(product?.variants[0]?.quantity).toBe(1);
     expect(product?.variants[0]?.available).toBe(true);
-    expect(product?.variants[1]?.quantity).toBe(1);
   });
 
-  it("keeps a preorder stock zero as buyable", () => {
+  it("keeps the stock as masked when the size has no stock", () => {
     const data = payload();
-    data[11] = true;
-    const product = parseProduct(htmlFor(data), "https://dobrerzeczy.pl/produkt/koszulka", silentLogger());
-    const sizeS = product?.variants[0];
-    expect(sizeS?.available).toBe(true);
-    expect(sizeS?.quantity).toBe(1);
+    data[15] = null;
+    const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, "dobrerzeczy.pl", silentLogger());
+    expect(product?.variants[0]?.quantity).toBeNull();
+    expect(product?.variants[0]?.available).toBe(false);
   });
 
-  it("returns null when the payload is missing", () => {
-    expect(parseProduct("<html></html>", "https://dobrerzeczy.pl/produkt/x", silentLogger())).toBeNull();
+  it("returns null when the product has no sizes", () => {
+    const data = payload();
+    (data[5] as Record<string, unknown>)["sizes"] = 50;
+    const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, "dobrerzeczy.pl", silentLogger());
+    expect(product).toBeNull();
   });
 
-  it("returns null when no product object exists", () => {
-    expect(parseProduct(htmlFor([["ShallowReactive", 1]]), "https://dobrerzeczy.pl/produkt/x", silentLogger())).toBeNull();
+  it("returns null when the product has no id", () => {
+    const data = payload();
+    data[6] = 999;
+    (data[5] as Record<string, unknown>)["slug"] = 999;
+    const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, "dobrerzeczy.pl", silentLogger());
+    expect(product).toBeNull();
   });
 });
 
 describe("dobrerzeczyModule", () => {
-  const SITEMAP =
-    "<urlset><url><loc>https://dobrerzeczy.pl/produkt/kubek/</loc></url></urlset>";
-  const PRODUCT_HTML =
-    '<html><head><title>Kubek</title></head><body><script type="application/json" id="__NUXT_DATA__">' +
-    JSON.stringify(payload()) +
-    "</script></body></html>";
-
-  it("throws when the sitemap has no product urls", async () => {
+  it("fetches the whole catalog from one homepage request", async () => {
     const capture = capturingLogger();
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(response(true, 200, "<urlset><url><loc>https://dobrerzeczy.pl/faq</loc></url></urlset>")),
-    );
-    const provider = dobrerzeczyModule.build({ logger: capture.logger });
-    await expect(provider.fetchCatalog()).rejects.toThrow("dobrerzeczy sitemap empty");
-  });
-
-  it("skips a product page that returns 404", async () => {
-    const capture = capturingLogger();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: unknown) => {
-        if (url === "https://dobrerzeczy.pl/sitemap.xml") {
-          return response(
-            true,
-            200,
-            "<urlset><url><loc>https://dobrerzeczy.pl/produkt/gone/</loc></url>" +
-              "<url><loc>https://dobrerzeczy.pl/produkt/kubek/</loc></url></urlset>",
-          );
-        }
-        if (url === "https://dobrerzeczy.pl/produkt/gone/") {
-          return response(false, 404, "not found");
-        }
-        return response(true, 200, PRODUCT_HTML);
-      }),
+      vi.fn().mockResolvedValue(response(true, 200, htmlFor(payload()))),
     );
     const provider = dobrerzeczyModule.build({ logger: capture.logger });
     const catalog = await provider.fetchCatalog();
     expect(catalog.products).toHaveLength(1);
-    expect(
-      capture.records.some((record) => record.message === "dobrerzeczy.product missing"),
-    ).toBe(true);
+    expect(catalog.products[0]?.variants[0]?.quantity).toBe(3);
   });
 
-  it("retries a rate limited sitemap and succeeds", async () => {
-    const capture = capturingLogger();
-    let sitemapAttempts = 0;
+  it("throws when the payload is missing", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(true, 200, "<html></html>")));
+    const provider = dobrerzeczyModule.build({ logger: silentLogger() });
+    await expect(provider.fetchCatalog()).rejects.toThrow("dobrerzeczy payload missing");
+  });
+
+  it("throws when the payload has no products", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(true, 200, htmlFor([["ShallowReactive", 1]]))));
+    const provider = dobrerzeczyModule.build({ logger: silentLogger() });
+    await expect(provider.fetchCatalog()).rejects.toThrow("dobrerzeczy catalog empty");
+  });
+
+  it("retries a rate limited homepage and succeeds", async () => {
+    let attempts = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: unknown) => {
-        if (url === "https://dobrerzeczy.pl/sitemap.xml") {
-          sitemapAttempts += 1;
-          if (sitemapAttempts < 3) {
-            return response(false, 429, "rate limited");
-          }
-          return response(true, 200, SITEMAP);
+      vi.fn(async () => {
+        attempts += 1;
+        if (attempts < 3) {
+          return response(false, 429, "rate limited");
         }
-        return response(true, 200, PRODUCT_HTML);
+        return response(true, 200, htmlFor(payload()));
       }),
     );
-    const provider = dobrerzeczyModule.build({ logger: capture.logger });
+    const provider = dobrerzeczyModule.build({ logger: silentLogger() });
     const catalog = await provider.fetchCatalog();
     expect(catalog.products).toHaveLength(1);
-    expect(sitemapAttempts).toBe(3);
+    expect(attempts).toBe(3);
   });
 
-  it("logs an error when the sitemap stays rate limited", async () => {
+  it("logs an error when the homepage stays rate limited", async () => {
     const capture = capturingLogger();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(response(false, 429, "rate limited")),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(false, 429, "rate limited")));
     const provider = dobrerzeczyModule.build({ logger: capture.logger });
     await expect(provider.fetchCatalog()).rejects.toThrow("failed with status 429");
     expect(

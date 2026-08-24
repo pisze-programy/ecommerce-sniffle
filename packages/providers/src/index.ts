@@ -20,6 +20,9 @@ import { eDaagModule } from "./providers/shoper/e-daag.ts";
 import { emereedivineModule } from "./providers/shoper/emereedivine.ts";
 import { sklepskolimModule } from "./providers/shoper/sklepskolim.ts";
 import { wkdzikModule } from "./providers/shoper/wkdzik.ts";
+import { osmpowerModule } from "./providers/shoper/osmpower.ts";
+import { sklepbazyModule } from "./providers/magento/sklepbazy.ts";
+import { ekipatonosiModule } from "./providers/magento/ekipatonosi.ts";
 import { reverModule } from "./providers/web/rever.ts";
 import { dobrerzeczyModule } from "./providers/web/dobrerzeczy.ts";
 import { royalwatchModule } from "./providers/web/royalwatch.ts";
@@ -47,6 +50,9 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   emereedivineModule,
   sklepskolimModule,
   wkdzikModule,
+  osmpowerModule,
+  sklepbazyModule,
+  ekipatonosiModule,
   reverModule,
   dobrerzeczyModule,
   royalwatchModule,

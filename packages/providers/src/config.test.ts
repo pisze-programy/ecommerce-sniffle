@@ -6,6 +6,7 @@ const EXPECTED_IDS = [
   "booso",
   "dobrerzeczy",
   "e-daag",
+  "ekipatonosi",
   "emereedivine",
   "foodsbyann",
   "forcer",
@@ -19,10 +20,12 @@ const EXPECTED_IDS = [
   "mushi",
   "nago",
   "noo-ma",
+  "osmpower",
   "phlov",
   "premieresociety",
   "rever",
   "royalwatch",
+  "sklepbazy",
   "sklepskolim",
   "theodderside",
   "wakenbake",
@@ -30,8 +33,8 @@ const EXPECTED_IDS = [
 ].sort();
 
 describe("PROVIDERS config", () => {
-  it("defines exactly 25 providers", () => {
-    expect(PROVIDERS.length).toBe(25);
+  it("defines exactly 28 providers", () => {
+    expect(PROVIDERS.length).toBe(28);
   });
 
   it("uses unique ids", () => {
@@ -82,11 +85,11 @@ describe("PROVIDERS config", () => {
     }
   });
 
-  it("has 12 mutation providers, 4 get providers, 9 vps-get providers", () => {
+  it("has 15 mutation providers, 4 get providers, 9 vps-get providers", () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === "vps-mutation");
     const get = PROVIDERS.filter((provider) => provider.mode === "cf-get");
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === "vps-get");
-    expect(mutation.length).toBe(12);
+    expect(mutation.length).toBe(15);
     expect(get.length).toBe(4);
     expect(vpsGet.length).toBe(9);
   });

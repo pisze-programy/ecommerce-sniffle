@@ -1,13 +1,16 @@
 import { ALL_MODULES, createRegistry } from "@ecommerce-sniffle/providers";
 import type { Logger, ProviderModule } from "@ecommerce-sniffle/providers";
-import { checkMemory, MIN_AVAILABLE_MB } from "./guard.ts";
+import { checkMemory, MIN_AVAILABLE_MB, readProcessRss } from "./guard.ts";
 import { catalogToIngestSnapshot, readIngestConfig, sendSnapshot } from "./ingest.ts";
+import type { IngestConfig } from "./ingest.ts";
 import { createDirectFetch } from "./direct-fetch.ts";
 import { createQueueClient } from "./queue-client.ts";
-import type { QueueClient } from "./queue-client.ts";
+import type { QueueClient, Task } from "./queue-client.ts";
 import { isStockRevealer } from "./runner.ts";
 
 const MAX_TASKS = 20;
+const TASK_TIMEOUT_MS = 25 * 60 * 1000;
+const MAX_PROCESS_RSS_MB = 150;
 
 export interface ExecutorPassResult {
   readonly processed: number;
@@ -19,7 +22,75 @@ export interface ExecutorPassOptions {
   readonly workerId?: string;
   readonly maxTasks?: number;
   readonly checkMemoryFn?: () => boolean;
+  readonly checkRssFn?: () => boolean;
   readonly modules?: readonly ProviderModule[];
+  readonly taskTimeoutMs?: number;
+}
+
+async function withTaskTimeout<T>(promise: Promise<T>, timeoutMs: number, taskId: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`task timeout after ${timeoutMs}ms for ${taskId}`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+interface ExecutedTask {
+  readonly taskId: string;
+  readonly providerId: string;
+  readonly variants: number;
+}
+
+async function executeTask(
+  logger: Logger,
+  client: QueueClient,
+  ingestConfig: IngestConfig,
+  registry: ReturnType<typeof createRegistry>,
+  directFetch: ReturnType<typeof createDirectFetch>,
+  task: Task,
+): Promise<ExecutedTask> {
+  const module = registry.findModule(task.providerId);
+  if (module === null) {
+    throw new Error(`unknown provider ${task.providerId}`);
+  }
+  const needsDirect =
+    task.mode === "vps-mutation" || (task.mode === "vps-get" && !module.config.requiresProxy);
+  const provider = needsDirect
+    ? module.build({ logger, directFetch })
+    : module.build({ logger });
+  const catalog =
+    task.mode === "vps-mutation" && isStockRevealer(provider)
+      ? await provider.revealStock({ productIds: [] })
+      : await provider.fetchCatalog();
+  const snapshot = catalogToIngestSnapshot(catalog);
+  const masked = snapshot.variants.filter((variant) => variant.quantity === null).length;
+  if (masked > 0) {
+    logger.error("task masked", {
+      taskId: task.taskId,
+      providerId: task.providerId,
+      masked,
+    });
+    throw new Error(`masked ${masked}`);
+  }
+  const sent = await sendSnapshot(snapshot, ingestConfig, logger);
+  if (!sent) {
+    throw new Error("ingest rejected");
+  }
+  const done = await client.complete(task.taskId, 0);
+  if (!done) {
+    throw new Error("queue complete rejected");
+  }
+  return { taskId: task.taskId, providerId: task.providerId, variants: snapshot.variants.length };
 }
 
 export async function runExecutorPass(
@@ -34,8 +105,13 @@ export async function runExecutorPass(
   const client = options.queueClient ?? createQueueClient(config.backendUrl, config.secret, logger);
   const workerId = options.workerId ?? process.env["WORKER_ID"] ?? "vps-executor";
   const maxTasks = options.maxTasks ?? MAX_TASKS;
+  const taskTimeoutMs = options.taskTimeoutMs ?? TASK_TIMEOUT_MS;
   const checkMemoryFn =
     options.checkMemoryFn === undefined ? () => checkMemory(logger, MIN_AVAILABLE_MB) : options.checkMemoryFn;
+  const checkRssFn =
+    options.checkRssFn === undefined
+      ? () => readProcessRss(logger) < MAX_PROCESS_RSS_MB * 1024 * 1024
+      : options.checkRssFn;
   const registry = createRegistry(options.modules ?? ALL_MODULES);
   const directFetch = createDirectFetch();
   let processed = 0;
@@ -46,49 +122,25 @@ export async function runExecutorPass(
       logger.warn("memory low, stop executor");
       break;
     }
+    if (!checkRssFn()) {
+      logger.error("process rss too high, stop executor");
+      break;
+    }
     const task = await client.claim(["vps-get", "vps-mutation"], workerId);
     if (task === null) {
       break;
     }
     processed += 1;
     try {
-      const module = registry.findModule(task.providerId);
-      if (module === null) {
-        throw new Error(`unknown provider ${task.providerId}`);
-      }
-      const needsDirect =
-        task.mode === "vps-mutation" || (task.mode === "vps-get" && !module.config.requiresProxy);
-      const provider = needsDirect
-        ? module.build({ logger, directFetch })
-        : module.build({ logger });
-      const catalog =
-        task.mode === "vps-mutation" && isStockRevealer(provider)
-          ? await provider.revealStock({ productIds: [] })
-          : await provider.fetchCatalog();
-      const snapshot = catalogToIngestSnapshot(catalog);
-      const masked = snapshot.variants.filter((variant) => variant.quantity === null).length;
-      if (masked > 0) {
-        logger.error("task masked", {
-          taskId: task.taskId,
-          providerId: task.providerId,
-          masked,
-        });
-        await client.fail(task.taskId, `masked ${masked}`);
-        failed += 1;
-        continue;
-      }
-      const sent = await sendSnapshot(snapshot, config, logger);
-      if (!sent) {
-        throw new Error("ingest rejected");
-      }
-      const done = await client.complete(task.taskId, 0);
-      if (!done) {
-        throw new Error("queue complete rejected");
-      }
+      const executed = await withTaskTimeout(
+        executeTask(logger, client, config, registry, directFetch, task),
+        taskTimeoutMs,
+        task.taskId,
+      );
       logger.info("task done", {
-        taskId: task.taskId,
-        providerId: task.providerId,
-        variants: snapshot.variants.length,
+        taskId: executed.taskId,
+        providerId: executed.providerId,
+        variants: executed.variants,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -99,6 +151,10 @@ export async function runExecutorPass(
       });
       await client.fail(task.taskId, message);
       failed += 1;
+      if (message.includes("task timeout after")) {
+        logger.error("task timeout, stop executor pass", { taskId: task.taskId });
+        break;
+      }
     }
   }
 

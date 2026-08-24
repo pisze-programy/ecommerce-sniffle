@@ -262,6 +262,17 @@ describe("createTaskStore", () => {
     expect(counts["done"]).toBe(1);
   });
 
+  it("claims a task whose lease has expired", async () => {
+    const capture = capturingLogger();
+    const db = new FakeQueueDb();
+    const store = createTaskStore(db, capture.logger);
+    await store.createTask(task());
+    await store.claimTask("vps-1", 1000, NOW, 3, ["vps-get"]);
+    const reclaimed = await store.claimTask("vps-2", 1000, NOW + 5000, 3, ["vps-get"]);
+    expect(reclaimed?.taskId).toBe("morning-forcer-2026-08-24");
+    expect(reclaimed?.workerId).toBe("vps-2");
+  });
+
   it("returns a failed task to pending after the backoff", async () => {
     const capture = capturingLogger();
     const db = new FakeQueueDb();

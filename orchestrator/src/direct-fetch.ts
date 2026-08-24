@@ -1,4 +1,6 @@
-import { request } from "node:https";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import type { ClientRequest } from "node:http";
 import type { DirectFetch } from "@ecommerce-sniffle/providers";
 
 export function toUrl(input: string | URL | Request): URL {
@@ -34,11 +36,14 @@ export function toHeaderRecord(headers: RequestInit["headers"] | undefined): Rec
   return record;
 }
 
-export function createDirectFetch(): DirectFetch {
+export const DIRECT_FETCH_TIMEOUT_MS = 25_000;
+
+export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): DirectFetch {
   return (input: string | URL | Request, init?: RequestInit) => {
     const url = toUrl(input);
     return new Promise((resolve, reject) => {
-      const req = request(
+      const requestFn = url.protocol === "http:" ? httpRequest : httpsRequest;
+      const req: ClientRequest = requestFn(
         url,
         {
           method: init?.method ?? "GET",
@@ -61,7 +66,16 @@ export function createDirectFetch(): DirectFetch {
           });
         },
       );
-      req.on("error", reject);
+      const timer = setTimeout(() => {
+        req.destroy(new Error(`request timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+      req.on("error", (error: Error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      req.on("close", () => {
+        clearTimeout(timer);
+      });
       req.end();
     });
   };

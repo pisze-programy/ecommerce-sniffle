@@ -34,6 +34,20 @@ export function checkMemory(logger: Logger, minimumMb: number = MIN_AVAILABLE_MB
   return ok;
 }
 
+export function readProcessRss(logger: Logger): number {
+  try {
+    const status = readFileSync("/proc/self/status", "utf8");
+    const match = /VmRSS:\s+(\d+) kB/.exec(status);
+    if (match !== null) {
+      return Number(match[1]) * 1024;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.debug("process rss read failed", { error: message });
+  }
+  return 0;
+}
+
 function staleLock(lockPath: string, logger: Logger): boolean {
   let pid = Number.NaN;
   try {

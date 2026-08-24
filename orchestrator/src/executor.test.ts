@@ -60,6 +60,28 @@ function fakeGetModule(catalog: Catalog): ProviderModule {
   };
 }
 
+function hangingGetModule(): ProviderModule {
+  const config = {
+    id: "fake-get",
+    domain: "fake.pl",
+    platform: "custom" as const,
+    schedule: "0 5 * * *",
+    mode: "vps-get" as const,
+    window: "both" as const,
+    stockSource: "html" as const,
+    ratePerSecond: 1,
+    requiresProxy: false,
+    endpoint: "https://fake.pl",
+    enabled: true,
+  };
+  return {
+    config,
+    build({ logger }) {
+      return buildProvider(config, logger, () => new Promise<Catalog>(() => {}));
+    },
+  };
+}
+
 function fakeQueue(sequence: Array<Task | null>): QueueClient & { calls: string[] } {
   const calls: string[] = [];
   let index = 0;
@@ -184,6 +206,43 @@ describe("runExecutorPass", () => {
     expect(result.processed).toBe(0);
     expect(
       capture.records.some((record) => record.message === "memory low, stop executor"),
+    ).toBe(true);
+  });
+
+  it("stops when the process rss is too high", async () => {
+    vi.stubEnv("BACKEND_URL", "https://backend.example.com");
+    vi.stubEnv("INGEST_SECRET", "s3cret");
+    const capture = capturingLogger();
+    const queue = fakeQueue([task()]);
+    const result = await runExecutorPass(capture.logger, {
+      queueClient: queue,
+      modules: [fakeGetModule(emptyCatalog())],
+      checkRssFn: () => false,
+    });
+    expect(result.processed).toBe(0);
+    expect(
+      capture.records.some((record) => record.message === "process rss too high, stop executor"),
+    ).toBe(true);
+  });
+
+  it("fails and stops the pass when a task times out", async () => {
+    vi.stubEnv("BACKEND_URL", "https://backend.example.com");
+    vi.stubEnv("INGEST_SECRET", "s3cret");
+    const capture = capturingLogger();
+    const queue = fakeQueue([task(), task({ taskId: "morning-forcer-2026-08-24b" })]);
+    const result = await runExecutorPass(capture.logger, {
+      queueClient: queue,
+      modules: [hangingGetModule()],
+      taskTimeoutMs: 50,
+    });
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(
+      queue.calls.some((call) => call.startsWith("fail:morning-forcer-2026-08-24:task timeout")),
+    ).toBe(true);
+    expect(queue.calls.filter((call) => call.startsWith("claim:")).length).toBe(1);
+    expect(
+      capture.records.some((record) => record.message === "task timeout, stop executor pass"),
     ).toBe(true);
   });
 

@@ -26,6 +26,7 @@ export function createQueueRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
             .map((mode) => mode.trim())
             .filter((mode) => mode.length > 0);
     const store = createTaskStore(c.env.DB, c.get("logger"));
+    await store.reapExpired(Date.now(), QUEUE_MAX_ATTEMPTS);
     const task = await store.claimTask(workerId, QUEUE_LEASE_MS, Date.now(), QUEUE_MAX_ATTEMPTS, modes);
     return c.json({ task });
   });
