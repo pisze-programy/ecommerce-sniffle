@@ -20,7 +20,7 @@ const CFG = {
   mode: "vps-mutation" as const,
   stockSource: "cart-probe" as const,
   ratePerSecond: 1,
-  requiresProxy: true,
+  durationSeconds: 60, requiresProxy: true,
   endpoint: "https://sklepbazy.pl/",
   enabled: true,
 };

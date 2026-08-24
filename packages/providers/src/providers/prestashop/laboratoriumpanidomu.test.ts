@@ -39,7 +39,7 @@ const CFG = {
   mode: "vps-mutation" as const,
   stockSource: "cart-probe" as const,
   ratePerSecond: 0,
-  requiresProxy: true,
+  durationSeconds: 60, requiresProxy: true,
   endpoint: "https://laboratoriumpanidomu.pl/",
   enabled: true,
 };

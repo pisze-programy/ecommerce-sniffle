@@ -56,7 +56,7 @@ function providerConfig(): ProviderConfig {
     mode: "cf-get",
     stockSource: "html",
     ratePerSecond: 1,
-    requiresProxy: false,
+    durationSeconds: 60, requiresProxy: false,
     endpoint: "https://mock.pl",
     enabled: true,
   };

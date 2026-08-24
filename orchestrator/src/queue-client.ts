@@ -15,6 +15,7 @@ export interface Task {
   readonly error: string | null;
   readonly createdAt: number;
   readonly finishedAt: number | null;
+  readonly durationSeconds: number;
 }
 
 export interface QueueClient {
@@ -36,6 +37,7 @@ function parseTask(raw: unknown): Task | null {
   const status = obj["status"];
   const attempts = obj["attempts"];
   const createdAt = obj["createdAt"];
+  const durationSeconds = obj["durationSeconds"];
   if (
     typeof taskId !== "string" ||
     typeof providerId !== "string" ||
@@ -44,7 +46,8 @@ function parseTask(raw: unknown): Task | null {
     typeof window !== "string" ||
     typeof status !== "string" ||
     typeof attempts !== "number" ||
-    typeof createdAt !== "number"
+    typeof createdAt !== "number" ||
+    typeof durationSeconds !== "number"
   ) {
     return null;
   }
@@ -62,6 +65,7 @@ function parseTask(raw: unknown): Task | null {
     error: typeof obj["error"] === "string" ? obj["error"] : null,
     createdAt,
     finishedAt: typeof obj["finishedAt"] === "number" ? obj["finishedAt"] : null,
+    durationSeconds,
   };
 }
 

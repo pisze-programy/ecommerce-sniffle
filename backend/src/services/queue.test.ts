@@ -64,6 +64,7 @@ class FakeStatement implements QueueStatement {
         error,
         created_at,
         finished_at,
+        duration_seconds,
       ] = this.args;
       if (this.db.tasks.has(String(task_id))) {
         return [];
@@ -82,6 +83,7 @@ class FakeStatement implements QueueStatement {
         error,
         created_at,
         finished_at,
+        duration_seconds,
       });
       return [];
     }
@@ -113,7 +115,14 @@ class FakeStatement implements QueueStatement {
           );
           return !blocked;
         })
-        .sort((a, b) => (a["created_at"] as number) - (b["created_at"] as number));
+        .sort((a, b) => {
+          const durationA = a["duration_seconds"] as number;
+          const durationB = b["duration_seconds"] as number;
+          if (durationA !== durationB) {
+            return durationA - durationB;
+          }
+          return (a["created_at"] as number) - (b["created_at"] as number);
+        });
       const task = picked[0];
       if (task === undefined) {
         return [];
@@ -211,6 +220,7 @@ function task(overrides: Partial<Task> = {}): Task {
     error: null,
     createdAt: 1000,
     finishedAt: null,
+    durationSeconds: 600,
     ...overrides,
   };
 }
@@ -271,6 +281,18 @@ describe("createTaskStore", () => {
     const reclaimed = await store.claimTask("vps-2", 1000, NOW + 5000, 3, ["vps-get"]);
     expect(reclaimed?.taskId).toBe("morning-forcer-2026-08-24");
     expect(reclaimed?.workerId).toBe("vps-2");
+  });
+
+  it("claims the fastest task before a slower one", async () => {
+    const capture = capturingLogger();
+    const db = new FakeQueueDb();
+    const store = createTaskStore(db, capture.logger);
+    await store.createTask(task({ taskId: "slow", providerId: "slow", domain: "slow.pl", createdAt: 1, durationSeconds: 3600 }));
+    await store.createTask(task({ taskId: "fast", providerId: "fast", domain: "fast.pl", createdAt: 2, durationSeconds: 5 }));
+    const first = await store.claimTask("vps-1", 1800000, NOW, 3, ["vps-get"]);
+    expect(first?.taskId).toBe("fast");
+    const second = await store.claimTask("vps-2", 1800000, NOW, 3, ["vps-get"]);
+    expect(second?.taskId).toBe("slow");
   });
 
   it("returns a failed task to pending after the backoff", async () => {

@@ -34,6 +34,7 @@ function task(overrides: Partial<Task> = {}): Task {
     error: null,
     createdAt: 1000,
     finishedAt: null,
+    durationSeconds: 600,
     ...overrides,
   };
 }
@@ -48,6 +49,7 @@ function fakeGetModule(catalog: Catalog): ProviderModule {
     window: "both" as const,
     stockSource: "html" as const,
     ratePerSecond: 1,
+    durationSeconds: 60,
     requiresProxy: false,
     endpoint: "https://fake.pl",
     enabled: true,
@@ -70,6 +72,7 @@ function hangingGetModule(): ProviderModule {
     window: "both" as const,
     stockSource: "html" as const,
     ratePerSecond: 1,
+    durationSeconds: 60,
     requiresProxy: false,
     endpoint: "https://fake.pl",
     enabled: true,

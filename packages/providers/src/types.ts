@@ -15,6 +15,7 @@ export interface ProviderConfig {
   readonly window: TaskWindow;
   readonly stockSource: StockSource;
   readonly ratePerSecond: number;
+  readonly durationSeconds: number;
   readonly requiresProxy: boolean;
   readonly endpoint: string;
   readonly enabled: boolean;

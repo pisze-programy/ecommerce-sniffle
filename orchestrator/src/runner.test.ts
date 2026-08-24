@@ -63,7 +63,7 @@ function fakeMutationModule(): ProviderModule {
     mode: "vps-mutation",
     stockSource: "html",
     ratePerSecond: 1,
-    requiresProxy: true,
+    durationSeconds: 60, requiresProxy: true,
     endpoint: "https://fake.pl",
     enabled: true,
   };
@@ -86,7 +86,7 @@ function fakeGetModule(): ProviderModule {
     mode: "vps-get",
     stockSource: "html",
     ratePerSecond: 1,
-    requiresProxy: false,
+    durationSeconds: 60, requiresProxy: false,
     endpoint: "https://get.pl",
     enabled: true,
   };
@@ -273,7 +273,7 @@ describe("runVpsPass", () => {
         mode: "vps-get",
         stockSource: "html",
         ratePerSecond: 1,
-        requiresProxy: false,
+        durationSeconds: 60, requiresProxy: false,
         endpoint: "https://fail.pl",
         enabled: true,
       };
@@ -308,7 +308,7 @@ describe("runVpsPass", () => {
         mode: "vps-get",
         stockSource: "html",
         ratePerSecond: 1,
-        requiresProxy: true,
+        durationSeconds: 60, requiresProxy: true,
         endpoint: "https://proxy.pl",
         enabled: true,
       };

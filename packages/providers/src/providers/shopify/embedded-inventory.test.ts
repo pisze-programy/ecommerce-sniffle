@@ -125,7 +125,7 @@ function config(ratePerSecond: number) {
     mode: "cf-get" as const,
     stockSource: "embedded-json" as const,
     ratePerSecond,
-    requiresProxy: false,
+    durationSeconds: 60, requiresProxy: false,
     endpoint: "https://test-shop.pl/products.json",
     enabled: true,
   };

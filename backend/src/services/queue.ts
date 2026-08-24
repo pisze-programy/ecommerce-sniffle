@@ -25,6 +25,7 @@ export interface Task {
   readonly error: string | null;
   readonly createdAt: number;
   readonly finishedAt: number | null;
+  readonly durationSeconds: number;
 }
 
 export interface TaskStore {
@@ -55,6 +56,7 @@ function rowToTask(row: unknown): Task | null {
   const status = obj["status"];
   const attempts = obj["attempts"];
   const createdAt = obj["created_at"];
+  const durationSeconds = obj["duration_seconds"];
   if (
     typeof taskId !== "string" ||
     typeof providerId !== "string" ||
@@ -63,7 +65,8 @@ function rowToTask(row: unknown): Task | null {
     typeof window !== "string" ||
     typeof status !== "string" ||
     typeof attempts !== "number" ||
-    typeof createdAt !== "number"
+    typeof createdAt !== "number" ||
+    typeof durationSeconds !== "number"
   ) {
     return null;
   }
@@ -81,12 +84,13 @@ function rowToTask(row: unknown): Task | null {
     error: typeof obj["error"] === "string" ? obj["error"] : null,
     createdAt,
     finishedAt: typeof obj["finished_at"] === "number" ? obj["finished_at"] : null,
+    durationSeconds,
   };
 }
 
 export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO tasks (task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT OR IGNORE INTO tasks (task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at, duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const complete = db.prepare(
     "UPDATE tasks SET status = 'done', masked_count = ?, finished_at = ?, lease_until = NULL, worker_id = NULL WHERE task_id = ?",
@@ -121,6 +125,7 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
             task.error,
             task.createdAt,
             task.finishedAt,
+            task.durationSeconds,
           )
           .run();
       } catch (error: unknown) {
@@ -142,8 +147,8 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
             " OR (status = 'claimed' AND lease_until < ?)" +
             ") AND domain NOT IN (" +
             "SELECT domain FROM tasks WHERE status = 'claimed' AND lease_until >= ?" +
-            ") ORDER BY created_at ASC LIMIT 1" +
-            ") RETURNING task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at",
+            ") ORDER BY duration_seconds ASC, created_at ASC LIMIT 1" +
+            ") RETURNING task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at, duration_seconds",
         );
         const row = await claim.bind(now + leaseMs, workerId, ...modes, maxAttempts, now, now, now).first();
         return rowToTask(row);
@@ -243,6 +248,7 @@ export async function enqueueProviders(
       error: null,
       createdAt: now,
       finishedAt: null,
+      durationSeconds: module.config.durationSeconds,
     };
     await store.createTask(task);
     count += 1;
