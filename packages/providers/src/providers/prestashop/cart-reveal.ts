@@ -235,7 +235,14 @@ async function buildCatalog(
   const products: Product[] = [];
   const seen = new Set<string>();
   for (const category of categories) {
-    const urls = await fetchProductUrls(base, category, providerConfig.ratePerSecond, fetchFn);
+    let urls: string[];
+    try {
+      urls = await fetchProductUrls(base, category, providerConfig.ratePerSecond, fetchFn);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn("presta.catalog category failed", { category, error: message });
+      continue;
+    }
     for (const url of urls) {
       const id = extractPrestaProductId(url);
       if (id === null) {
