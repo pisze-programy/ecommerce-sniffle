@@ -238,7 +238,7 @@ export async function revealVariant(
     const addResponse = await fetch(`${basket}/`, {
       method: "POST",
       headers: baseHeaders,
-      body: JSON.stringify({ quantity: 1, stock_id: stockId, options }),
+      body: JSON.stringify({ quantity: PROBE_QUANTITY, stock_id: stockId, options }),
     });
     const addText = await addResponse.text();
     if (isCloudflareChallenge(addText)) {
@@ -258,6 +258,20 @@ export async function revealVariant(
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn("basketreveal.add response parse failed", { domain, stockId, error: message });
+    }
+    const addWarning = extractWarning(addText, logger);
+    if (addWarning !== null) {
+      const quantity = parseBasketWarning(addWarning);
+      if (quantity !== null) {
+        const first = added[0];
+        if (typeof first === "object" && first !== null) {
+          const rawId = (first as Readonly<Record<string, unknown>>)["id"];
+          if (typeof rawId === "number") {
+            itemId = rawId;
+          }
+        }
+        return quantity;
+      }
     }
     const first = added[0];
     if (typeof first !== "object" || first === null) {

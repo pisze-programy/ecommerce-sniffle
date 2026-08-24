@@ -152,6 +152,26 @@ describe("revealVariant", () => {
     ).toBe(true);
   });
 
+  it("reads the clamp warning directly from the add response", async () => {
+    const capture = capturingLogger();
+    const addBody =
+      '{"added":[{"id":596940,"name":"Kubek"}],"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: Kubek - 13 szt. ."],"error":[]}}';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => "Shop5=abc" },
+      text: async () => addBody,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(result).toBe(13);
+    expect(fetchMock.mock.calls.length).toBe(2);
+    const addCall = fetchMock.mock.calls[0];
+    const addInit = addCall?.[1];
+    expect(String(addInit?.body)).toContain("999999999");
+  });
+
   it("blocks and logs when the basket put hits a cloudflare challenge", async () => {
     const capture = capturingLogger();
     const addBody = '{"added":[{"id":596940,"name":"Kubek"}]}';
