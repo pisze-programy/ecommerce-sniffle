@@ -121,6 +121,21 @@ token) and one POST per product. Extract the product id from the url
 `/{category}/{id}-{slug}.html`. laboratoriumpanidomu.pl is an example.
 The catalog comes from category pages (`/{category-id}-{slug}`).
 
+## Headless Shopify (Next.js) method
+
+Some headless Shopify stores hide exact stock in products.json, .js and
+.xml. The server-rendered product page (Next.js) embeds the Shopify
+Storefront API data in the RSC payload. The raw HTML has:
+
+```
+\"id\":\"gid://shopify/ProductVariant/59603108757838\",\"title\":\"36.5\",\"price\":\"$248\",\"quantityAvailable\":1
+```
+
+The parser extracts the escaped `quantityAvailable` per variant gid.
+magdabutrym.com is an example. Fetch `/{locale}/product/{handle}` (the
+locale path, not the bare path). The catalog comes from
+`sitemap-category/all.xml`.
+
 ## Cost summary
 
 | Source | Cost | Mode |
