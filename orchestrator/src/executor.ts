@@ -7,6 +7,7 @@ import { createDirectFetch } from "./direct-fetch.ts";
 import { createQueueClient } from "./queue-client.ts";
 import type { QueueClient, Task } from "./queue-client.ts";
 import { isStockRevealer } from "./runner.ts";
+import { createUsageTracking } from "./usage.ts";
 
 const MAX_TASKS = 20;
 const TASK_TIMEOUT_MS = 25 * 60 * 1000;
@@ -131,19 +132,41 @@ export async function runExecutorPass(
       break;
     }
     processed += 1;
+    const realFetch = globalThis.fetch;
+    const tracking = createUsageTracking(realFetch);
+    globalThis.fetch = tracking.fetchImpl;
+    const startedAt = Date.now();
     try {
       const executed = await withTaskTimeout(
         executeTask(logger, client, config, registry, directFetch, task),
         taskTimeoutMs,
         task.taskId,
       );
+      const elapsedMs = Date.now() - startedAt;
+      logger.info("task usage", {
+        taskId: executed.taskId,
+        providerId: executed.providerId,
+        elapsedMs,
+        requests: tracking.stats.requests,
+        requestBytes: tracking.stats.requestBytes,
+        responseBytes: tracking.stats.responseBytes,
+      });
       logger.info("task done", {
         taskId: executed.taskId,
         providerId: executed.providerId,
         variants: executed.variants,
       });
     } catch (error: unknown) {
+      const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
+      logger.error("task usage", {
+        taskId: task.taskId,
+        providerId: task.providerId,
+        elapsedMs,
+        requests: tracking.stats.requests,
+        requestBytes: tracking.stats.requestBytes,
+        responseBytes: tracking.stats.responseBytes,
+      });
       logger.error("task failed", {
         taskId: task.taskId,
         providerId: task.providerId,
@@ -155,6 +178,8 @@ export async function runExecutorPass(
         logger.error("task timeout, stop executor pass", { taskId: task.taskId });
         break;
       }
+    } finally {
+      globalThis.fetch = realFetch;
     }
   }
 

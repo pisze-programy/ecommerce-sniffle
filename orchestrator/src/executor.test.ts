@@ -138,6 +138,11 @@ describe("runExecutorPass", () => {
       "complete:morning-forcer-2026-08-24:0",
     ]);
     expect(capture.records.some((record) => record.message === "task done")).toBe(true);
+    const usage = capture.records.find((record) => record.message === "task usage");
+    expect(usage).toBeDefined();
+    expect(usage?.context["providerId"]).toBe("fake-get");
+    expect(typeof usage?.context["elapsedMs"]).toBe("number");
+    expect(typeof usage?.context["requests"]).toBe("number");
   });
 
   it("fails a task that produces masked variants", async () => {
