@@ -50,20 +50,20 @@ describe("requireValue", () => {
 });
 
 describe("assertPositiveInteger", () => {
-  it("returns a positive integer unchanged", () => {
+  it("returns a positive rate unchanged", () => {
     expect(assertPositiveInteger(5, "field")).toBe(5);
   });
 
+  it("accepts a fractional rate", () => {
+    expect(assertPositiveInteger(0.33, "field")).toBe(0.33);
+  });
+
   it("rejects zero", () => {
-    expect(() => assertPositiveInteger(0, "field")).toThrow("Invalid positive integer for field");
+    expect(() => assertPositiveInteger(0, "field")).toThrow("Invalid positive rate for field");
   });
 
   it("rejects a negative number", () => {
     expect(() => assertPositiveInteger(-2, "field")).toThrow();
-  });
-
-  it("rejects a float", () => {
-    expect(() => assertPositiveInteger(1.5, "field")).toThrow();
   });
 
   it("rejects a non-number", () => {

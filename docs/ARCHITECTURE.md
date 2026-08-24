@@ -43,6 +43,12 @@ It does MUTATIONS (the risky work):
 - Shoper basket-reveal (exact stock)
 - Shopify cart-probe (exact stock)
 
+It also does `vps-get` work:
+
+- Shopify embedded JSON enrichment (forcer, misbhv)
+  The shop rate-limits bursts, so the fetches pace at 1 per second.
+  A full catalog needs about 9 minutes. The VPS has the long window.
+
 Mutations go through a residential proxy (webshare).
 The VPS sends the revealed stock to the CF worker.
 It POSTs a snapshot to `BACKEND_URL/ingest` with a bearer secret.
@@ -62,19 +68,52 @@ Research showed:
 
 So the split is:
 
-- CF worker: GETs only. Safe.
-- VPS: mutations through the proxy. The VPS IP stays clean.
+- CF worker: the queue broker + the GET-only shops.
+- VPS: the executor. Mutations through the proxy. The VPS IP stays clean.
+
+## The task queue
+
+The Cloudflare worker is the broker. It holds the tasks in D1.
+
+- The cron at 04:00 and 16:00 enqueues one task per provider per window.
+- A worker claims a task. The claim is atomic. One task per shop runs
+  at a time (per-shop in-flight).
+- The worker leases the task for 30 minutes. If the worker dies, the
+  lease expires and the task comes back to the queue.
+- A finished task becomes `done`. A failed task comes back to the
+  queue after a 10 minute backoff.
+- After three attempts a task goes to the dead letter queue (DLQ).
+  The DLQ is where masked problems are investigated.
+- A task that produces masked variants is NOT stored. It fails. The
+  last good snapshot stays in the database. No null quantity is ever
+  written.
+
+## The VPS executor
+
+The VPS runs one worker loop:
+
+1. It claims a task from the queue (vps-get or vps-mutation).
+2. It checks memory. If memory is low it exits gracefully.
+3. It executes the provider at its own pace.
+4. It checks the snapshot for masked variants.
+5. If zero masked it stores the snapshot and completes the task.
+6. If any masked it fails the task. The task retries later.
+
+The worker processes one task at a time. Each run is bounded by the
+cron timeout. Tasks that do not finish are reclaimed and retried.
 
 ## Flow for one day
 
-1. The CF worker cron runs at 04:00 and 16:00.
-2. The CF worker fetches catalogs and prices (GETs).
-3. The VPS orchestrator runs at 04:30 and 04:45.
-4. The VPS does basket reveals and cart probes (through the proxy).
-5. The VPS POSTs the revealed snapshots to `BACKEND_URL/ingest`.
-6. The CF worker stores both snapshot kinds in D1.
-7. The diff step compares today with the last snapshot.
-8. The diff emits events: price change, stock change, new, removed.
+1. The CF cron runs at 04:00 and 16:00.
+2. The CF worker enqueues the tasks for the window and reaps leases.
+3. The CF worker runs the GET-only shops directly (rever, royalwatch,
+   mushi, premieresociety).
+4. The VPS executor polls the queue and drains the tasks.
+5. The executor does basket reveals and cart probes through the proxy.
+6. The executor sends the snapshots to `BACKEND_URL/ingest`.
+7. The CF worker stores both snapshot kinds in D1.
+8. The diff step compares today with the last snapshot.
+9. The diff emits events: price change, stock change, new, removed.
 
 ## Providers
 
@@ -89,6 +128,7 @@ Each provider has:
 The config decides the execution mode:
 
 - `cf-get`: runs on the CF worker (GETs only)
+- `vps-get`: runs on the VPS (GETs only, direct, for rate-limited shops)
 - `vps-mutation`: runs on the VPS (mutations through the proxy)
 
 See [PROVIDERS.md](./PROVIDERS.md).

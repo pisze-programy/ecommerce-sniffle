@@ -8,6 +8,6 @@ const config = requireValue(PROVIDERS.find((c) => c.id === "wkdzik"), "config wk
 export const wkdzikModule: ProviderModule = {
   config,
   build(deps) {
-    return buildBasketRevealProvider(config, deps.logger);
+    return buildBasketRevealProvider(config, deps.logger, deps.directFetch);
   },
 };

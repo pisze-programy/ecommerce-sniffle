@@ -8,6 +8,6 @@ const config = requireValue(PROVIDERS.find((c) => c.id === "sklepskolim"), "conf
 export const sklepskolimModule: ProviderModule = {
   config,
   build(deps) {
-    return buildBasketRevealProvider(config, deps.logger);
+    return buildBasketRevealProvider(config, deps.logger, deps.directFetch);
   },
 };

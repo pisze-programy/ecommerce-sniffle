@@ -8,6 +8,7 @@ const fixtureConfig = {
   domain: "fixture.pl",
   platform: "shopify" as const,
   schedule: "0 4 * * *",
+  window: "both" as const,
   mode: "cf-get" as const,
   stockSource: "embedded-json" as const,
   ratePerSecond: 1,
@@ -45,9 +46,9 @@ describe("createRegistry", () => {
     expect(() => registry.getModule("unknown")).toThrow("Missing required value: provider module unknown");
   });
 
-  it("registers all 14 modules", () => {
+  it("registers all 20 modules", () => {
     const registry = createRegistry(ALL_MODULES);
-    expect(registry.modules).toHaveLength(14);
+    expect(registry.modules).toHaveLength(20);
   });
 
   it("rejects duplicate ids", () => {

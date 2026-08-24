@@ -1,8 +1,10 @@
-export type Platform = "shopify" | "shoper" | "woocommerce" | "custom";
+export type Platform = "shopify" | "shoper" | "woocommerce" | "custom" | "prestashop";
 
 export type StockSource = "embedded-json" | "cart-probe" | "basket-reveal" | "html" | "boolean";
 
-export type ExecutionMode = "cf-get" | "vps-mutation";
+export type ExecutionMode = "cf-get" | "vps-get" | "vps-mutation";
+
+export type TaskWindow = "morning" | "evening" | "both";
 
 export interface ProviderConfig {
   readonly id: string;
@@ -10,6 +12,7 @@ export interface ProviderConfig {
   readonly platform: Platform;
   readonly schedule: string;
   readonly mode: ExecutionMode;
+  readonly window: TaskWindow;
   readonly stockSource: StockSource;
   readonly ratePerSecond: number;
   readonly requiresProxy: boolean;

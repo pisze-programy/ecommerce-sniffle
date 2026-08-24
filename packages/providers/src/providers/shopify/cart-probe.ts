@@ -1,6 +1,6 @@
 import { buildStockRevealer } from "../../factory.ts";
-import { truncateMessage } from "../../helpers.ts";
 import { isCloudflareChallenge } from "../../captcha/detect.ts";
+import type { DirectFetch } from "../../module.ts";
 import type { Logger } from "../../logger.ts";
 import type {
   Catalog,
@@ -77,15 +77,18 @@ export async function probeVariantStock(
       headers: baseHeaders,
       body: `id=${variantId}&quantity=1`,
     });
-    const addText = await addResponse.text();
-    if (isCloudflareChallenge(addText)) {
+    const cookie = extractCartCookie(addResponse.headers.get("set-cookie"));
+    cartCookie = cookie;
+    if (addResponse.body !== undefined && addResponse.body !== null) {
+      await addResponse.body.cancel();
+    }
+    if (addResponse.status === 429 || addResponse.status === 403) {
       logger.warn("cartprobe.challenge blocked", { domain, variantId });
       return { quantity: null, available: null };
     }
     if (!addResponse.ok) {
-      throw new Error(`cart add failed with status ${addResponse.status}: ${truncateMessage(addText)}`);
+      throw new Error(`cart add failed with status ${addResponse.status}`);
     }
-    cartCookie = extractCartCookie(addResponse.headers.get("set-cookie"));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn("cartprobe.add failed", { domain, variantId, error: message });
@@ -133,13 +136,20 @@ export function applyOutcome(variant: Variant, outcome: ProbeOutcome): Variant {
 export function buildCartProbeProvider(
   config: ProviderConfig,
   logger: Logger,
+  directFetch?: DirectFetch,
 ): StockRevealer {
+  const catalogFetch = (url: string, init?: RequestInit) => {
+    if (directFetch !== undefined) {
+      return directFetch(url, init);
+    }
+    return fetch(url, init);
+  };
   return buildStockRevealer(
     config,
     logger,
-    async (): Promise<Catalog> => fetchShopifyCatalog(config.endpoint, config.domain, logger),
+    async (): Promise<Catalog> => fetchShopifyCatalog(config.endpoint, config.domain, logger, catalogFetch),
     async (target: StockRevealTarget): Promise<Catalog> => {
-      const catalog = await fetchShopifyCatalog(config.endpoint, config.domain, logger);
+      const catalog = await fetchShopifyCatalog(config.endpoint, config.domain, logger, catalogFetch);
       const wanted = new Set<string>(target.productIds);
       const products: Product[] = [];
       for (const product of catalog.products) {

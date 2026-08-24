@@ -94,13 +94,22 @@ export function parseShopifyCatalog(raw: unknown, domain: string): Product[] {
   return products;
 }
 
-async function fetchPage(endpoint: string, page: number): Promise<unknown> {
+type CatalogFetch = (
+  url: string,
+  init?: RequestInit,
+) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+async function fetchPage(
+  endpoint: string,
+  page: number,
+  fetchFn: CatalogFetch,
+): Promise<unknown> {
   const separator = endpoint.includes("?") ? "&" : "?";
   const url = `${endpoint}${separator}limit=${PAGE_SIZE}&page=${page}`;
   let attempt = 0;
   while (true) {
     attempt += 1;
-    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    const response = await fetchFn(url, { headers: { "User-Agent": USER_AGENT } });
     if (response.status === 429 && attempt < MAX_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
       continue;
@@ -116,6 +125,7 @@ export async function fetchShopifyCatalog(
   endpoint: string,
   domain: string,
   logger: Logger,
+  fetchFn: CatalogFetch = fetch,
 ): Promise<Catalog> {
   const products: Product[] = [];
   let page = 1;
@@ -124,7 +134,7 @@ export async function fetchShopifyCatalog(
     if (page > MAX_PAGES) {
       throw new Error(`Shopify catalog too large for ${domain} (more than ${MAX_PAGES} pages)`);
     }
-    const data = await fetchPage(endpoint, page);
+    const data = await fetchPage(endpoint, page, fetchFn);
     const parsed = parseShopifyCatalog(data, domain);
     products.push(...parsed);
     pageCount += 1;

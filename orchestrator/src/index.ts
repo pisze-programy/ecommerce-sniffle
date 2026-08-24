@@ -1,7 +1,8 @@
 import { buildLogger } from "@ecommerce-sniffle/providers";
 import type { Logger } from "@ecommerce-sniffle/providers";
-import { runVpsPass } from "./runner.ts";
+import { runExecutorPass } from "./executor.ts";
 import { acquireLock, checkMemory, releaseLock, MIN_AVAILABLE_MB } from "./guard.ts";
+export { createDirectFetch } from "./direct-fetch.ts";
 
 export async function main(): Promise<void> {
   const logger: Logger = buildLogger();
@@ -15,12 +16,11 @@ export async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    logger.info("orchestrator start");
-    const result = await runVpsPass(logger);
-    logger.info("orchestrator finish", {
-      providers: result.processed,
-      failed: result.failed.length,
-      ingested: result.ingested,
+    logger.info("executor start");
+    const result = await runExecutorPass(logger);
+    logger.info("executor finish", {
+      processed: result.processed,
+      failed: result.failed,
     });
   } finally {
     releaseLock(logger);

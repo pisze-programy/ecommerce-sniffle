@@ -8,6 +8,6 @@ const config = requireValue(PROVIDERS.find((c) => c.id === "arustamian"), "confi
 export const arustamianModule: ProviderModule = {
   config,
   build(deps) {
-    return buildBasketRevealProvider(config, deps.logger);
+    return buildBasketRevealProvider(config, deps.logger, deps.directFetch);
   },
 };

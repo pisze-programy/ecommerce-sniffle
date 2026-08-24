@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ALL_MODULES, buildStockRevealer, createLogger } from "@ecommerce-sniffle/providers";
+import {
+  ALL_MODULES,
+  buildProvider,
+  buildStockRevealer,
+  createLogger,
+} from "@ecommerce-sniffle/providers";
 import type { Logger, LogRecord, ProviderConfig, ProviderModule } from "@ecommerce-sniffle/providers";
 import { isStockRevealer, runVpsPass } from "./runner.ts";
+import type { VpsPassOptions } from "./runner.ts";
+
+function networkDisabledFetch(): NonNullable<VpsPassOptions["directFetch"]> {
+  return () => Promise.reject(new Error("network disabled"));
+}
 
 interface Capture {
   readonly records: LogRecord[];
@@ -49,6 +59,7 @@ function fakeMutationModule(): ProviderModule {
     domain: "fake.pl",
     platform: "custom",
     schedule: "30 4 * * *",
+    window: "both" as const,
     mode: "vps-mutation",
     stockSource: "html",
     ratePerSecond: 1,
@@ -61,6 +72,29 @@ function fakeMutationModule(): ProviderModule {
     config,
     build({ logger }) {
       return buildStockRevealer(config, logger, async () => catalog, async () => catalog);
+    },
+  };
+}
+
+function fakeGetModule(): ProviderModule {
+  const config: ProviderConfig = {
+    id: "fake-get",
+    domain: "get.pl",
+    platform: "custom",
+    schedule: "0 5 * * *",
+    window: "both" as const,
+    mode: "vps-get",
+    stockSource: "html",
+    ratePerSecond: 1,
+    requiresProxy: false,
+    endpoint: "https://get.pl",
+    enabled: true,
+  };
+  const catalog = { domain: "get.pl", fetchedAt: "2026-08-24T06:00:00.000Z", products: [] };
+  return {
+    config,
+    build({ logger }) {
+      return buildProvider(config, logger, async () => catalog);
     },
   };
 }
@@ -78,27 +112,31 @@ describe("isStockRevealer", () => {
 });
 
 describe("runVpsPass", () => {
-  it("processes exactly the mutation providers", async () => {
-    const result = await runVpsPass(silentLogger());
-    expect(result.processed).toBe(9);
+  it("processes exactly the vps providers", async () => {
+    const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
+    expect(result.processed).toBe(13);
   });
 
   it("collects all not-implemented providers as failures", async () => {
-    const result = await runVpsPass(silentLogger());
-    expect(result.failed).toHaveLength(9);
+    const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
+    expect(result.failed).toHaveLength(13);
   });
 
-  it("reports the expected mutation provider ids", async () => {
-    const result = await runVpsPass(silentLogger());
+  it("reports the expected vps provider ids", async () => {
+    const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
     expect([...result.failed].sort()).toEqual([
       "arustamian",
-      "booso",
+      "dobrerzeczy",
       "e-daag",
       "emereedivine",
+      "foodsbyann",
+      "forcer",
       "gymglamour",
-      "hdrey",
+      "laboratoriumpanidomu",
+      "misbhv",
+      "montiel",
+      "noo-ma",
       "sklepskolim",
-      "wakenbake",
       "wkdzik",
     ]);
   });
@@ -111,10 +149,10 @@ describe("runVpsPass", () => {
 
   it("logs a warning for every failed provider", async () => {
     const capture = capturingLogger();
-    const result = await runVpsPass(capture.logger);
-    expect(result.failed).toHaveLength(9);
-    const warns = capture.records.filter((record) => record.message === "reveal provider failed");
-    expect(warns).toHaveLength(9);
+    const result = await runVpsPass(capture.logger, { directFetch: networkDisabledFetch() });
+    expect(result.failed).toHaveLength(13);
+    const warns = capture.records.filter((record) => record.message === "run provider failed");
+    expect(warns).toHaveLength(13);
   });
 
   it("sends a snapshot for a successful reveal", async () => {
@@ -157,5 +195,133 @@ describe("runVpsPass", () => {
     const capture = capturingLogger();
     const result = await runVpsPass(capture.logger, { modules: [fakeMutationModule()] });
     expect(result.processed).toBe(0);
+  });
+
+  it("fetches and ingests a vps-get provider", async () => {
+    vi.stubEnv("BACKEND_URL", "https://backend.example.com");
+    vi.stubEnv("INGEST_SECRET", "s3cret");
+    const capture = capturingLogger();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{"ok":true}' });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runVpsPass(capture.logger, { modules: [fakeGetModule()] });
+    expect(result.processed).toBe(1);
+    expect(result.failed).toHaveLength(0);
+    expect(result.ingested).toBe(1);
+    expect(capture.records.some((record) => record.message === "ingest.sent")).toBe(true);
+  });
+
+  it("runs only the vps-get shops in VPS_GET_SHOPS", async () => {
+    vi.stubEnv("VPS_GET_SHOPS", "fake-get");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "{}" });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runVpsPass(silentLogger(), { modules: [fakeGetModule()] });
+    expect(result.processed).toBe(1);
+  });
+
+  it("runs nothing when VPS_GET_SHOPS has only unknown ids", async () => {
+    vi.stubEnv("VPS_GET_SHOPS", "unknown-shop");
+    const result = await runVpsPass(silentLogger(), { modules: [fakeGetModule()] });
+    expect(result.processed).toBe(0);
+  });
+
+  it("keeps MUTATION_SHOPS and VPS_GET_SHOPS filters separate", async () => {
+    vi.stubEnv("MUTATION_SHOPS", "fake-mutation");
+    vi.stubEnv("VPS_GET_SHOPS", "fake-get");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "{}" });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runVpsPass(silentLogger(), {
+      modules: [fakeMutationModule(), fakeGetModule()],
+    });
+    expect(result.processed).toBe(2);
+  });
+
+  it("skips vps-get providers when only MUTATION_SHOPS is set", async () => {
+    vi.stubEnv("MUTATION_SHOPS", "fake-mutation");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "{}" });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runVpsPass(silentLogger(), {
+      modules: [fakeMutationModule(), fakeGetModule()],
+    });
+    expect(result.processed).toBe(1);
+  });
+
+  it("skips mutation providers when only VPS_GET_SHOPS is set", async () => {
+    vi.stubEnv("VPS_GET_SHOPS", "fake-get");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "{}" });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await runVpsPass(silentLogger(), {
+      modules: [fakeMutationModule(), fakeGetModule()],
+    });
+    expect(result.processed).toBe(1);
+  });
+
+  it("logs a failed vps-get provider", async () => {
+    const capture = capturingLogger();
+    const failing = (): ProviderModule => {
+      const config: ProviderConfig = {
+        id: "fake-get-fail",
+        domain: "fail.pl",
+        platform: "custom",
+        schedule: "0 5 * * *",
+        window: "both" as const,
+        mode: "vps-get",
+        stockSource: "html",
+        ratePerSecond: 1,
+        requiresProxy: false,
+        endpoint: "https://fail.pl",
+        enabled: true,
+      };
+      return {
+        config,
+        build({ logger }) {
+          return buildProvider(config, logger, async () => {
+            throw new Error("catalog boom");
+          });
+        },
+      };
+    };
+    const result = await runVpsPass(capture.logger, {
+      modules: [failing()],
+      directFetch: networkDisabledFetch(),
+    });
+    expect(result.processed).toBe(1);
+    expect(result.failed).toEqual(["fake-get-fail"]);
+    const warn = capture.records.find((record) => record.message === "run provider failed");
+    expect(warn?.context["providerId"]).toBe("fake-get-fail");
+    expect(warn?.context["error"]).toBe("catalog boom");
+  });
+
+  it("does not pass directFetch to a vps-get provider that requires the proxy", async () => {
+    const proxyGet = (): ProviderModule => {
+      const config: ProviderConfig = {
+        id: "fake-proxy-get",
+        domain: "proxy.pl",
+        platform: "custom",
+        schedule: "0 6 * * *",
+        window: "both" as const,
+        mode: "vps-get",
+        stockSource: "html",
+        ratePerSecond: 1,
+        requiresProxy: true,
+        endpoint: "https://proxy.pl",
+        enabled: true,
+      };
+      const catalog = { domain: "proxy.pl", fetchedAt: "2026-08-24T06:00:00.000Z", products: [] };
+      return {
+        config,
+        build({ logger, directFetch }) {
+          if (directFetch !== undefined) {
+            throw new Error("proxy get must not receive directFetch");
+          }
+          return buildProvider(config, logger, async () => catalog);
+        },
+      };
+    };
+    const result = await runVpsPass(silentLogger(), {
+      modules: [proxyGet()],
+      directFetch: networkDisabledFetch(),
+    });
+    expect(result.processed).toBe(1);
+    expect(result.failed).toHaveLength(0);
   });
 });

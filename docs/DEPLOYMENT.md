@@ -92,20 +92,42 @@ The launcher holds no secrets.
 The bundle is agnostic. It does not depend on Cloudflare.
 Copy it to any other VPS and it runs the same way.
 
-### VPS cron
+### VPS cron (executor)
 
-Add cron lines on the VPS. Use `flock` to prevent two runs at once.
-Use `timeout` to cap each run. Use `MUTATION_SHOPS` to split the shops
-so every run fits the timeout. The value is a comma-separated list of
-provider ids. An empty value runs all mutation shops.
+The VPS runs one worker. The worker polls the Cloudflare queue for
+tasks and executes one task at a time. Each run is bounded by the
+`timeout`. A task that does not finish is reclaimed by the queue
+after its lease expires and retried later.
 
 ```
-30 4 * * * flock -n /tmp/ecp-cron.lock timeout 600 MUTATION_SHOPS=booso,gymglamour,hdrey,wakenbake /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
-45 4 * * * flock -n /tmp/ecp-cron2.lock timeout 600 MUTATION_SHOPS=arustamian,e-daag,emereedivine,sklepskolim,wkdzik /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
+10,40 4-8 * * * flock -n /tmp/ecp-exec.lock timeout 1500 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
+10,40 16-20 * * * flock -n /tmp/ecp-exec2.lock timeout 1500 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
 ```
 
-The cart-probe shops run at 04:30. The basket-reveal shops run at 04:45.
-Each pass fits in the 10 minute timeout.
+The worker runs every 30 minutes inside the morning window
+(04:10-08:40) and the evening window (16:10-20:40). It drains the
+queue until it is empty or the timeout hits. The `flock` prevents two
+worker runs at once. The queue lives on the Cloudflare worker in D1.
+
+### Cloudflare cron (queue broker)
+
+The Cloudflare worker enqueues one task per enabled provider per
+window. It also reaps expired leases and moves exhausted tasks to the
+dead letter queue.
+
+```
+[triggers]
+crons = ["0 4 * * *", "0 16 * * *"]
+```
+
+The morning cron at 04:00 enqueues the morning tasks. The evening
+cron at 16:00 enqueues the evening tasks. The worker drains each
+window twice a day.
+
+A task that produces masked variants is NOT stored. The task fails and
+comes back to the queue after a 10 minute backoff. After three
+attempts the task goes to the dead letter queue for investigation.
+The last good snapshot stays in the database.
 
 ### Memory limit on the VPS
 

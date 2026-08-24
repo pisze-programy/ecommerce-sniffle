@@ -52,6 +52,7 @@ function providerConfig(): ProviderConfig {
     domain: "mock.pl",
     platform: "custom",
     schedule: "0 4 * * *",
+    window: "both" as const,
     mode: "cf-get",
     stockSource: "html",
     ratePerSecond: 1,

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
-import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos, revealProduct } from "./basket-reveal.ts";
+import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos, revealProduct, fetchShoperCatalog } from "./basket-reveal.ts";
 import type { Product } from "@ecommerce-sniffle/providers";
 
 interface Capture {
@@ -86,6 +86,23 @@ describe("revealVariant", () => {
     ).toBe(true);
   });
 
+  it("returns 0 when the product is inactive", async () => {
+    const capture = capturingLogger();
+    const addBody =
+      '{"added":[],"_flash_messenger":{"error":["Produkt jest nieaktywny i nie mo\u017ce zosta\u0107 dodany do koszyka."],"warning":[]}}';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => addBody,
+      }),
+    );
+    const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
+    expect(result).toBe(0);
+  });
+
   it("logs a debug record when the cleanup delete fails", async () => {
     const capture = capturingLogger();
     const addBody = '{"added":[{"id":596940,"name":"Kubek"}]}';
@@ -110,6 +127,7 @@ describe("revealVariant", () => {
         .mockRejectedValueOnce(new Error("delete network down")),
     );
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(result).toBe(13);
     expect(
       capture.records.some((record) => record.message === "basketreveal.cleanup failed"),
@@ -180,6 +198,14 @@ describe("buildOptionCombos", () => {
     expect(combos).toHaveLength(2);
     expect(combos[0]?.label).toBe("Rozmiar: S, Kolor: czarny");
     expect(combos[1]?.label).toBe("Rozmiar: M, Kolor: czarny");
+  });
+
+  it("builds a placeholder combo for a text option without values", () => {
+    const combos = buildOptionCombos([
+      { id: 38, name: "GRAWERUNEK", type: "text" },
+    ]);
+    expect(combos).toHaveLength(1);
+    expect(combos[0]?.options).toEqual({ "38": "x" });
   });
 
   it("returns an empty array for a malformed configuration", () => {
@@ -282,6 +308,81 @@ describe("revealProduct", () => {
       capture.records.some((record) => record.message === "basketreveal.product detail error"),
     ).toBe(true);
   });
+
+  it("returns quantity 0 for a not buyable product without probing", async () => {
+    const capture = capturingLogger();
+    const notBuyable: Product = {
+      ...variantProduct,
+      variants: [{ ...variantProduct.variants[0]!, available: false, quantity: 0 }],
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const variants = await revealProduct("sklepskolim.pl", notBuyable, capture.logger);
+    expect(variants).toHaveLength(1);
+    expect(variants[0]?.quantity).toBe(0);
+    expect(variants[0]?.available).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("fetchShoperCatalog", () => {
+  function listProduct(id: number) {
+    return {
+      id,
+      stockId: id + 1000,
+      name: `P${id}`,
+      url: `https://sklepskolim.pl/pl/p/p${id}/${id}`,
+      can_buy: true,
+      price: { gross: { base_float: 10, final_float: 10 } },
+    };
+  }
+
+  it("paginates with limit and offset until the list is empty", async () => {
+    const capture = capturingLogger();
+    const requested: string[] = [];
+    const fetchFn = vi.fn(async (url: unknown) => {
+      requested.push(String(url));
+      const str = String(url);
+      const offset = /offset=(\d+)/.exec(str);
+      const off = offset === null ? 0 : Number(offset[1]);
+      if (off === 0) {
+        return { ok: true, status: 200, json: async () => ({ list: [listProduct(1), listProduct(2)] }) };
+      }
+      if (off === 2) {
+        return { ok: true, status: 200, json: async () => ({ list: [listProduct(3)] }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ list: [] }) };
+    });
+    const catalog = await fetchShoperCatalog(
+      "https://sklepskolim.pl/webapi/front/pl_PL/products/PLN/list",
+      "sklepskolim.pl",
+      capture.logger,
+      fetchFn,
+    );
+    expect(catalog.products).toHaveLength(3);
+    expect(requested[0]).toContain("limit=500&offset=0");
+    expect(requested[1]).toContain("limit=500&offset=2");
+    expect(requested[2]).toContain("limit=500&offset=3");
+  });
+
+  it("dedupes repeated products across pages", async () => {
+    const capture = capturingLogger();
+    let calls = 0;
+    const fetchFn = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { ok: true, status: 200, json: async () => ({ list: [listProduct(1), listProduct(1)] }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ list: [] }) };
+    });
+    const catalog = await fetchShoperCatalog(
+      "https://sklepskolim.pl/webapi/front/pl_PL/products/PLN/list",
+      "sklepskolim.pl",
+      capture.logger,
+      fetchFn,
+    );
+    expect(catalog.products).toHaveLength(1);
+  });
 });
 
 describe("parseBasketWarning", () => {
@@ -289,6 +390,12 @@ describe("parseBasketWarning", () => {
     const warning =
       "Ilość produktów w koszyku przekracza dostępny stan magazynowy. <br /> Aktualnie dostępna ilość to: Kubek SKOLIM Wyglądasz Idealnie- granatowy - 13 szt. .";
     expect(parseBasketWarning(warning)).toBe(13);
+  });
+
+  it("reads the exact quantity from the English warning", () => {
+    const warning =
+      "Number of products in cart exceeds the stock. <br /> Current stock is: SALLY 4 czarna skórzana torebka - 7 szt. .";
+    expect(parseBasketWarning(warning)).toBe(7);
   });
 
   it("returns null for a generic warning without a number", () => {
@@ -349,9 +456,10 @@ describe("parseShoperList", () => {
     expect(variant?.regularPrice?.amount).toBe(200);
   });
 
-  it("keeps quantity masked and marks can_buy false as unavailable", () => {
+  it("maps a can_buy false product to quantity 0", () => {
     const kubek = parseShoperList(LIST, DOMAIN)[1];
     expect(kubek?.variants[0]?.available).toBe(false);
+    expect(kubek?.variants[0]?.quantity).toBe(0);
     expect(kubek?.variants[0]?.regularPrice).toBeNull();
     expect(kubek?.variants[0]?.price.amount).toBe(40);
   });

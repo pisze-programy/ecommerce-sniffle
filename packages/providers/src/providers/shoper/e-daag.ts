@@ -8,6 +8,6 @@ const config = requireValue(PROVIDERS.find((c) => c.id === "e-daag"), "config e-
 export const eDaagModule: ProviderModule = {
   config,
   build(deps) {
-    return buildBasketRevealProvider(config, deps.logger);
+    return buildBasketRevealProvider(config, deps.logger, deps.directFetch);
   },
 };

@@ -2,9 +2,10 @@ import {
   ALL_MODULES,
   createRegistry,
 } from "@ecommerce-sniffle/providers";
-import type { Logger, Provider, ProviderModule, StockRevealer } from "@ecommerce-sniffle/providers";
+import type { Logger, Provider, ProviderModule, StockRevealer, DirectFetch } from "@ecommerce-sniffle/providers";
 import { checkMemory, MIN_AVAILABLE_MB } from "./guard.ts";
 import { catalogToIngestSnapshot, readIngestConfig, sendSnapshot } from "./ingest.ts";
+import { createDirectFetch } from "./direct-fetch.ts";
 
 export interface VpsPassResult {
   readonly processed: number;
@@ -15,14 +16,15 @@ export interface VpsPassResult {
 export interface VpsPassOptions {
   readonly checkMemoryFn?: () => boolean;
   readonly modules?: readonly ProviderModule[];
+  readonly directFetch?: DirectFetch;
 }
 
 export function isStockRevealer(provider: Provider): provider is StockRevealer {
   return "revealStock" in provider;
 }
 
-export function readMutationShops(): Set<string> | null {
-  const value = process.env["MUTATION_SHOPS"];
+function readShopIds(envName: string): Set<string> | null {
+  const value = process.env[envName];
   if (value === undefined || value.length === 0) {
     return null;
   }
@@ -36,6 +38,42 @@ export function readMutationShops(): Set<string> | null {
   return ids;
 }
 
+export function readMutationShops(): Set<string> | null {
+  return readShopIds("MUTATION_SHOPS");
+}
+
+export function readGetShops(): Set<string> | null {
+  return readShopIds("VPS_GET_SHOPS");
+}
+
+function selectModules(
+  modules: readonly ProviderModule[],
+  mutationFilter: Set<string> | null,
+  getFilter: Set<string> | null,
+): ProviderModule[] {
+  const explicit = mutationFilter !== null || getFilter !== null;
+  const selected: ProviderModule[] = [];
+  for (const module of modules) {
+    if (!module.config.enabled) {
+      continue;
+    }
+    if (module.config.mode === "vps-mutation") {
+      const allowed = mutationFilter === null ? !explicit : mutationFilter.has(module.config.id);
+      if (allowed) {
+        selected.push(module);
+      }
+      continue;
+    }
+    if (module.config.mode === "vps-get") {
+      const allowed = getFilter === null ? !explicit : getFilter.has(module.config.id);
+      if (allowed) {
+        selected.push(module);
+      }
+    }
+  }
+  return selected;
+}
+
 export async function runVpsPass(
   logger: Logger,
   options: VpsPassOptions = {},
@@ -46,17 +84,9 @@ export async function runVpsPass(
     options.modules === undefined
       ? createRegistry(ALL_MODULES).modules
       : options.modules;
-  const shopFilter = readMutationShops();
-  const modules = allModules.filter((module) => {
-    if (module.config.mode !== "vps-mutation" || !module.config.enabled) {
-      return false;
-    }
-    if (shopFilter !== null && !shopFilter.has(module.config.id)) {
-      return false;
-    }
-    return true;
-  });
+  const modules = selectModules(allModules, readMutationShops(), readGetShops());
   const ingestConfig = readIngestConfig();
+  const directFetch = options.directFetch === undefined ? createDirectFetch() : options.directFetch;
   const failed: string[] = [];
   let processed = 0;
   let ingested = 0;
@@ -67,17 +97,28 @@ export async function runVpsPass(
       break;
     }
     processed += 1;
-    const provider = module.build({ logger });
-    if (!isStockRevealer(provider)) {
+    const isGet = module.config.mode === "vps-get";
+    const directFetchNeeded =
+      module.config.mode === "vps-mutation" || (isGet && !module.config.requiresProxy);
+    const provider = directFetchNeeded
+      ? module.build({ logger, directFetch })
+      : module.build({ logger });
+    if (!isGet && !isStockRevealer(provider)) {
       logger.warn("provider has no stock reveal", { providerId: module.config.id });
       continue;
     }
     try {
-      logger.info("reveal provider", { providerId: provider.config.id, domain: provider.config.domain });
-      const catalog = await provider.revealStock({ productIds: [] });
+      logger.info("run provider", {
+        providerId: provider.config.id,
+        domain: provider.config.domain,
+        mode: provider.config.mode,
+      });
+      const catalog = isGet
+        ? await provider.fetchCatalog()
+        : await (provider as StockRevealer).revealStock({ productIds: [] });
       if (ingestConfig === null) {
         logger.warn("ingest disabled: BACKEND_URL or INGEST_SECRET not set", {
-          providerId: provider.config.id,
+          providerId: module.config.id,
         });
         continue;
       }
@@ -88,7 +129,7 @@ export async function runVpsPass(
       }
     } catch (error: unknown) {
       failed.push(provider.config.id);
-      logger.error("reveal provider failed", {
+      logger.error("run provider failed", {
         providerId: provider.config.id,
         error: error instanceof Error ? error.message : String(error),
       });

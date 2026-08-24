@@ -8,6 +8,6 @@ const config = requireValue(PROVIDERS.find((c) => c.id === "booso"), "config boo
 export const boosoModule: ProviderModule = {
   config,
   build(deps) {
-    return buildCartProbeProvider(config, deps.logger);
+    return buildCartProbeProvider(config, deps.logger, deps.directFetch);
   },
 };

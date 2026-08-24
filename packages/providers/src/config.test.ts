@@ -7,10 +7,16 @@ const EXPECTED_IDS = [
   "dobrerzeczy",
   "e-daag",
   "emereedivine",
+  "foodsbyann",
   "forcer",
   "gymglamour",
   "hdrey",
+  "laboratoriumpanidomu",
   "misbhv",
+  "montiel",
+  "mushi",
+  "noo-ma",
+  "premieresociety",
   "rever",
   "royalwatch",
   "sklepskolim",
@@ -19,8 +25,8 @@ const EXPECTED_IDS = [
 ].sort();
 
 describe("PROVIDERS config", () => {
-  it("defines exactly 14 providers", () => {
-    expect(PROVIDERS.length).toBe(14);
+  it("defines exactly 20 providers", () => {
+    expect(PROVIDERS.length).toBe(20);
   });
 
   it("uses unique ids", () => {
@@ -43,7 +49,7 @@ describe("PROVIDERS config", () => {
   });
 
   it("uses a known platform", () => {
-    const allowed = new Set(["shopify", "shoper", "woocommerce", "custom"]);
+    const allowed = new Set(["shopify", "shoper", "woocommerce", "custom", "prestashop"]);
     for (const provider of PROVIDERS) {
       expect(allowed.has(provider.platform)).toBe(true);
     }
@@ -57,7 +63,7 @@ describe("PROVIDERS config", () => {
   });
 
   it("uses a known execution mode", () => {
-    const allowed = new Set(["cf-get", "vps-mutation"]);
+    const allowed = new Set(["cf-get", "vps-get", "vps-mutation"]);
     for (const provider of PROVIDERS) {
       expect(allowed.has(provider.mode)).toBe(true);
     }
@@ -71,10 +77,12 @@ describe("PROVIDERS config", () => {
     }
   });
 
-  it("has 9 mutation providers and 5 get providers", () => {
+  it("has 9 mutation providers, 4 get providers, 7 vps-get providers", () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === "vps-mutation");
     const get = PROVIDERS.filter((provider) => provider.mode === "cf-get");
+    const vpsGet = PROVIDERS.filter((provider) => provider.mode === "vps-get");
     expect(mutation.length).toBe(9);
-    expect(get.length).toBe(5);
+    expect(get.length).toBe(4);
+    expect(vpsGet.length).toBe(7);
   });
 });

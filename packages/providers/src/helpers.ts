@@ -10,8 +10,8 @@ export function requireValue<T>(value: T | null | undefined, name: string): T {
 }
 
 export function assertPositiveInteger(value: number, name: string): number {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`Invalid positive integer for ${name}: ${String(value)}`);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid positive rate for ${name}: ${String(value)}`);
   }
   return value;
 }

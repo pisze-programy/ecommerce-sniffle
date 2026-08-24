@@ -79,6 +79,7 @@ function mockProviderModule(): ProviderModule {
     domain: "mock.pl",
     platform: "custom" as const,
     schedule: "0 4 * * *",
+    window: "both" as const,
     mode: "cf-get" as const,
     stockSource: "html" as const,
     ratePerSecond: 1,
@@ -232,6 +233,27 @@ describe("api", () => {
 });
 
 describe("api /run", () => {
+  it("returns coverage for enabled shops with a snapshot", async () => {
+    const storage = new MemoryStorage();
+    storage.snapshots.push({
+      shop: "mock.pl",
+      snapshotAt: "2026-08-24T06:00:00.000Z",
+      window: "morning",
+      variants: [
+        { productId: "p1", variantId: "v1", quantity: 7, price: 10, regularPrice: null, available: true },
+        { productId: "p2", variantId: "v2", quantity: null, price: 10, regularPrice: null, available: true },
+      ],
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request("/coverage");
+    const body = (await response.json()) as { shops: Array<Record<string, unknown>> };
+    expect(body.shops).toHaveLength(1);
+    expect(body.shops[0]?.["id"]).toBe("mock");
+    expect(body.shops[0]?.["variants"]).toBe(2);
+    expect(body.shops[0]?.["exact"]).toBe(1);
+    expect(body.shops[0]?.["masked"]).toBe(1);
+  });
+
   it("runs the get pipeline for the configured modules", async () => {
     const app = buildApp(new MemoryStorage(), [mockProviderModule()]);
     const response = await app.request("/run");

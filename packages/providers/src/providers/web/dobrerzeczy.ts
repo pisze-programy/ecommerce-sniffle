@@ -150,7 +150,7 @@ export function parseProduct(html: string, url: string, logger: Logger): Product
         price: money(price),
         regularPrice: null,
         available,
-        quantity: isPreorder ? null : stock,
+        quantity: isPreorder ? 1 : stock,
       });
     }
   }
@@ -161,7 +161,7 @@ export function parseProduct(html: string, url: string, logger: Logger): Product
   return { id, title, url, variants };
 }
 
-async function fetchText(url: string): Promise<string> {
+async function fetchText(url: string, notFoundAllowed = false): Promise<string | null> {
   let attempt = 0;
   while (true) {
     attempt += 1;
@@ -175,6 +175,9 @@ async function fetchText(url: string): Promise<string> {
         continue;
       }
     }
+    if (response.status === 404 && notFoundAllowed) {
+      return null;
+    }
     throw new Error(`GET ${url} failed with status ${response.status}`);
   }
 }
@@ -183,15 +186,25 @@ export const dobrerzeczyModule: ProviderModule = {
   config,
   build(deps) {
     return buildProvider(config, deps.logger, async (): Promise<Catalog> => {
-      const xml = await fetchText(config.endpoint);
+      const xml = (await fetchText(config.endpoint)) ?? "";
       const urls = parseSitemapUrls(xml);
+      if (urls.length === 0) {
+        throw new Error("dobrerzeczy sitemap empty");
+      }
       const products: Product[] = [];
       for (const url of urls) {
-        const html = await fetchText(url);
+        const html = await fetchText(url, true);
+        if (html === null) {
+          deps.logger.warn("dobrerzeczy.product missing", { url });
+          continue;
+        }
         const product = parseProduct(html, url, deps.logger);
         if (product !== null) {
           products.push(product);
         }
+      }
+      if (products.length === 0) {
+        throw new Error("dobrerzeczy catalog empty");
       }
       return { domain: config.domain, fetchedAt: new Date().toISOString(), products };
     });

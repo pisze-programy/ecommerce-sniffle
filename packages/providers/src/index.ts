@@ -5,6 +5,8 @@ import { createLogger, consoleSink } from "./logger.ts";
 
 import { forcerModule } from "./providers/shopify/forcer.ts";
 import { misbhvModule } from "./providers/shopify/misbhv.ts";
+import { montielModule } from "./providers/shopify/montiel.ts";
+import { nooMaModule } from "./providers/shopify/noo-ma.ts";
 import { boosoModule } from "./providers/shopify/booso.ts";
 import { gymglamourModule } from "./providers/shopify/gymglamour.ts";
 import { hdreyModule } from "./providers/shopify/hdrey.ts";
@@ -17,10 +19,16 @@ import { wkdzikModule } from "./providers/shoper/wkdzik.ts";
 import { reverModule } from "./providers/web/rever.ts";
 import { dobrerzeczyModule } from "./providers/web/dobrerzeczy.ts";
 import { royalwatchModule } from "./providers/web/royalwatch.ts";
+import { mushiModule } from "./providers/web/mushi.ts";
+import { premieresocietyModule } from "./providers/web/premieresociety.ts";
+import { foodsbyannModule } from "./providers/web/foodsbyann.ts";
+import { laboratoriumpanidomuModule } from "./providers/prestashop/laboratoriumpanidomu.ts";
 
 export const ALL_MODULES: readonly ProviderModule[] = [
   forcerModule,
   misbhvModule,
+  montielModule,
+  nooMaModule,
   boosoModule,
   gymglamourModule,
   hdreyModule,
@@ -33,13 +41,17 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   reverModule,
   dobrerzeczyModule,
   royalwatchModule,
+  mushiModule,
+  premieresocietyModule,
+  foodsbyannModule,
+  laboratoriumpanidomuModule,
 ];
 
 export function createDefaultRegistry() {
   return createRegistry(ALL_MODULES);
 }
 
-export type { ProviderDeps, ProviderModule } from "./module.ts";
+export type { ProviderDeps, ProviderModule, DirectFetch } from "./module.ts";
 export type {
   Catalog,
   ExecutionMode,

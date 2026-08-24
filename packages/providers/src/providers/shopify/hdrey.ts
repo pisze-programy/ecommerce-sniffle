@@ -8,6 +8,6 @@ const config = requireValue(PROVIDERS.find((c) => c.id === "hdrey"), "config hdr
 export const hdreyModule: ProviderModule = {
   config,
   build(deps) {
-    return buildCartProbeProvider(config, deps.logger);
+    return buildCartProbeProvider(config, deps.logger, deps.directFetch);
   },
 };

@@ -144,12 +144,22 @@ describe("parseProduct", () => {
     expect(sizeM?.available).toBe(false);
   });
 
-  it("masks quantity for a preorder product", () => {
+  it("marks a preorder product as buyable with quantity 1", () => {
     const data = payload();
     data[11] = true;
     const product = parseProduct(htmlFor(data), "https://dobrerzeczy.pl/produkt/koszulka", silentLogger());
-    expect(product?.variants[0]?.quantity).toBeNull();
+    expect(product?.variants[0]?.quantity).toBe(1);
     expect(product?.variants[0]?.available).toBe(true);
+    expect(product?.variants[1]?.quantity).toBe(1);
+  });
+
+  it("keeps a preorder stock zero as buyable", () => {
+    const data = payload();
+    data[11] = true;
+    const product = parseProduct(htmlFor(data), "https://dobrerzeczy.pl/produkt/koszulka", silentLogger());
+    const sizeS = product?.variants[0];
+    expect(sizeS?.available).toBe(true);
+    expect(sizeS?.quantity).toBe(1);
   });
 
   it("returns null when the payload is missing", () => {
@@ -168,6 +178,43 @@ describe("dobrerzeczyModule", () => {
     '<html><head><title>Kubek</title></head><body><script type="application/json" id="__NUXT_DATA__">' +
     JSON.stringify(payload()) +
     "</script></body></html>";
+
+  it("throws when the sitemap has no product urls", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(response(true, 200, "<urlset><url><loc>https://dobrerzeczy.pl/faq</loc></url></urlset>")),
+    );
+    const provider = dobrerzeczyModule.build({ logger: capture.logger });
+    await expect(provider.fetchCatalog()).rejects.toThrow("dobrerzeczy sitemap empty");
+  });
+
+  it("skips a product page that returns 404", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        if (url === "https://dobrerzeczy.pl/sitemap.xml") {
+          return response(
+            true,
+            200,
+            "<urlset><url><loc>https://dobrerzeczy.pl/produkt/gone/</loc></url>" +
+              "<url><loc>https://dobrerzeczy.pl/produkt/kubek/</loc></url></urlset>",
+          );
+        }
+        if (url === "https://dobrerzeczy.pl/produkt/gone/") {
+          return response(false, 404, "not found");
+        }
+        return response(true, 200, PRODUCT_HTML);
+      }),
+    );
+    const provider = dobrerzeczyModule.build({ logger: capture.logger });
+    const catalog = await provider.fetchCatalog();
+    expect(catalog.products).toHaveLength(1);
+    expect(
+      capture.records.some((record) => record.message === "dobrerzeczy.product missing"),
+    ).toBe(true);
+  });
 
   it("retries a rate limited sitemap and succeeds", async () => {
     const capture = capturingLogger();

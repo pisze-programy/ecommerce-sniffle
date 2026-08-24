@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
-import { parseChangeResponse, applyOutcome, probeVariantStock } from "./cart-probe.ts";
+import {
+  parseChangeResponse,
+  applyOutcome,
+  probeVariantStock,
+} from "./cart-probe.ts";
 import type { Variant } from "../../types.ts";
 
 interface Capture {
@@ -29,6 +33,7 @@ function jsonResponse(status: number, body: string, setCookie: string | null = n
     status,
     headers: { get: () => setCookie },
     text: async () => body,
+    json: async () => JSON.parse(body),
   };
 }
 

@@ -1,6 +1,7 @@
 import { buildStockRevealer } from "../../factory.ts";
 import { truncateMessage } from "../../helpers.ts";
 import { isCloudflareChallenge } from "../../captcha/detect.ts";
+import type { DirectFetch } from "../../module.ts";
 import type { Logger } from "../../logger.ts";
 import type {
   Catalog,
@@ -17,13 +18,20 @@ const USER_AGENT =
 
 const MAX_PAGES = 1000;
 const PROBE_QUANTITY = 999999999;
+const LIST_LIMIT = 500;
+
+type CatalogFetch = (
+  url: string,
+  init?: RequestInit,
+) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 function money(amount: number): Money {
   return { amount, currency: "PLN" };
 }
 
 export function parseBasketWarning(text: string): number | null {
-  const match = /Aktualnie dost[ęe]pna ilo[śs][ćc] to:.*?-\s*(\d+)\s+szt/i.exec(text);
+  const match =
+    /(?:Aktualnie dost[ęe]pna ilo[śs][ćc] to:|Current stock is:).*?-\s*(\d+)\s+szt/i.exec(text);
   if (match !== null) {
     return Number(match[1]);
   }
@@ -64,7 +72,7 @@ function parseListProduct(raw: unknown, domain: string): Product | null {
       price: money(final),
       regularPrice,
       available: canBuy,
-      quantity: null,
+      quantity: canBuy ? null : 0,
     },
   ];
   return { id, title: name, url, variants };
@@ -98,43 +106,44 @@ export function parseShoperList(data: unknown, domain: string): Product[] {
   return products;
 }
 
-async function fetchShoperCatalog(
+export async function fetchShoperCatalog(
   endpoint: string,
   domain: string,
   logger: Logger,
+  fetchFn: CatalogFetch = fetch,
 ): Promise<Catalog> {
   const products: Product[] = [];
   const seen = new Set<string>();
-  let page = 1;
-  let totalPages: number | null = null;
+  let offset = 0;
+  let requestCount = 0;
   while (true) {
-    if (page > MAX_PAGES) {
+    if (requestCount >= MAX_PAGES) {
       throw new Error(`Shoper catalog too large for ${domain} (more than ${MAX_PAGES} pages)`);
     }
     const separator = endpoint.includes("?") ? "&" : "?";
-    const url = `${endpoint}${separator}page=${page}`;
-    const response = await fetch(url, {
+    const url = `${endpoint}${separator}limit=${LIST_LIMIT}&offset=${offset}`;
+    const response = await fetchFn(url, {
       headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
     });
     if (!response.ok) {
       throw new Error(`GET ${url} failed with status ${response.status}`);
     }
     const data: unknown = await response.json();
-    if (totalPages === null) {
-      totalPages = parseShoperPages(data);
-    }
-    for (const product of parseShoperList(data, domain)) {
+    const parsed = parseShoperList(data, domain);
+    const before = products.length;
+    for (const product of parsed) {
       if (!seen.has(product.id)) {
         seen.add(product.id);
         products.push(product);
       }
     }
-    if (totalPages !== null && page >= totalPages) {
+    requestCount += 1;
+    if (products.length === before) {
       break;
     }
-    page += 1;
+    offset += parsed.length;
   }
-  logger.debug("shoper catalog fetched", { domain, pages: page - 1, products: products.length });
+  logger.debug("shoper catalog fetched", { domain, requests: requestCount, products: products.length });
   return { domain, fetchedAt: new Date().toISOString(), products };
 }
 
@@ -171,6 +180,23 @@ export function extractWarning(text: string, logger: Logger): string | null {
     logger.warn("basketreveal.put response parse failed", { error: message });
   }
   return null;
+}
+
+function flashErrors(text: string): readonly string[] {
+  try {
+    const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
+    const messenger = data["_flash_messenger"];
+    if (typeof messenger !== "object" || messenger === null) {
+      return [];
+    }
+    const errors = (messenger as Readonly<Record<string, unknown>>)["error"];
+    if (!Array.isArray(errors)) {
+      return [];
+    }
+    return errors.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
 }
 
 export async function revealVariant(
@@ -215,6 +241,12 @@ export async function revealVariant(
     }
     const first = added[0];
     if (typeof first !== "object" || first === null) {
+      const unavailable = flashErrors(addText).some((entry) =>
+        /nieaktywn|wyprzedan|sold out|out of stock|niedost[ęe]pn/i.test(entry),
+      );
+      if (unavailable) {
+        return 0;
+      }
       logger.warn("basketreveal.add empty for variant product", { domain, stockId });
       return null;
     }
@@ -252,7 +284,21 @@ export async function revealVariant(
   } finally {
     if (itemId !== null) {
       try {
-        await fetch(`${basket}/${String(itemId)}/`, { method: "DELETE", headers: baseHeaders });
+        const controller = new AbortController();
+        const cleanup = fetch(`${basket}/${String(itemId)}/`, {
+          method: "DELETE",
+          headers: baseHeaders,
+          signal: controller.signal,
+        });
+        cleanup
+          .then(() => {
+            controller.abort();
+          })
+          .catch((error: unknown) => {
+            controller.abort();
+            const message = error instanceof Error ? error.message : String(error);
+            logger.debug("basketreveal.cleanup failed", { domain, itemId, error: message });
+          });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         logger.debug("basketreveal.cleanup failed", { domain, itemId, error: message });
@@ -290,24 +336,27 @@ function parseOptionGroups(configuration: unknown): OptionGroup[] {
     const rawId = group["id"];
     const name = group["name"];
     const rawValues = group["values"];
+    const rawType = group["type"];
     if ((typeof rawId !== "number" && typeof rawId !== "string") || typeof name !== "string") {
       continue;
     }
-    if (!Array.isArray(rawValues)) {
-      continue;
-    }
     const values: OptionValue[] = [];
-    for (const rawValue of rawValues) {
-      if (typeof rawValue !== "object" || rawValue === null) {
-        continue;
+    if (Array.isArray(rawValues)) {
+      for (const rawValue of rawValues) {
+        if (typeof rawValue !== "object" || rawValue === null) {
+          continue;
+        }
+        const value = rawValue as Readonly<Record<string, unknown>>;
+        const valueId = value["id"];
+        const valueName = value["name"];
+        if ((typeof valueId !== "number" && typeof valueId !== "string") || typeof valueName !== "string") {
+          continue;
+        }
+        values.push({ id: String(valueId), name: valueName });
       }
-      const value = rawValue as Readonly<Record<string, unknown>>;
-      const valueId = value["id"];
-      const valueName = value["name"];
-      if ((typeof valueId !== "number" && typeof valueId !== "string") || typeof valueName !== "string") {
-        continue;
-      }
-      values.push({ id: String(valueId), name: valueName });
+    }
+    if (values.length === 0 && rawType === "text") {
+      values.push({ id: "x", name: "(text)" });
     }
     if (values.length === 0) {
       continue;
@@ -373,6 +422,9 @@ export async function revealProduct(domain: string, product: Product, logger: Lo
   if (baseVariant === undefined) {
     return [];
   }
+  if (!baseVariant.available) {
+    return [{ ...baseVariant, quantity: 0, available: false }];
+  }
   const stockId = Number(baseVariant.id);
   const simple = await revealVariant(domain, stockId, logger);
   if (simple !== null) {
@@ -405,13 +457,20 @@ export async function revealProduct(domain: string, product: Product, logger: Lo
 export function buildBasketRevealProvider(
   config: ProviderConfig,
   logger: Logger,
+  directFetch?: DirectFetch,
 ): StockRevealer {
+  const catalogFetch = (url: string, init?: RequestInit) => {
+    if (directFetch !== undefined) {
+      return directFetch(url, init);
+    }
+    return fetch(url, init);
+  };
   return buildStockRevealer(
     config,
     logger,
-    async (): Promise<Catalog> => fetchShoperCatalog(config.endpoint, config.domain, logger),
+    async (): Promise<Catalog> => fetchShoperCatalog(config.endpoint, config.domain, logger, catalogFetch),
     async (target: StockRevealTarget): Promise<Catalog> => {
-      const catalog = await fetchShoperCatalog(config.endpoint, config.domain, logger);
+      const catalog = await fetchShoperCatalog(config.endpoint, config.domain, logger, catalogFetch);
       const wanted = new Set<string>(target.productIds);
       const products: Product[] = [];
       for (const product of catalog.products) {
