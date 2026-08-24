@@ -63,8 +63,9 @@ async function fetchBody(url: string): Promise<string> {
     attempt += 1;
     const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
     if (response.ok) {
-      if (url.endsWith(".gz")) {
-        const buffer = Buffer.from(await response.arrayBuffer());
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const isGzip = buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
+      if (isGzip) {
         try {
           const { gunzipSync } = await import("node:zlib");
           return gunzipSync(buffer).toString("utf8");
@@ -73,7 +74,7 @@ async function fetchBody(url: string): Promise<string> {
           throw new Error(`gunzip failed for ${url}: ${message}`);
         }
       }
-      return response.text();
+      return buffer.toString("utf8");
     }
     if (
       (response.status === 429 || response.status === 403 || response.status >= 500) &&
