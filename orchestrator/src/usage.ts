@@ -69,7 +69,18 @@ export function createUsageTracking(
         if (!Number.isNaN(length)) {
           stats.responseBytes += length;
         }
+        return response;
       }
+    }
+    const body = response.body;
+    if (body !== null && body !== undefined) {
+      const counter = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          stats.responseBytes += chunk.byteLength;
+          controller.enqueue(chunk);
+        },
+      });
+      return new Response(body.pipeThrough(counter), response);
     }
     return response;
   };

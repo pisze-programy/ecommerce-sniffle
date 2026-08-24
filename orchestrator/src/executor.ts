@@ -81,13 +81,12 @@ async function executeTask(
       providerId: task.providerId,
       masked,
     });
-    throw new Error(`masked ${masked}`);
   }
   const sent = await sendSnapshot(snapshot, ingestConfig, logger);
   if (!sent) {
     throw new Error("ingest rejected");
   }
-  const done = await client.complete(task.taskId, 0);
+  const done = await client.complete(task.taskId, masked);
   if (!done) {
     throw new Error("queue complete rejected");
   }

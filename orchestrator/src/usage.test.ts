@@ -66,6 +66,22 @@ describe("createUsageTracking", () => {
     expect(tracking.stats.requests).toBe(1);
   });
 
+  it("counts a chunked response body while it is read", async () => {
+    const tracking = createUsageTracking(async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("hello"));
+          controller.enqueue(new TextEncoder().encode("world"));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200 });
+    });
+    const response = await tracking.fetchImpl("https://shop.pl/produkt");
+    await response.text();
+    expect(tracking.stats.responseBytes).toBe(10);
+  });
+
   it("aborts a fetch that never resolves within the timeout", async () => {
     const tracking = createUsageTracking(
       (_input, init) =>

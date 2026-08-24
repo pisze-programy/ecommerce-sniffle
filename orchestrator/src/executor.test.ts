@@ -145,7 +145,7 @@ describe("runExecutorPass", () => {
     expect(typeof usage?.context["requests"]).toBe("number");
   });
 
-  it("fails a task that produces masked variants", async () => {
+  it("stores a masked snapshot and logs the bug", async () => {
     vi.stubEnv("BACKEND_URL", "https://backend.example.com");
     vi.stubEnv("INGEST_SECRET", "s3cret");
     const capture = capturingLogger();
@@ -170,8 +170,8 @@ describe("runExecutorPass", () => {
       queueClient: queue,
       modules: [fakeGetModule(catalog)],
     });
-    expect(result.failed).toBe(1);
-    expect(queue.calls.some((call) => call.startsWith("fail:morning-forcer-2026-08-24:masked"))).toBe(true);
+    expect(result.failed).toBe(0);
+    expect(queue.calls.some((call) => call.startsWith("complete:morning-forcer-2026-08-24:1"))).toBe(true);
     const record = capture.records.find((r) => r.message === "task masked");
     expect(record?.context["masked"]).toBe(1);
   });
