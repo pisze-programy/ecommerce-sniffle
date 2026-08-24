@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
-import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos, revealProduct, fetchShoperCatalog } from "./basket-reveal.ts";
+import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos, revealProduct, fetchShoperCatalog, extractCookiesFromResponse } from "./basket-reveal.ts";
 import type { Product } from "@ecommerce-sniffle/providers";
 
 interface Capture {
@@ -382,6 +382,25 @@ describe("fetchShoperCatalog", () => {
       fetchFn,
     );
     expect(catalog.products).toHaveLength(1);
+  });
+});
+
+describe("extractCookiesFromResponse", () => {
+  it("joins every set-cookie value when getSetCookie is available", () => {
+    const headers = new Headers();
+    headers.append("set-cookie", "basket=1; path=/");
+    headers.append("set-cookie", "Shop5=b9qhi3lasdkvfjhr17a9l6gl; path=/");
+    expect(extractCookiesFromResponse(headers)).toBe("basket=1; Shop5=b9qhi3lasdkvfjhr17a9l6gl");
+  });
+
+  it("falls back to the first set-cookie header", () => {
+    const headers = new Headers();
+    headers.set("set-cookie", "basket=1; path=/");
+    expect(extractCookiesFromResponse(headers)).toBe("basket=1");
+  });
+
+  it("returns null when no cookie is set", () => {
+    expect(extractCookiesFromResponse(new Headers())).toBeNull();
   });
 });
 

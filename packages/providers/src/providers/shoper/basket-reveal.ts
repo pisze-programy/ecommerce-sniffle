@@ -165,6 +165,26 @@ function extractCookies(setCookie: string | null): string | null {
   return pairs.join("; ");
 }
 
+export function extractCookiesFromResponse(headers: Headers): string | null {
+  const getSetCookie = (headers as { getSetCookie?: () => string[] }).getSetCookie;
+  const values = typeof getSetCookie === "function" ? getSetCookie.call(headers) : [];
+  if (values.length > 0) {
+    const pairs: string[] = [];
+    for (const value of values) {
+      const match = /^([^=;]+=[^;]+)/.exec(value);
+      const cookie = match === null ? undefined : match[1];
+      if (cookie !== undefined) {
+        pairs.push(cookie);
+      }
+    }
+    if (pairs.length === 0) {
+      return null;
+    }
+    return pairs.join("; ");
+  }
+  return extractCookies(headers.get("set-cookie"));
+}
+
 export function extractWarning(text: string, logger: Logger): string | null {
   try {
     const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
@@ -256,7 +276,7 @@ export async function revealVariant(
       return null;
     }
     itemId = firstObj["id"];
-    const cookie = extractCookies(addResponse.headers.get("set-cookie"));
+    const cookie = extractCookiesFromResponse(addResponse.headers);
     const putHeaders: Readonly<Record<string, string>> =
       cookie === null ? { ...baseHeaders } : { ...baseHeaders, Cookie: cookie };
     const putResponse = await fetch(`${basket}/${String(itemId)}/`, {
