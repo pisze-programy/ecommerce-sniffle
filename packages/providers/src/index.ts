@@ -67,7 +67,7 @@ export function createDefaultRegistry() {
   return createRegistry(ALL_MODULES);
 }
 
-export type { ProviderDeps, ProviderModule, DirectFetch, DirectFetchResponse } from "./module.ts";
+export type { ProviderDeps, ProviderModule, DirectFetch, DirectFetchOptions, DirectFetchResponse } from "./module.ts";
 export type {
   Catalog,
   ExecutionMode,
@@ -81,6 +81,7 @@ export type {
   StockSource,
   Variant,
 } from "./types.ts";
+export { BROWSER_HEADERS } from "./browser-headers.ts";
 export { PROVIDERS } from "./config.ts";
 export { createLogger, consoleSink } from "./logger.ts";
 export type { LogContext, LogLevel, LogRecord, LogSink, Logger } from "./logger.ts";

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildEmbeddedInventoryProvider,
+  fetchShopifyCookie,
   parseBisVariantData,
   parseRestockRocketQuantity,
   parseShopifyJsInventory,
@@ -274,5 +275,72 @@ describe("buildEmbeddedInventoryProvider", () => {
     const provider = buildEmbeddedInventoryProvider(config(4), logger, parseBisVariantData, fetchFn);
     await provider.fetchCatalog();
     expect(delays).toEqual([250, 250]);
+  });
+});
+
+describe("fetchShopifyCookie", () => {
+  it("joins every cookie from the set-cookie headers", async () => {
+    const logger = createLogger(() => {});
+    const headers = new Headers();
+    headers.append("set-cookie", "localization=PL; path=/");
+    headers.append("set-cookie", "cart_currency=PLN; path=/");
+    const mockResponse = {
+      headers,
+      body: { cancel: async () => {} },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockResponse));
+    const cookie = await fetchShopifyCookie("gymglamour.com", logger);
+    expect(cookie).toBe("localization=PL; cart_currency=PLN");
+  });
+
+  it("returns null when the shop sets no cookie", async () => {
+    const logger = createLogger(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        headers: new Headers(),
+        body: { cancel: async () => {} },
+      }),
+    );
+    const cookie = await fetchShopifyCookie("gymglamour.com", logger);
+    expect(cookie).toBeNull();
+  });
+});
+
+describe("cookie rotation on a persistent 429", () => {
+  it("rotates the cookie and retries after a 429", async () => {
+    const records: LogRecord[] = [];
+    const logger = createLogger((record) => {
+      records.push(record);
+    });
+    const headers = new Headers();
+    headers.append("set-cookie", "localization=PL; path=/");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        headers,
+        body: { cancel: async () => {} },
+      }),
+    );
+    let pageCalls = 0;
+    const fetchFn = vi.fn(async (url: unknown) => {
+      if (String(url).includes("/products.json")) {
+        return jsonResponse(catalogBody());
+      }
+      pageCalls += 1;
+      if (pageCalls <= 3) {
+        return jsonResponse("rate limited", 429);
+      }
+      return jsonResponse(ONE_HTML);
+    });
+    const provider = buildEmbeddedInventoryProvider(config(0), logger, parseBisVariantData, fetchFn);
+    const catalog = await provider.fetchCatalog();
+    expect(catalog.products[0]?.variants[0]?.quantity).toBe(5);
+    expect(
+      records.some((record) => record.message === "shopify.rotation"),
+    ).toBe(true);
+    expect(
+      records.some((record) => record.message === "shopify.cookie" && record.context["reason"] === "session-start"),
+    ).toBe(true);
   });
 });

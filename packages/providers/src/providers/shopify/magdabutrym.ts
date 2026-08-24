@@ -1,14 +1,13 @@
 import { buildProvider } from "../../factory.ts";
 import { PROVIDERS } from "../../config.ts";
 import { requireValue } from "../../helpers.ts";
+import { BROWSER_HEADERS } from "../../browser-headers.ts";
 import type { ProviderModule } from "../../module.ts";
 import type { Logger } from "../../logger.ts";
 import type { Catalog, Money, Product, Variant } from "../../types.ts";
 
 const config = requireValue(PROVIDERS.find((c) => c.id === "magdabutrym"), "config magdabutrym");
 
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const BASE_URL = "https://www.magdabutrym.com";
 const LOCALE = "/pl-en";
 const MAX_ATTEMPTS = 3;
@@ -58,7 +57,7 @@ async function fetchText(
   while (true) {
     attempt += 1;
     const response = await fetchFn(url, {
-      headers: { "User-Agent": USER_AGENT, "Accept-Language": "en,pl;q=0.9" },
+      headers: { ...BROWSER_HEADERS },
     });
     if (response.ok) {
       return response.text();

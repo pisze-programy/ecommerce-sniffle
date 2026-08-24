@@ -1,11 +1,9 @@
 import { buildProvider } from "../../factory.ts";
+import { BROWSER_HEADERS } from "../../browser-headers.ts";
 import type { DirectFetch } from "../../module.ts";
 import type { Logger } from "../../logger.ts";
 import type { Catalog, Product, Provider, ProviderConfig, Variant } from "../../types.ts";
 import { fetchShopifyCatalog } from "./adapter.ts";
-
-const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
@@ -93,11 +91,43 @@ type CatalogFetch = (
   init?: RequestInit,
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; text(): Promise<string> }>;
 
-async function fetchText(url: string, fetchFn: CatalogFetch): Promise<string> {
+export async function fetchShopifyCookie(domain: string, logger: Logger): Promise<string | null> {
+  try {
+    const response = await fetch(`https://${domain}/products.json`, {
+      headers: { "User-Agent": BROWSER_HEADERS["User-Agent"] as string },
+    });
+    const getSetCookie = (response.headers as { getSetCookie?: () => string[] }).getSetCookie;
+    const values = typeof getSetCookie === "function" ? getSetCookie.call(response.headers) : [];
+    if (response.body !== undefined && response.body !== null) {
+      await response.body.cancel().catch(() => {});
+    }
+    if (values.length === 0) {
+      return null;
+    }
+    const pairs = values
+      .map((value) => /^([^=;]+=[^;]+)/.exec(value)?.[1])
+      .filter((value): value is string => typeof value === "string");
+    return pairs.length > 0 ? pairs.join("; ") : null;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn("shopify.cookie failed", { domain, error: message });
+    return null;
+  }
+}
+
+async function fetchText(
+  url: string,
+  fetchFn: CatalogFetch,
+  cookie: string | null,
+): Promise<string> {
   let attempt = 0;
   while (true) {
     attempt += 1;
-    const response = await fetchFn(url, { headers: { "User-Agent": USER_AGENT } });
+    const headers: Record<string, string> = { ...BROWSER_HEADERS };
+    if (cookie !== null) {
+      headers["Cookie"] = cookie;
+    }
+    const response = await fetchFn(url, { headers });
     if (response.ok) {
       return response.text();
     }
@@ -105,7 +135,7 @@ async function fetchText(url: string, fetchFn: CatalogFetch): Promise<string> {
       (response.status === 429 || response.status === 403 || response.status >= 500) &&
       attempt < MAX_ATTEMPTS
     ) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+      await delayMs(RETRY_DELAY_MS * attempt);
       continue;
     }
     throw new Error(`GET ${url} failed with status ${response.status}`);
@@ -153,16 +183,21 @@ async function enrichProducts(
   const result: Product[] = [];
   const waitMs = ratePerSecond > 0 ? Math.round(1000 / ratePerSecond) : 0;
   let first = true;
+  let cookie: string | null = null;
+  try {
+    cookie = await fetchShopifyCookie(domain, logger);
+  } catch {
+    cookie = null;
+  }
+  logger.info("shopify.cookie", { domain, reason: "session-start", present: cookie !== null });
   for (const product of products) {
     if (waitMs > 0 && !first) {
       await delayMs(waitMs);
     }
     first = false;
+    const url = `https://${domain}/products/${product.url.split("/products/")[1] ?? ""}${urlSuffix}`;
     try {
-      const html = await fetchText(
-        `https://${domain}/products/${product.url.split("/products/")[1] ?? ""}${urlSuffix}`,
-        fetchFn,
-      );
+      const html = await fetchText(url, fetchFn, cookie);
       const inventory = parseFn(html);
       if (inventory.size === 0) {
         result.push(product);
@@ -179,6 +214,34 @@ async function enrichProducts(
       result.push({ ...product, variants });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      if (/status 429/.test(message)) {
+        const rotated = await fetchShopifyCookie(domain, logger);
+        if (rotated !== null) {
+          cookie = rotated;
+          logger.info("shopify.rotation", { domain, reason: "429-persistent", productId: product.id });
+        }
+        try {
+          const html = await fetchText(url, fetchFn, cookie);
+          const inventory = parseFn(html);
+          if (inventory.size > 0) {
+            const variants: Variant[] = product.variants.map((variant) => {
+              const quantity = inventory.get(variant.id);
+              if (quantity === undefined) {
+                return variant;
+              }
+              const normalized = quantity < 0 ? 1 : quantity;
+              return { ...variant, quantity: normalized, available: normalized > 0 };
+            });
+            result.push({ ...product, variants });
+            continue;
+          }
+        } catch (retryError: unknown) {
+          const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+          logger.warn("embedded.product fetch failed", { productId: product.id, error: retryMessage });
+          result.push(product);
+          continue;
+        }
+      }
       logger.warn("embedded.product fetch failed", { productId: product.id, error: message });
       result.push(product);
     }

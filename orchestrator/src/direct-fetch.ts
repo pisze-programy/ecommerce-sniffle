@@ -2,7 +2,8 @@ import { Agent as HttpAgent, request as httpRequest } from "node:http";
 import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import type { ClientRequest } from "node:http";
-import type { DirectFetch, DirectFetchResponse } from "@ecommerce-sniffle/providers";
+import type { DirectFetch, DirectFetchResponse, DirectFetchOptions } from "@ecommerce-sniffle/providers";
+import { BROWSER_HEADERS } from "@ecommerce-sniffle/providers";
 
 const HTTP_AGENT = new HttpAgent({ keepAlive: true });
 const HTTPS_AGENT = new HttpsAgent({ keepAlive: true });
@@ -74,6 +75,7 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
     method: string,
     headers: Record<string, string>,
     redirectsLeft: number,
+    maxBytes: number | null,
     resolve: (value: DirectFetchResponse) => void,
     reject: (reason?: unknown) => void,
   ): void {
@@ -88,15 +90,21 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
         if (status >= 300 && status < 400 && location !== undefined && redirectsLeft > 0) {
           res.resume();
           const next = new URL(location, url);
-          fetchOnce(next, method, headers, redirectsLeft - 1, resolve, reject);
+          fetchOnce(next, method, headers, redirectsLeft - 1, maxBytes, resolve, reject);
           return;
         }
         const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => {
-          chunks.push(chunk);
-        });
-        res.on("end", () => {
-          const buffer = decompress(Buffer.concat(chunks), res.headers["content-encoding"]);
+        let received = 0;
+        let settled = false;
+        const finish = (): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          let buffer = decompress(Buffer.concat(chunks), res.headers["content-encoding"]);
+          if (maxBytes !== null && buffer.length > maxBytes) {
+            buffer = buffer.subarray(0, maxBytes);
+          }
           const body = buffer.toString("utf8");
           resolve({
             ok: status >= 200 && status < 300,
@@ -105,7 +113,16 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
             text: async () => body,
             arrayBuffer: async () => buffer.buffer as ArrayBuffer,
           });
+        };
+        res.on("data", (chunk: Buffer) => {
+          chunks.push(chunk);
+          received += chunk.length;
+          if (maxBytes !== null && received >= maxBytes) {
+            finish();
+            res.destroy();
+          }
         });
+        res.on("end", finish);
       },
     );
     const timer = setTimeout(() => {
@@ -121,16 +138,17 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
     req.end();
   }
 
-  return (input: string | URL | Request, init?: RequestInit) => {
+  return (input: string | URL | Request, init?: RequestInit, options?: DirectFetchOptions) => {
     const url = toUrl(input);
     const method = init?.method ?? "GET";
-    const headers = toHeaderRecord(init?.headers);
+    const headers: Record<string, string> = { ...BROWSER_HEADERS, ...toHeaderRecord(init?.headers) };
     const hasEncoding = Object.keys(headers).some((key) => key.toLowerCase() === "accept-encoding");
     if (!hasEncoding) {
       headers["Accept-Encoding"] = "gzip";
     }
+    const maxBytes = options?.maxBytes === undefined ? null : options.maxBytes;
     return new Promise<DirectFetchResponse>((resolve, reject) => {
-      fetchOnce(url, method, headers, MAX_REDIRECTS, resolve, reject);
+      fetchOnce(url, method, headers, MAX_REDIRECTS, maxBytes, resolve, reject);
     });
   };
 }

@@ -1,13 +1,11 @@
 import { buildProvider } from "../../factory.ts";
 import { PROVIDERS } from "../../config.ts";
 import { requireValue } from "../../helpers.ts";
+import { BROWSER_HEADERS } from "../../browser-headers.ts";
 import type { ProviderModule } from "../../module.ts";
 import type { Catalog, Money, Product, Variant } from "../../types.ts";
 
 const config = requireValue(PROVIDERS.find((c) => c.id === "foodsbyann"), "config foodsbyann");
-
-const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
@@ -66,7 +64,7 @@ async function fetchBody(url: string, fetchFn: CatalogFetch = fetch): Promise<st
   let attempt = 0;
   while (true) {
     attempt += 1;
-    const response = await fetchFn(url, { headers: { "User-Agent": USER_AGENT } });
+    const response = await fetchFn(url, { headers: { ...BROWSER_HEADERS } });
     if (response.ok) {
       const buffer = Buffer.from(await response.arrayBuffer());
       const isGzip = buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;

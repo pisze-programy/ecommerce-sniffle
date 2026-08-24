@@ -9,9 +9,14 @@ export interface DirectFetchResponse {
   arrayBuffer(): Promise<ArrayBuffer>;
 }
 
+export interface DirectFetchOptions {
+  readonly maxBytes?: number;
+}
+
 export type DirectFetch = (
   input: string | URL | Request,
   init?: RequestInit,
+  options?: DirectFetchOptions,
 ) => Promise<DirectFetchResponse>;
 
 export interface ProviderDeps {
