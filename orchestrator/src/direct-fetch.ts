@@ -1,7 +1,11 @@
-import { request as httpRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
+import { Agent as HttpAgent, request as httpRequest } from "node:http";
+import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
+import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import type { ClientRequest } from "node:http";
-import type { DirectFetch } from "@ecommerce-sniffle/providers";
+import type { DirectFetch, DirectFetchResponse } from "@ecommerce-sniffle/providers";
+
+const HTTP_AGENT = new HttpAgent({ keepAlive: true });
+const HTTPS_AGENT = new HttpsAgent({ keepAlive: true });
 
 export function toUrl(input: string | URL | Request): URL {
   if (input instanceof URL) {
@@ -37,46 +41,96 @@ export function toHeaderRecord(headers: RequestInit["headers"] | undefined): Rec
 }
 
 export const DIRECT_FETCH_TIMEOUT_MS = 25_000;
+const MAX_REDIRECTS = 5;
+
+function decompress(body: Buffer, encoding: string | undefined): Buffer {
+  if (encoding === "gzip") {
+    try {
+      return gunzipSync(body);
+    } catch {
+      return body;
+    }
+  }
+  if (encoding === "deflate") {
+    try {
+      return inflateSync(body);
+    } catch {
+      return body;
+    }
+  }
+  if (encoding === "br") {
+    try {
+      return brotliDecompressSync(body);
+    } catch {
+      return body;
+    }
+  }
+  return body;
+}
 
 export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): DirectFetch {
+  function fetchOnce(
+    url: URL,
+    method: string,
+    headers: Record<string, string>,
+    redirectsLeft: number,
+    resolve: (value: DirectFetchResponse) => void,
+    reject: (reason?: unknown) => void,
+  ): void {
+    const requestFn = url.protocol === "http:" ? httpRequest : httpsRequest;
+    const agent = url.protocol === "http:" ? HTTP_AGENT : HTTPS_AGENT;
+    const req: ClientRequest = requestFn(
+      url,
+      { method, headers, agent },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location;
+        if (status >= 300 && status < 400 && location !== undefined && redirectsLeft > 0) {
+          res.resume();
+          const next = new URL(location, url);
+          fetchOnce(next, method, headers, redirectsLeft - 1, resolve, reject);
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => {
+          chunks.push(chunk);
+        });
+        res.on("end", () => {
+          const buffer = decompress(Buffer.concat(chunks), res.headers["content-encoding"]);
+          const body = buffer.toString("utf8");
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            json: async () => JSON.parse(body),
+            text: async () => body,
+            arrayBuffer: async () => buffer.buffer as ArrayBuffer,
+          });
+        });
+      },
+    );
+    const timer = setTimeout(() => {
+      req.destroy(new Error(`request timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+    req.on("error", (error: Error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    req.on("close", () => {
+      clearTimeout(timer);
+    });
+    req.end();
+  }
+
   return (input: string | URL | Request, init?: RequestInit) => {
     const url = toUrl(input);
-    return new Promise((resolve, reject) => {
-      const requestFn = url.protocol === "http:" ? httpRequest : httpsRequest;
-      const req: ClientRequest = requestFn(
-        url,
-        {
-          method: init?.method ?? "GET",
-          headers: toHeaderRecord(init?.headers),
-        },
-        (res) => {
-          const status = res.statusCode ?? 0;
-          let body = "";
-          res.setEncoding("utf8");
-          res.on("data", (chunk: string) => {
-            body += chunk;
-          });
-          res.on("end", () => {
-            resolve({
-              ok: status >= 200 && status < 300,
-              status,
-              json: async () => JSON.parse(body),
-              text: async () => body,
-            });
-          });
-        },
-      );
-      const timer = setTimeout(() => {
-        req.destroy(new Error(`request timeout after ${timeoutMs}ms`));
-      }, timeoutMs);
-      req.on("error", (error: Error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-      req.on("close", () => {
-        clearTimeout(timer);
-      });
-      req.end();
+    const method = init?.method ?? "GET";
+    const headers = toHeaderRecord(init?.headers);
+    const hasEncoding = Object.keys(headers).some((key) => key.toLowerCase() === "accept-encoding");
+    if (!hasEncoding) {
+      headers["Accept-Encoding"] = "gzip";
+    }
+    return new Promise<DirectFetchResponse>((resolve, reject) => {
+      fetchOnce(url, method, headers, MAX_REDIRECTS, resolve, reject);
     });
   };
 }

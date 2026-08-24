@@ -107,11 +107,13 @@ describe("parseShopifyJsInventory", () => {
 });
 
 function jsonResponse(body: unknown, status = 200): DirectFetchResponse {
+  const encoded = typeof body === "string" ? body : JSON.stringify(body);
   return {
     ok: status >= 200 && status < 300,
     status,
     json: async () => body,
-    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
+    text: async () => encoded,
+    arrayBuffer: async () => Buffer.from(encoded).buffer as ArrayBuffer,
   };
 }
 

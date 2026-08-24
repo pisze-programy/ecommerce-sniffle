@@ -57,11 +57,16 @@ export function money(amount: number): Money {
   return { amount, currency: "PLN" };
 }
 
-async function fetchBody(url: string): Promise<string> {
+type CatalogFetch = (
+  url: string,
+  init?: RequestInit,
+) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> }>;
+
+async function fetchBody(url: string, fetchFn: CatalogFetch = fetch): Promise<string> {
   let attempt = 0;
   while (true) {
     attempt += 1;
-    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    const response = await fetchFn(url, { headers: { "User-Agent": USER_AGENT } });
     if (response.ok) {
       const buffer = Buffer.from(await response.arrayBuffer());
       const isGzip = buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
@@ -87,7 +92,7 @@ async function fetchBody(url: string): Promise<string> {
   }
 }
 
-async function fetchSitemapUrls(): Promise<string[]> {
+async function fetchSitemapUrls(fetchFn: CatalogFetch): Promise<string[]> {
   const urls: string[] = [];
   const queue = [config.endpoint];
   const seen = new Set<string>();
@@ -97,7 +102,7 @@ async function fetchSitemapUrls(): Promise<string[]> {
       continue;
     }
     seen.add(url);
-    const body = await fetchBody(url);
+    const body = await fetchBody(url, fetchFn);
     for (const match of body.matchAll(/<loc>([^<]+)<\/loc>/g)) {
       const loc = match[1];
       if (loc === undefined) {
@@ -117,7 +122,13 @@ export const foodsbyannModule: ProviderModule = {
   config,
   build(deps) {
     return buildProvider(config, deps.logger, async (): Promise<Catalog> => {
-      const urls = await fetchSitemapUrls();
+      const fetchFn = (url: string, init?: RequestInit) => {
+        if (deps.directFetch !== undefined) {
+          return deps.directFetch(url, init);
+        }
+        return fetch(url, init);
+      };
+      const urls = await fetchSitemapUrls(fetchFn);
       const products: Product[] = [];
       const waitMs = config.ratePerSecond > 0 ? Math.round(1000 / config.ratePerSecond) : 0;
       let first = true;
@@ -127,7 +138,7 @@ export const foodsbyannModule: ProviderModule = {
         }
         first = false;
         try {
-          const html = await fetchBody(url);
+          const html = await fetchBody(url, fetchFn);
           const sizes = parseIdoSellSizes(html);
           if (sizes.length === 0) {
             deps.logger.warn("foodsbyann.product no sizes", { url });

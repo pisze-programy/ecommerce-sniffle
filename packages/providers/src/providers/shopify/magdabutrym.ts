@@ -24,9 +24,10 @@ export function money(amount: number): Money {
 
 export function parseRscQuantityAvailable(html: string): ReadonlyMap<string, number> {
   const map = new Map<string, number>();
+  const normalized = html.replace(/\\"/g, '"');
   const pattern =
-    /\\"id\\":\\"gid:\/\/shopify\/ProductVariant\/(\d+)\\",\\"title\\":\\"([^\\"]*)\\",\\"price\\":\\"[^\\"]*\\",\\"quantityAvailable\\":(-?\d+)/g;
-  for (const match of html.matchAll(pattern)) {
+    /"id":"gid:\/\/shopify\/ProductVariant\/(\d+)","title":"([^"]*)","price":"[^"]*","quantityAvailable":(-?\d+)/g;
+  for (const match of normalized.matchAll(pattern)) {
     const id = match[1];
     const quantity = match[3];
     if (id !== undefined && quantity !== undefined) {
@@ -44,11 +45,19 @@ export function extractHandle(url: string): string | null {
   return match[1] ?? null;
 }
 
-async function fetchText(url: string): Promise<string> {
+type CatalogFetch = (
+  url: string,
+  init?: RequestInit,
+) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+
+async function fetchText(
+  url: string,
+  fetchFn: CatalogFetch = fetch,
+): Promise<string> {
   let attempt = 0;
   while (true) {
     attempt += 1;
-    const response = await fetch(url, {
+    const response = await fetchFn(url, {
       headers: { "User-Agent": USER_AGENT, "Accept-Language": "en,pl;q=0.9" },
     });
     if (response.ok) {
@@ -65,11 +74,11 @@ async function fetchText(url: string): Promise<string> {
   }
 }
 
-async function fetchProductHandles(logger: Logger): Promise<string[]> {
-  const index = await fetchText(`${BASE_URL}/sitemap.xml`);
+async function fetchProductHandles(logger: Logger, fetchFn: CatalogFetch): Promise<string[]> {
+  const index = await fetchText(`${BASE_URL}/sitemap.xml`, fetchFn);
   const allSitemap = /<loc>([^<]*sitemap-category\/all\.xml[^<]*)<\/loc>/.exec(index);
   const sitemapUrl = allSitemap !== null && allSitemap[1] !== undefined ? allSitemap[1] : `${BASE_URL}/sitemap-category/all.xml`;
-  const xml = await fetchText(sitemapUrl);
+  const xml = await fetchText(sitemapUrl, fetchFn);
   const handles: string[] = [];
   const seen = new Set<string>();
   for (const match of xml.matchAll(/<loc>([^<]*)<\/loc>/g)) {
@@ -89,11 +98,14 @@ async function fetchProductHandles(logger: Logger): Promise<string[]> {
   return handles;
 }
 
-async function fetchProduct(handle: string): Promise<{
+async function fetchProduct(
+  handle: string,
+  fetchFn: CatalogFetch,
+): Promise<{
   readonly title: string;
   readonly variants: readonly Variant[];
 } | null> {
-  const html = await fetchText(`${BASE_URL}${LOCALE}/product/${handle}`);
+  const html = await fetchText(`${BASE_URL}${LOCALE}/product/${handle}`, fetchFn);
   const inventory = parseRscQuantityAvailable(html);
   if (inventory.size === 0) {
     return null;
@@ -120,7 +132,13 @@ export const magdabutrymModule: ProviderModule = {
   config,
   build(deps) {
     return buildProvider(config, deps.logger, async (): Promise<Catalog> => {
-      const handles = await fetchProductHandles(deps.logger);
+      const fetchFn = (url: string, init?: RequestInit) => {
+        if (deps.directFetch !== undefined) {
+          return deps.directFetch(url, init);
+        }
+        return fetch(url, init);
+      };
+      const handles = await fetchProductHandles(deps.logger, fetchFn);
       const products: Product[] = [];
       const waitMs = config.ratePerSecond > 0 ? Math.round(1000 / config.ratePerSecond) : 0;
       let first = true;
@@ -130,7 +148,7 @@ export const magdabutrymModule: ProviderModule = {
         }
         first = false;
         try {
-          const product = await fetchProduct(handle);
+          const product = await fetchProduct(handle, fetchFn);
           if (product === null) {
             deps.logger.warn("magdabutrym.product no inventory", { handle });
             continue;
