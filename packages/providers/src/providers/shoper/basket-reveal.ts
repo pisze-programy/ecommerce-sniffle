@@ -18,7 +18,7 @@ const USER_AGENT =
 
 const MAX_PAGES = 1000;
 const PROBE_QUANTITY = 999999999;
-const LIST_LIMIT = 500;
+const LIST_LIMIT = 50;
 
 type CatalogFetch = (
   url: string,
@@ -315,29 +315,6 @@ export async function revealVariant(
     const message = error instanceof Error ? error.message : String(error);
     logger.warn("basketreveal failed", { domain, stockId, error: message });
     return null;
-  } finally {
-    if (itemId !== null) {
-      try {
-        const controller = new AbortController();
-        const cleanup = fetch(`${basket}/${String(itemId)}/`, {
-          method: "DELETE",
-          headers: baseHeaders,
-          signal: controller.signal,
-        });
-        cleanup
-          .then(() => {
-            controller.abort();
-          })
-          .catch((error: unknown) => {
-            controller.abort();
-            const message = error instanceof Error ? error.message : String(error);
-            logger.debug("basketreveal.cleanup failed", { domain, itemId, error: message });
-          });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        logger.debug("basketreveal.cleanup failed", { domain, itemId, error: message });
-      }
-    }
   }
 }
 
@@ -427,10 +404,11 @@ async function fetchOptionConfiguration(
   domain: string,
   productId: string,
   logger: Logger,
+  fetchFn: CatalogFetch = fetch,
 ): Promise<unknown> {
   const origin = `https://${domain}`;
   try {
-    const response = await fetch(
+    const response = await fetchFn(
       `${origin}/webapi/front/pl_PL/products/PLN/${productId}`,
       { headers: { "User-Agent": USER_AGENT, Accept: "application/json" } },
     );
@@ -451,7 +429,12 @@ async function fetchOptionConfiguration(
   }
 }
 
-export async function revealProduct(domain: string, product: Product, logger: Logger): Promise<Variant[]> {
+export async function revealProduct(
+  domain: string,
+  product: Product,
+  logger: Logger,
+  fetchFn: CatalogFetch = fetch,
+): Promise<Variant[]> {
   const baseVariant = product.variants[0];
   if (baseVariant === undefined) {
     return [];
@@ -464,7 +447,7 @@ export async function revealProduct(domain: string, product: Product, logger: Lo
   if (simple !== null) {
     return [{ ...baseVariant, quantity: simple, available: simple > 0 }];
   }
-  const configuration = await fetchOptionConfiguration(domain, product.id, logger);
+  const configuration = await fetchOptionConfiguration(domain, product.id, logger, fetchFn);
   const combos = buildOptionCombos(configuration);
   if (combos.length === 0) {
     return [...product.variants];
@@ -511,7 +494,7 @@ export function buildBasketRevealProvider(
         if (wanted.size > 0 && !wanted.has(product.id)) {
           continue;
         }
-        const variants = await revealProduct(config.domain, product, logger);
+        const variants = await revealProduct(config.domain, product, logger, catalogFetch);
         products.push({ ...product, variants });
       }
       return { domain: config.domain, fetchedAt: new Date().toISOString(), products };

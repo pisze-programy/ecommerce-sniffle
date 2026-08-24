@@ -103,7 +103,7 @@ describe("revealVariant", () => {
     expect(result).toBe(0);
   });
 
-  it("logs a debug record when the cleanup delete fails", async () => {
+  it("falls back to the put when the add response has no clamp", async () => {
     const capture = capturingLogger();
     const addBody = '{"added":[{"id":596940,"name":"Kubek"}]}';
     const putBody =
@@ -123,15 +123,10 @@ describe("revealVariant", () => {
           status: 200,
           headers: { get: () => null },
           text: async () => putBody,
-        })
-        .mockRejectedValueOnce(new Error("delete network down")),
+        }),
     );
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
-    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(result).toBe(13);
-    expect(
-      capture.records.some((record) => record.message === "basketreveal.cleanup failed"),
-    ).toBe(true);
   });
 
   it("blocks and logs when the basket add hits a cloudflare challenge", async () => {
@@ -166,7 +161,7 @@ describe("revealVariant", () => {
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(result).toBe(13);
-    expect(fetchMock.mock.calls.length).toBe(2);
+    expect(fetchMock.mock.calls.length).toBe(1);
     const addCall = fetchMock.mock.calls[0];
     const addInit = addCall?.[1];
     expect(String(addInit?.body)).toContain("999999999");
@@ -282,8 +277,7 @@ describe("revealProduct", () => {
         .mockResolvedValueOnce(okResponse(addEmpty))
         .mockResolvedValueOnce(okResponse(detailJson))
         .mockResolvedValueOnce(okResponse(addOk, "Shop5=abc"))
-        .mockResolvedValueOnce(okResponse(putOk))
-        .mockResolvedValueOnce(okResponse("{}")),
+        .mockResolvedValueOnce(okResponse(putOk)),
     );
     const variants = await revealProduct("sklepskolim.pl", variantProduct, capture.logger);
     expect(variants).toHaveLength(1);
@@ -295,8 +289,8 @@ describe("revealProduct", () => {
   it("keeps ids distinct across products with the same option label", async () => {
     const capture = capturingLogger();
     const otherProduct: Product = { ...variantProduct, id: "32" };
-    const bodies = [addEmpty, detailJson, addOk, putOk, "{}"];
-    const cookies = [null, null, "Shop5=abc", null, null];
+    const bodies = [addEmpty, detailJson, addOk, putOk];
+    const cookies = [null, null, "Shop5=abc", null];
     let callIndex = 0;
     const fetchMock = vi.fn().mockImplementation(async () => {
       const index = callIndex % bodies.length;
@@ -380,9 +374,9 @@ describe("fetchShoperCatalog", () => {
       fetchFn,
     );
     expect(catalog.products).toHaveLength(3);
-    expect(requested[0]).toContain("limit=500&offset=0");
-    expect(requested[1]).toContain("limit=500&offset=2");
-    expect(requested[2]).toContain("limit=500&offset=3");
+    expect(requested[0]).toContain("limit=50&offset=0");
+    expect(requested[1]).toContain("limit=50&offset=2");
+    expect(requested[2]).toContain("limit=50&offset=3");
   });
 
   it("dedupes repeated products across pages", async () => {
