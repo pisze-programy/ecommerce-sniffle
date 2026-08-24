@@ -24,6 +24,7 @@ import { mushiModule } from "./providers/web/mushi.ts";
 import { premieresocietyModule } from "./providers/web/premieresociety.ts";
 import { foodsbyannModule } from "./providers/web/foodsbyann.ts";
 import { laboratoriumpanidomuModule } from "./providers/prestashop/laboratoriumpanidomu.ts";
+import { phlovModule } from "./providers/prestashop/phlov.ts";
 
 export const ALL_MODULES: readonly ProviderModule[] = [
   forcerModule,
@@ -47,6 +48,7 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   premieresocietyModule,
   foodsbyannModule,
   laboratoriumpanidomuModule,
+  phlovModule,
 ];
 
 export function createDefaultRegistry() {

@@ -5,9 +5,9 @@ import { buildPrestaShopCartRevealProvider } from "./cart-reveal.ts";
 
 export * from "./cart-reveal.ts";
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "laboratoriumpanidomu"), "config laboratoriumpanidomu");
+const config = requireValue(PROVIDERS.find((c) => c.id === "phlov"), "config phlov");
 
-export const laboratoriumpanidomuModule: ProviderModule = {
+export const phlovModule: ProviderModule = {
   config,
   build(deps) {
     return buildPrestaShopCartRevealProvider(config, deps.logger, deps.directFetch);

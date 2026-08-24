@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
 import {
-  buildLaboratoriumPaniDomuProvider,
+  buildPrestaShopCartRevealProvider,
   extractCookies,
   extractPrestaProductId,
   extractPrestaTitle,
@@ -54,6 +54,24 @@ describe("parsePrestaCartQuantity", () => {
     expect(parsePrestaCartQuantity(text)).toBe(958580);
   });
 
+  it("reads the available quantity from the phlov message", () => {
+    const text = JSON.stringify({
+      hasError: true,
+      errors: ["Dostępna ilość w zamówieniu dla tego produktu to 437."],
+      quantity: 0,
+    });
+    expect(parsePrestaCartQuantity(text)).toBe(437);
+  });
+
+  it("reads a negative available quantity", () => {
+    const text = JSON.stringify({
+      hasError: true,
+      errors: ["Dostępna ilość w zamówieniu dla tego produktu to -100."],
+      quantity: 0,
+    });
+    expect(parsePrestaCartQuantity(text)).toBe(-100);
+  });
+
   it("reads the quantity from the cart product", () => {
     const text = JSON.stringify({
       id_product: 1928,
@@ -101,7 +119,7 @@ describe("extract helpers", () => {
   });
 });
 
-describe("buildLaboratoriumPaniDomuProvider reveal", () => {
+describe("buildPrestaShopCartRevealProvider reveal", () => {
   it("reveals exact stock through the cart ajax", async () => {
     const capture = capturingLogger();
     const productPage =
@@ -114,7 +132,7 @@ describe("buildLaboratoriumPaniDomuProvider reveal", () => {
       errors: ["Możesz kupić tylko 958580 sztuk"],
       quantity: 958580,
     });
-    const provider = buildLaboratoriumPaniDomuProvider(CFG, capture.logger);
+    const provider = buildPrestaShopCartRevealProvider(CFG, capture.logger);
     const calls: string[] = [];
     vi.stubGlobal(
       "fetch",
