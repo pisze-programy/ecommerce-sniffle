@@ -23,9 +23,10 @@ export interface ProbeOutcome {
 }
 
 export function parseChangeResponse(text: string, logger: Logger): ProbeOutcome {
-  const clamped = /Tylko\s+(\d+)\s+poz\.|Only\s+(\d+)\s+(?:items?|poz\.)/i.exec(text);
+  const clamped =
+    /Tylko\s+(\d+)\s+poz\.|Tylko\s+(\d+)\s+pozycj[aei]|Only\s+(\d+)\s+(?:items?|poz\.)/i.exec(text);
   if (clamped !== null) {
-    const value = clamped[1] === undefined ? (clamped[2] as string | undefined) : clamped[1];
+    const value = clamped[1] ?? clamped[2] ?? clamped[3];
     if (value !== undefined) {
       return { quantity: Number(value), available: true };
     }

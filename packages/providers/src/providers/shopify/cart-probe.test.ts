@@ -56,6 +56,13 @@ describe("parseChangeResponse", () => {
     ).toEqual({ quantity: 70, available: true });
   });
 
+  it("reads a clamped quantity in the pozycja format", () => {
+    const capture = capturingLogger();
+    expect(
+      parseChangeResponse('{"message":"Tylko 1 pozycja"}', capture.logger),
+    ).toEqual({ quantity: 1, available: true });
+  });
+
   it("marks a sold out variant with quantity 0", () => {
     const capture = capturingLogger();
     expect(parseChangeResponse(SOLD_OUT, capture.logger)).toEqual({ quantity: 0, available: false });
