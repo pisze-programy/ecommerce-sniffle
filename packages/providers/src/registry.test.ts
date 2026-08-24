@@ -46,9 +46,9 @@ describe("createRegistry", () => {
     expect(() => registry.getModule("unknown")).toThrow("Missing required value: provider module unknown");
   });
 
-  it("registers all 22 modules", () => {
+  it("registers all 23 modules", () => {
     const registry = createRegistry(ALL_MODULES);
-    expect(registry.modules).toHaveLength(22);
+    expect(registry.modules).toHaveLength(23);
   });
 
   it("rejects duplicate ids", () => {

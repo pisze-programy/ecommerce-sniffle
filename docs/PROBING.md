@@ -52,7 +52,7 @@ Look for these markers in the HTML:
 - `bis-variant-data` (JSON with `inventory_quantity`) - forcer
 - `variantInventoryData` (JSON with `inventory_quantity`) - misbhv
 - `_RestockRocketConfig.variantsInventoryQuantity` (map of variant
-  id to exact count) - gymglamour
+  id to exact count) - gymglamour, nago
 - `variant: { id: N, ..., inventory_quantity: M }` (JS object) - noo.ma
 - `stripe_product_quantity` (hidden input) - premieresociety
 - `stock:{status,stock:N}` - mushi

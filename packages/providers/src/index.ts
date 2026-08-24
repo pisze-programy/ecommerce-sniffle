@@ -8,6 +8,7 @@ import { misbhvModule } from "./providers/shopify/misbhv.ts";
 import { montielModule } from "./providers/shopify/montiel.ts";
 import { nooMaModule } from "./providers/shopify/noo-ma.ts";
 import { magdabutrymModule } from "./providers/shopify/magdabutrym.ts";
+import { nagoModule } from "./providers/shopify/nago.ts";
 import { boosoModule } from "./providers/shopify/booso.ts";
 import { gymglamourModule } from "./providers/shopify/gymglamour.ts";
 import { hdreyModule } from "./providers/shopify/hdrey.ts";
@@ -32,6 +33,7 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   montielModule,
   nooMaModule,
   magdabutrymModule,
+  nagoModule,
   boosoModule,
   gymglamourModule,
   hdreyModule,
