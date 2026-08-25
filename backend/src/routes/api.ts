@@ -5,6 +5,8 @@ import { createQueueRoutes } from "./queue.ts";
 import { createIngestRoutes } from "./ingest.ts";
 import { createReadsRoutes } from "./reads.ts";
 import { createRunRoutes } from "./run.ts";
+import { createUsageRoutes } from "./usage.ts";
+import { createSnitchRoutes } from "./snitch.ts";
 
 export type { AppVariables } from "./types.ts";
 
@@ -14,5 +16,7 @@ export function createApi(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   api.route("/", createIngestRoutes());
   api.route("/", createReadsRoutes());
   api.route("/", createRunRoutes());
+  api.route("/", createUsageRoutes());
+  api.route("/", createSnitchRoutes());
   return api;
 }

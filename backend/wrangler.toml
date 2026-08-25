@@ -16,3 +16,9 @@ database_id = "a13f1cc7-c52b-49b1-a9f2-e49894390a34"
 [[kv_namespaces]]
 binding = "STATE"
 id = "a386d8fe723e4dff83578cf635e11dfa"
+
+# cf-snitch email service (the same account). Worker-to-worker fetch via the URL fails
+# with error 1042. The service binding routes internally without DNS.
+[[services]]
+binding = "SNITCH"
+service = "cf-snitch"

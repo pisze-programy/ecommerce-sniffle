@@ -8,6 +8,9 @@ import { createQueueClient } from "./queue-client.ts";
 import type { QueueClient, Task } from "./queue-client.ts";
 import { isStockRevealer } from "./runner.ts";
 import { createUsageTracking } from "./usage.ts";
+import { sendReport, taskReport } from "./snitch.ts";
+import type { SnitchStatus } from "./snitch.ts";
+import { storeTaskUsage } from "./usage-store.ts";
 
 const MAX_TASKS = 20;
 const TASK_TIMEOUT_MS = 25 * 60 * 1000;
@@ -50,6 +53,8 @@ interface ExecutedTask {
   readonly taskId: string;
   readonly providerId: string;
   readonly variants: number;
+  readonly masked: number;
+  readonly window: string;
 }
 
 async function executeTask(
@@ -90,7 +95,13 @@ async function executeTask(
   if (!done) {
     throw new Error("queue complete rejected");
   }
-  return { taskId: task.taskId, providerId: task.providerId, variants: snapshot.variants.length };
+  return {
+    taskId: task.taskId,
+    providerId: task.providerId,
+    variants: snapshot.variants.length,
+    masked,
+    window: task.window,
+  };
 }
 
 export async function runExecutorPass(
@@ -142,6 +153,7 @@ export async function runExecutorPass(
         task.taskId,
       );
       const elapsedMs = Date.now() - startedAt;
+      const webshareBytes = tracking.stats.requestBytes + tracking.stats.responseBytes;
       logger.info("task usage", {
         taskId: executed.taskId,
         providerId: executed.providerId,
@@ -155,9 +167,35 @@ export async function runExecutorPass(
         providerId: executed.providerId,
         variants: executed.variants,
       });
+      const status: SnitchStatus = executed.masked > 0 ? "failed" : "ok";
+      await sendReport(
+        taskReport(executed.providerId, status, {
+          elapsedMs,
+          webshareBytes,
+          requests: tracking.stats.requests,
+          variants: executed.variants,
+          masked: executed.masked,
+        }),
+        logger,
+      );
+      await storeTaskUsage(
+        {
+          taskId: executed.taskId,
+          providerId: executed.providerId,
+          window: executed.window,
+          day: new Date().toISOString().slice(0, 10),
+          elapsedMs,
+          webshareBytes,
+          status,
+          masked: executed.masked,
+          variants: executed.variants,
+        },
+        logger,
+      );
     } catch (error: unknown) {
       const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
+      const webshareBytes = tracking.stats.requestBytes + tracking.stats.responseBytes;
       logger.error("task usage", {
         taskId: task.taskId,
         providerId: task.providerId,
@@ -171,6 +209,28 @@ export async function runExecutorPass(
         providerId: task.providerId,
         error: message,
       });
+      await sendReport(
+        taskReport(task.providerId, "failed", {
+          elapsedMs,
+          webshareBytes,
+          requests: tracking.stats.requests,
+        }, message),
+        logger,
+      );
+      await storeTaskUsage(
+        {
+          taskId: task.taskId,
+          providerId: task.providerId,
+          window: task.window,
+          day: new Date().toISOString().slice(0, 10),
+          elapsedMs,
+          webshareBytes,
+          status: "failed",
+          masked: 0,
+          variants: 0,
+        },
+        logger,
+      );
       await client.fail(task.taskId, message);
       failed += 1;
       if (message.includes("task timeout after")) {

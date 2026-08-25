@@ -1,90 +1,130 @@
 # Performance
 
-This file explains how fast each provider runs and where we can gain speed.
+This file shows how fast each provider runs. It also shows how much
+webshare traffic each provider uses per cron run.
 
 ## The main problem
 
 The VPS has only 256 MB of RAM. It shares this RAM with panperyskop.
 An out-of-memory kill stops the executor. This is forbidden.
 
-The proxy reuses one connection for many requests. A reused connection
-uses one exit IP. The shop throttles that IP. Then requests get a 429.
-This slows the provider down.
+A reused connection uses one exit IP. The shop throttles that IP.
+Then requests get a 429. This slows the provider down.
 
-## The fix for the cart probe
-
-The cart probe now opens a new connection for each request. A new
+The cart probe opens a new connection for each request now. A new
 connection uses a new exit IP. The shop does not throttle a fresh IP.
 The probe runs parallel with 12 workers.
 
-Measured result on godssavequeens:
+## How to read the table
 
-- before: the task never finished in the 25 minute window
-- after: 276 seconds, 1917 variants, zero masked
+The "call" column shows the request type.
+The "place" column shows where the provider runs: CF or VPS.
+The "time" column shows the measured time or an estimate.
+The "webshare" column shows the traffic per cron run.
 
-Measured result on derichgallery:
+Measured times come from the task usage logs.
+The estimate is 0.6 seconds per product for the embedded shops.
 
-- 14 seconds, 58 variants, zero masked
+## The table
 
-The same fix can speed up other providers. See the table below.
+### Cloudflare Worker, no webshare
 
-## Measured times
+| Provider         | Call                | Time   | Webshare |
+| ---------------- | ------------------- | ------ | -------- |
+| rever            | WooCommerce html GET| ~30 s  | 0        |
+| royalwatch       | WooCommerce html GET| ~30 s  | 0        |
+| mushi            | custom html GET     | ~10 s  | 0        |
+| premieresociety  | custom html GET     | ~1 min | 0        |
 
-The numbers come from the task usage logs.
+### VPS, direct IP, cookie only via webshare
 
-| Provider            | Type                 | Time   | Request count | Note              |
-| ------------------- | -------------------- | ------ | ------------- | ----------------- |
-| phlov               | prestashop cart      | 615 s  | 252           | slowest, big win  |
-| godssavequeens      | shopify cart         | 276 s  |               | fixed             |
-| forcer              | shopify embedded     | 214 s  | 2             | big win           |
-| foodsbyann          | custom web           | 228 s  | 120           | 4.7 MB response   |
-| osmpower            | shoper basket        | 129 s  | 329           | big win           |
-| laboratoriumpanidomu| prestashop cart      | 57 s   | 130           |                   |
-| lexon               | magento embedded     | 35 s   | 3             |                   |
-| emereedivine        | shoper basket        | 29 s   | 91            |                   |
-| derichgallery       | shopify cart         | 14 s   |               | fixed             |
-| dobrerzeczy         | custom web           | 3 s    | 3             |                   |
+| Provider         | Call                    | Time     | Webshare |
+| ---------------- | ----------------------- | -------- | -------- |
+| forcer           | Shopify embedded GET    | 214 s    | ~2.5 KB  |
+| nago             | Shopify embedded GET    | 273 s    | ~2.5 KB  |
+| misbhv           | Shopify embedded GET    | ~16 min  | ~2.5 KB  |
+| gymglamour       | Shopify embedded GET    | ~34 min  | ~2.5 KB  |
+| noo-ma           | Shopify embedded GET    | ~13 min  | ~2.5 KB  |
+| montiel          | Shopify embedded GET    | disabled |          |
+| magdabutrym      | Shopify embedded GET    | disabled |          |
+| shapellx         | Storefront API GraphQL  | ~1-2 min | 0        |
+| bloozie          | products.json GET       | ~1 min   | 0        |
+| foodsbyann       | custom web GET          | 228 s    | 0        |
+| dobrerzeczy      | Nuxt payload GET        | 3 s      | 0        |
+| lexon            | Magento embedded GET    | 35 s     | ~8.5 KB  |
+| influcenter      | Magento embedded GET    | disabled |          |
 
-The whole morning pass takes about 40 to 60 minutes now.
+montiel is disabled. The shop is gone. Its products.json returns 401
+from every IP. influcenter is disabled. Its shop blocked the VPS IP.
+
+### VPS, proxy, webshare
+
+| Provider         | Call                    | Time     | Webshare |
+| ---------------- | ----------------------- | -------- | -------- |
+| godssavequeens   | Shopify cart probe      | 276 s    | ~232 KB  |
+| derichgallery    | Shopify cart probe      | 14 s     | ~10 KB   |
+| theodderside     | Shopify cart probe      | ~5-8 min | ~500 KB  |
+| monartofficial   | Shopify cart probe      | ~2-3 min | ~250 KB  |
+| osmpower         | Shoper basket reveal    | 106 s    | ~422 KB  |
+| emereedivine     | Shoper basket reveal    | 29 s     | ~227 KB  |
+| wkdzik           | Shoper basket reveal    | 349 s    | ~1264 KB |
+| sklepskolim      | Shoper basket reveal    | 433 s    | ~1863 KB |
+| e-daag           | Shoper basket reveal    | ~2-3 min | ~400 KB  |
+| laboratoriumpanidomu | Prestashop cart reveal | 57 s   | ~163 KB  |
+| phlov            | Prestashop cart reveal  | 543 s    | ~528 KB  |
+
+## Totals per cron pass
+
+The full pass takes about 2.5 to 3 hours.
 The executor runs tasks one after another.
+The slowest shops are gymglamour, misbhv, noo-ma, phlov, sklepskolim.
+
+The webshare traffic is about 5.5 to 6 MB per pass.
+The biggest users are sklepskolim, wkdzik, phlov, osmpower.
+
+The VPS IP is exposed to 13 direct shops. influcenter blocked the VPS
+IP. This is a risk. The proxy manager logs every call and its route.
+The "via" field shows "proxy" for webshare and "direct" for the VPS IP.
 
 ## Where we can gain
 
 Three providers use the old pattern. They reuse one connection.
-They run sequential. We can apply the same fix.
+They run sequential. We can apply the same fix as the cart probe.
 
 | Provider            | Current time | Estimated time after fix |
 | ------------------- | ------------ | ------------------------ |
-| prestashop (phlov)  | 615 s        | 60 to 90 s               |
-| shoper basket       | 129 s        | 30 to 40 s               |
-| shopify embedded    | 214 s        | about 60 s               |
-| foodsbyann          | 228 s        | about 80 s               |
+| gymglamour          | ~34 min      | ~5-8 min                 |
+| misbhv              | ~16 min      | ~3-4 min                 |
+| noo-ma              | ~13 min      | ~2-3 min                 |
+| phlov               | 543 s        | ~60-90 s                 |
+| shoper basket       | ~2-7 min     | ~1-2 min                 |
 
-The pattern is the same everywhere. A reused connection uses one IP.
-The shop throttles that IP. Open a new connection for each request.
-Then each request uses a fresh IP. Run requests in parallel.
-This gives four to eight times more speed.
+The same pattern applies everywhere. Open a new connection for each
+request. Run requests in parallel. This gives four to eight times
+more speed.
 
 ## The OOM problem
 
-Two options exist.
-
 Option A. Dynamic concurrency.
 
-The concurrency changes with the free memory. The formula is:
-concurrency = free MB divided by 20. The value stays between 1 and 12.
-This is safe on 256 MB. It costs nothing. It limits the gain to about
-five to eight concurrent workers.
+The concurrency changes with the free memory. The value stays between
+1 and 12. This is safe on 256 MB. It costs nothing.
 
 Option B. A second VPS with 1 GB of RAM.
 
-A bigger VPS allows 12 to 24 concurrent workers. The OOM risk goes away.
-It costs money. It needs configuration.
+A bigger VPS allows more concurrent workers. The OOM risk goes away.
+It costs money.
 
 Recommendation: use option A now. Plan option B later.
 
-## Separate problem
+## Separate problems
 
-magdabutrym eats too much memory. It buffers the product page responses.
-It caused an out-of-memory kill. It is skipped for now. Fix the buffering
-separately.
+magdabutrym is disabled. It buffers too much memory. It caused an
+out-of-memory kill. Fix the buffering before you enable it.
+
+montiel is disabled. Its shop is gone. Its products.json returns 401
+from every IP.
+
+magdabutrym is disabled. It buffers too much memory.
+
+influcenter is disabled. Its shop blocked the VPS IP.
