@@ -1,6 +1,7 @@
 import {
   ALL_MODULES,
   createRegistry,
+  measureFetch,
 } from "@ecommerce-sniffle/providers";
 import type { Logger, Provider, ProviderModule, StockRevealer, DirectFetch } from "@ecommerce-sniffle/providers";
 import { checkMemory, MIN_AVAILABLE_MB } from "./guard.ts";
@@ -100,8 +101,9 @@ export async function runVpsPass(
     const isGet = module.config.mode === "vps-get";
     const directFetchNeeded =
       module.config.mode === "vps-mutation" || (isGet && !module.config.requiresProxy);
+    const measuredDirectFetch = measureFetch(directFetch, logger, module.config.id, "direct");
     const provider = directFetchNeeded
-      ? module.build({ logger, directFetch })
+      ? module.build({ logger, directFetch: measuredDirectFetch })
       : module.build({ logger });
     if (!isGet && !isStockRevealer(provider)) {
       logger.warn("provider has no stock reveal", { providerId: module.config.id });

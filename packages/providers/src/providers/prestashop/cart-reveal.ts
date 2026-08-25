@@ -1,5 +1,6 @@
 import { buildStockRevealer } from "../../factory.ts";
 import type { DirectFetch } from "../../module.ts";
+import { measureFetch } from "../../network/manager.ts";
 import type { Logger } from "../../logger.ts";
 import type {
   Catalog,
@@ -276,12 +277,24 @@ export function buildPrestaShopCartRevealProvider(
   directFetch?: DirectFetch,
 ): StockRevealer {
   const base = baseUrl(providerConfig);
-  const catalogFetch = (url: string, init?: RequestInit) => {
+  const rawCatalogFetch = (
+    input: string | URL | Request,
+    init?: RequestInit,
+    options?: { maxBytes?: number },
+  ) => {
+    const url = String(input);
     if (directFetch !== undefined) {
-      return directFetch(url, init);
+      return directFetch(url, init, options);
     }
     return fetch(url, init);
   };
+  const catalogFetch = measureFetch(rawCatalogFetch, logger, providerConfig.id, "proxy");
+  const probeFetch = measureFetch(
+      (input, init) => fetch(input, init),
+      logger,
+      providerConfig.id,
+      "proxy",
+    );
   return buildStockRevealer(
     providerConfig,
     logger,
@@ -292,11 +305,11 @@ export function buildPrestaShopCartRevealProvider(
       if (catalog.products.length === 0) {
         return catalog;
       }
-      const sessionHtml = await fetch(`${catalog.products[0]?.url ?? base}`, {
+      const sessionHtml = await probeFetch(`${catalog.products[0]?.url ?? base}`, {
         headers: { "User-Agent": USER_AGENT, "Accept-Language": "pl-PL" },
       });
       const sessionText = await sessionHtml.text();
-      const cookies = extractCookies(sessionHtml.headers.get("set-cookie"));
+      const cookies = extractCookies(sessionHtml.headers?.get("set-cookie") ?? null);
       const token = extractPrestaToken(sessionText);
       if (token === null) {
         logger.warn("presta.reveal no token", { domain: providerConfig.domain });
@@ -329,7 +342,7 @@ export function buildPrestaShopCartRevealProvider(
           body.set("qty", PROBE_QUANTITY);
           body.set("add", "1");
           body.set("action", "update");
-          const response = await fetch(`${base}/koszyk`, {
+          const response = await probeFetch(`${base}/koszyk`, {
             method: "POST",
             headers,
             body: body.toString(),

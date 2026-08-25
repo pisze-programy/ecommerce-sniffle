@@ -1,6 +1,8 @@
 import { buildStockRevealer } from "../../factory.ts";
 import { truncateMessage } from "../../helpers.ts";
 import { isCloudflareChallenge } from "../../captcha/detect.ts";
+import { measureFetch } from "../../network/manager.ts";
+import type { WrappedFetch } from "../../network/manager.ts";
 import type { DirectFetch } from "../../module.ts";
 import type { Logger } from "../../logger.ts";
 import type {
@@ -20,10 +22,7 @@ const MAX_PAGES = 1000;
 const PROBE_QUANTITY = 999999999;
 const LIST_LIMIT = 50;
 
-type CatalogFetch = (
-  url: string,
-  init?: RequestInit,
-) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+type CatalogFetch = WrappedFetch;
 
 function money(amount: number): Money {
   return { amount, currency: "PLN" };
@@ -165,8 +164,13 @@ function extractCookies(setCookie: string | null): string | null {
   return pairs.join("; ");
 }
 
-export function extractCookiesFromResponse(headers: Headers): string | null {
-  const getSetCookie = (headers as { getSetCookie?: () => string[] }).getSetCookie;
+export function extractCookiesFromResponse(
+  headers: { get(name: string): string | null; getSetCookie?: () => string[] } | undefined,
+): string | null {
+  if (headers === undefined) {
+    return null;
+  }
+  const getSetCookie = headers.getSetCookie;
   const values = typeof getSetCookie === "function" ? getSetCookie.call(headers) : [];
   if (values.length > 0) {
     const pairs: string[] = [];
@@ -224,6 +228,7 @@ export async function revealVariant(
   stockId: number,
   logger: Logger,
   options: Readonly<Record<string, string>> = {},
+  fetchFn: WrappedFetch = fetch,
 ): Promise<number | null> {
   const origin = `https://${domain}`;
   const baseHeaders: Readonly<Record<string, string>> = {
@@ -235,7 +240,7 @@ export async function revealVariant(
   const basket = `${origin}/webapi/front/pl_PL/basket/PLN`;
   let itemId: number | null = null;
   try {
-    const addResponse = await fetch(`${basket}/`, {
+    const addResponse = await fetchFn(`${basket}/`, {
       method: "POST",
       headers: baseHeaders,
       body: JSON.stringify({ quantity: PROBE_QUANTITY, stock_id: stockId, options }),
@@ -293,7 +298,7 @@ export async function revealVariant(
     const cookie = extractCookiesFromResponse(addResponse.headers);
     const putHeaders: Readonly<Record<string, string>> =
       cookie === null ? { ...baseHeaders } : { ...baseHeaders, Cookie: cookie };
-    const putResponse = await fetch(`${basket}/${String(itemId)}/`, {
+    const putResponse = await fetchFn(`${basket}/${String(itemId)}/`, {
       method: "PUT",
       headers: putHeaders,
       body: JSON.stringify({ quantity: PROBE_QUANTITY }),
@@ -443,7 +448,7 @@ export async function revealProduct(
     return [{ ...baseVariant, quantity: 0, available: false }];
   }
   const stockId = Number(baseVariant.id);
-  const simple = await revealVariant(domain, stockId, logger);
+  const simple = await revealVariant(domain, stockId, logger, {}, fetchFn);
   if (simple !== null) {
     return [{ ...baseVariant, quantity: simple, available: simple > 0 }];
   }
@@ -454,7 +459,7 @@ export async function revealProduct(
   }
   const revealed: Variant[] = [];
   for (const combo of combos) {
-    const quantity = await revealVariant(domain, stockId, logger, combo.options);
+    const quantity = await revealVariant(domain, stockId, logger, combo.options, fetchFn);
     if (quantity !== null) {
       revealed.push({
         ...baseVariant,
@@ -476,12 +481,18 @@ export function buildBasketRevealProvider(
   logger: Logger,
   directFetch?: DirectFetch,
 ): StockRevealer {
-  const catalogFetch = (url: string, init?: RequestInit) => {
+  const rawCatalogFetch = (
+    input: string | URL | Request,
+    init?: RequestInit,
+    options?: { maxBytes?: number },
+  ) => {
+    const url = String(input);
     if (directFetch !== undefined) {
-      return directFetch(url, init);
+      return directFetch(url, init, options);
     }
     return fetch(url, init);
   };
+  const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, "proxy");
   return buildStockRevealer(
     config,
     logger,

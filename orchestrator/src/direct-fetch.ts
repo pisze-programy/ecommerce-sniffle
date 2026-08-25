@@ -74,6 +74,7 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
     url: URL,
     method: string,
     headers: Record<string, string>,
+    body: string | Buffer | null,
     redirectsLeft: number,
     maxBytes: number | null,
     resolve: (value: DirectFetchResponse) => void,
@@ -90,7 +91,7 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
         if (status >= 300 && status < 400 && location !== undefined && redirectsLeft > 0) {
           res.resume();
           const next = new URL(location, url);
-          fetchOnce(next, method, headers, redirectsLeft - 1, maxBytes, resolve, reject);
+          fetchOnce(next, method, headers, body, redirectsLeft - 1, maxBytes, resolve, reject);
           return;
         }
         const chunks: Buffer[] = [];
@@ -109,6 +110,7 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
           resolve({
             ok: status >= 200 && status < 300,
             status,
+            responseBytes: buffer.length,
             json: async () => JSON.parse(body),
             text: async () => body,
             arrayBuffer: async () => buffer.buffer as ArrayBuffer,
@@ -135,7 +137,11 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
     req.on("close", () => {
       clearTimeout(timer);
     });
-    req.end();
+    if (body === null) {
+      req.end();
+    } else {
+      req.end(body);
+    }
   }
 
   return (input: string | URL | Request, init?: RequestInit, options?: DirectFetchOptions) => {
@@ -147,8 +153,28 @@ export function createDirectFetch(timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS): 
       headers["Accept-Encoding"] = "gzip";
     }
     const maxBytes = options?.maxBytes === undefined ? null : options.maxBytes;
+    const body = requestBody(init?.body);
     return new Promise<DirectFetchResponse>((resolve, reject) => {
-      fetchOnce(url, method, headers, MAX_REDIRECTS, maxBytes, resolve, reject);
+      fetchOnce(url, method, headers, body, MAX_REDIRECTS, maxBytes, resolve, reject);
     });
   };
+}
+
+function requestBody(body: RequestInit["body"]): string | Buffer | null {
+  if (body === undefined || body === null) {
+    return null;
+  }
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body instanceof URLSearchParams) {
+    return body.toString();
+  }
+  if (ArrayBuffer.isView(body)) {
+    return Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+  }
+  if (body instanceof ArrayBuffer) {
+    return Buffer.from(body);
+  }
+  return null;
 }

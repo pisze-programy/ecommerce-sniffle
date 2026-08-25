@@ -1,5 +1,7 @@
 import { buildProvider } from "../../factory.ts";
 import { BROWSER_HEADERS } from "../../browser-headers.ts";
+import { measureFetch } from "../../network/manager.ts";
+import type { WrappedFetch } from "../../network/manager.ts";
 import type { DirectFetch } from "../../module.ts";
 import type { Logger } from "../../logger.ts";
 import type { Catalog, Product, Provider, ProviderConfig, Variant } from "../../types.ts";
@@ -91,13 +93,21 @@ type CatalogFetch = (
   init?: RequestInit,
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; text(): Promise<string> }>;
 
-export async function fetchShopifyCookie(domain: string, logger: Logger): Promise<string | null> {
+export async function fetchShopifyCookie(
+  domain: string,
+  logger: Logger,
+  fetchFn: WrappedFetch = fetch,
+): Promise<string | null> {
   try {
-    const response = await fetch(`https://${domain}/products.json`, {
+    const response = await fetchFn(`https://${domain}/products.json`, {
       headers: { "User-Agent": BROWSER_HEADERS["User-Agent"] as string },
     });
-    const getSetCookie = (response.headers as { getSetCookie?: () => string[] }).getSetCookie;
-    const values = typeof getSetCookie === "function" ? getSetCookie.call(response.headers) : [];
+    const getSetCookie = (response.headers as { getSetCookie?: () => string[] } | undefined)
+      ?.getSetCookie;
+    const values =
+      typeof getSetCookie === "function" && response.headers !== undefined
+        ? getSetCookie.call(response.headers)
+        : [];
     if (response.body !== undefined && response.body !== null) {
       await response.body.cancel().catch(() => {});
     }
@@ -179,13 +189,14 @@ async function enrichProducts(
   fetchFn: CatalogFetch,
   ratePerSecond: number,
   urlSuffix: string,
+  cookieFetch: WrappedFetch,
 ): Promise<Product[]> {
   const result: Product[] = [];
   const waitMs = ratePerSecond > 0 ? Math.round(1000 / ratePerSecond) : 0;
   let first = true;
   let cookie: string | null = null;
   try {
-    cookie = await fetchShopifyCookie(domain, logger);
+    cookie = await fetchShopifyCookie(domain, logger, cookieFetch);
   } catch {
     cookie = null;
   }
@@ -256,12 +267,24 @@ export function buildEmbeddedInventoryProvider(
   directFetch?: DirectFetch,
   urlSuffix = "",
 ): Provider {
-  const catalogFetch = (url: string, init?: RequestInit) => {
+  const rawCatalogFetch = (
+    input: string | URL | Request,
+    init?: RequestInit,
+    options?: { maxBytes?: number },
+  ) => {
+    const url = String(input);
     if (directFetch !== undefined) {
-      return directFetch(url, init);
+      return directFetch(url, init, options);
     }
     return fetch(url, init);
   };
+  const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, "direct");
+  const cookieFetch = measureFetch(
+      (input, init) => fetch(input, init),
+      logger,
+      config.id,
+      "proxy",
+    );
   return buildProvider(config, logger, async (): Promise<Catalog> => {
     const catalog = await fetchShopifyCatalog(config.endpoint, config.domain, logger, catalogFetch);
     const products = await enrichProducts(
@@ -272,6 +295,7 @@ export function buildEmbeddedInventoryProvider(
       catalogFetch,
       config.ratePerSecond,
       urlSuffix,
+      cookieFetch,
     );
     return { domain: config.domain, fetchedAt: new Date().toISOString(), products };
   });

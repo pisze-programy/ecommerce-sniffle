@@ -4,6 +4,7 @@ import type { Provider, ProviderConfig, StockRevealer } from "./types.ts";
 export interface DirectFetchResponse {
   readonly ok: boolean;
   readonly status: number;
+  readonly responseBytes?: number;
   json(): Promise<unknown>;
   text(): Promise<string>;
   arrayBuffer(): Promise<ArrayBuffer>;

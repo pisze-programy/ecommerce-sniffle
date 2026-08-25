@@ -1,4 +1,4 @@
-export type Platform = "shopify" | "shoper" | "woocommerce" | "custom" | "prestashop";
+export type Platform = "shopify" | "shoper" | "woocommerce" | "custom" | "prestashop" | "magento";
 
 export type StockSource = "embedded-json" | "cart-probe" | "basket-reveal" | "html" | "boolean";
 

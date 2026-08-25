@@ -66,6 +66,34 @@ describe("createDirectFetch", () => {
     expect(text).toBe("01234");
   });
 
+  it("sends the post body", async () => {
+    const server = createServer((req, res) => {
+      let data = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => {
+        data += chunk;
+      });
+      req.on("end", () => {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ body: data, method: req.method }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    servers.push(server);
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("server has no port");
+    }
+    const directFetch = createDirectFetch(1000);
+    const response = await directFetch(`http://127.0.0.1:${address.port}/`, {
+      method: "POST",
+      body: JSON.stringify({ hello: "world" }),
+    });
+    const body = (await response.json()) as { body: string; method: string };
+    expect(body.method).toBe("POST");
+    expect(body.body).toContain("hello");
+  });
+
   it("rejects a request that never responds within the timeout", async () => {
     const server = createServer((_req, _res) => {
       // never answer; simulate a hung connection

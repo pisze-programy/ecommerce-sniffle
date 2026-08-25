@@ -264,6 +264,7 @@ describe("revealProduct", () => {
       status: 200,
       headers: { get: () => setCookie },
       text: async () => body,
+      arrayBuffer: async () => Buffer.from(body).buffer as ArrayBuffer,
       json: async () => JSON.parse(body),
     };
   }
@@ -360,12 +361,12 @@ describe("fetchShoperCatalog", () => {
       const offset = /offset=(\d+)/.exec(str);
       const off = offset === null ? 0 : Number(offset[1]);
       if (off === 0) {
-        return { ok: true, status: 200, json: async () => ({ list: [listProduct(1), listProduct(2)] }) };
+        return { ok: true, status: 200, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), json: async () => ({ list: [listProduct(1), listProduct(2)] }) };
       }
       if (off === 2) {
-        return { ok: true, status: 200, json: async () => ({ list: [listProduct(3)] }) };
+        return { ok: true, status: 200, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), json: async () => ({ list: [listProduct(3)] }) };
       }
-      return { ok: true, status: 200, json: async () => ({ list: [] }) };
+      return { ok: true, status: 200, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), json: async () => ({ list: [] }) };
     });
     const catalog = await fetchShoperCatalog(
       "https://sklepskolim.pl/webapi/front/pl_PL/products/PLN/list",
@@ -385,9 +386,9 @@ describe("fetchShoperCatalog", () => {
     const fetchFn = vi.fn(async () => {
       calls += 1;
       if (calls === 1) {
-        return { ok: true, status: 200, json: async () => ({ list: [listProduct(1), listProduct(1)] }) };
+        return { ok: true, status: 200, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), json: async () => ({ list: [listProduct(1), listProduct(1)] }) };
       }
-      return { ok: true, status: 200, json: async () => ({ list: [] }) };
+      return { ok: true, status: 200, text: async () => "", arrayBuffer: async () => new ArrayBuffer(0), json: async () => ({ list: [] }) };
     });
     const catalog = await fetchShoperCatalog(
       "https://sklepskolim.pl/webapi/front/pl_PL/products/PLN/list",

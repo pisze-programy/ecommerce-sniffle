@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
 import {
+  createProbeFetch,
   parseChangeResponse,
   applyOutcome,
   probeVariantStock,
@@ -179,5 +180,66 @@ describe("applyOutcome", () => {
     const updated = applyOutcome(variant, { quantity: 12, available: true });
     expect(updated.quantity).toBe(12);
     expect(updated.available).toBe(true);
+  });
+});
+
+describe("createProbeFetch", () => {
+  it("uses the global fetch when no proxy is configured", async () => {
+    const capture = capturingLogger();
+    const probeFetch = createProbeFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(200, '{"items":[]}')),
+    );
+    const response = await probeFetch("https://x.pl/cart/add.js", { method: "POST" });
+    expect(response.ok).toBe(true);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(capture.records.length).toBe(0);
+  });
+});
+
+describe("probeVariantStock retry", () => {
+  it("retries a blocked add once and succeeds on the second attempt", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(429, "blocked"))
+        .mockResolvedValueOnce(jsonResponse(200, '{"id":1}', "cart=abc"))
+        .mockResolvedValueOnce(
+          jsonResponse(200, '{"items":[{"quantity":7}],"item_count":1}'),
+        ),
+    );
+    const outcome = await probeVariantStock("booso.pl", "1", capture.logger);
+    expect(outcome).toEqual({ quantity: 7, available: true });
+    expect(
+      capture.records.some((record) => record.message === "cartprobe.retry"),
+    ).toBe(true);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries a blocked change and succeeds on the second attempt", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(200, '{"id":1}', "cart=abc"))
+        .mockResolvedValueOnce(jsonResponse(429, "blocked"))
+        .mockResolvedValueOnce(jsonResponse(200, '{"id":1}', "cart=abc"))
+        .mockResolvedValueOnce(
+          jsonResponse(200, '{"items":[{"quantity":3}],"item_count":1}'),
+        ),
+    );
+    const outcome = await probeVariantStock("booso.pl", "1", capture.logger);
+    expect(outcome).toEqual({ quantity: 3, available: true });
+  });
+
+  it("gives up after two blocked attempts", async () => {
+    const capture = capturingLogger();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(429, "blocked")));
+    const outcome = await probeVariantStock("booso.pl", "1", capture.logger);
+    expect(outcome).toEqual({ quantity: null, available: null });
   });
 });

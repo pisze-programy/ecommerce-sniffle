@@ -28,6 +28,16 @@ No Polish comments.
 - No temporary files. No garbage files.
 - No undocumented code.
 - Write tests for every change.
+- No shortcuts. No "it should work".
+
+## No shortcuts (must)
+
+- Test every change end-to-end on the real system before deploy.
+- End-to-end means the exact path the system runs:
+  cron -> run.sh -> executor -> claim -> ingest -> snapshot.
+- Never claim a change is tested without a proof of the full path.
+- Unit tests alone are not enough. They never catch deploy-path errors.
+- Prove it. Do not say "it should work".
 
 ## Tests (must)
 
