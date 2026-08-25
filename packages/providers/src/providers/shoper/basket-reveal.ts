@@ -2,6 +2,9 @@ import { buildStockRevealer } from "../../factory.ts";
 import { truncateMessage } from "../../helpers.ts";
 import { isCloudflareChallenge } from "../../captcha/detect.ts";
 import { measureFetch } from "../../network/manager.ts";
+import { mapPool } from "../../network/pool.ts";
+import { ConcurrencyLimiter } from "../../network/limiter.ts";
+import { createFreshFetch } from "../../network/fresh-fetch.ts";
 import type { WrappedFetch } from "../../network/manager.ts";
 import type { DirectFetch } from "../../module.ts";
 import type { Logger } from "../../logger.ts";
@@ -21,6 +24,10 @@ const USER_AGENT =
 const MAX_PAGES = 1000;
 const PROBE_QUANTITY = 999999999;
 const LIST_LIMIT = 50;
+const REVEAL_CONCURRENCY = 8;
+const GLOBAL_CONCURRENCY = 12;
+const MAX_COMBOS_PER_PRODUCT = 200;
+const MAX_CONSECUTIVE_ADD_EMPTY = 15;
 
 type CatalogFetch = WrappedFetch;
 
@@ -29,10 +36,15 @@ function money(amount: number): Money {
 }
 
 export function parseBasketWarning(text: string): number | null {
-  const match =
-    /(?:Aktualnie dost[ęe]pna ilo[śs][ćc] to:|Current stock is:).*?-\s*(\d+)\s+szt/i.exec(text);
-  if (match !== null) {
-    return Number(match[1]);
+  const patterns: readonly RegExp[] = [
+    /(?:Aktualnie dost[ęe]pna ilo[śs][ćc] to:|Current stock is:).*-\s*(\d+)\s+szt/i,
+    /Maksymalna dost[ęe]pna ilo[śs][ćc] to\s+(\d+)\s+szt/i,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (match !== null) {
+      return Number(match[1]);
+    }
   }
   return null;
 }
@@ -199,6 +211,17 @@ export function extractWarning(text: string, logger: Logger): string | null {
         return warnings[0];
       }
     }
+    const flashMessages = data["flashMessages"];
+    if (Array.isArray(flashMessages)) {
+      for (const entry of flashMessages) {
+        if (typeof entry === "object" && entry !== null) {
+          const message = (entry as Readonly<Record<string, unknown>>)["message"];
+          if (typeof message === "string") {
+            return message;
+          }
+        }
+      }
+    }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn("basketreveal.put response parse failed", { error: message });
@@ -209,18 +232,51 @@ export function extractWarning(text: string, logger: Logger): string | null {
 function flashErrors(text: string): readonly string[] {
   try {
     const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
+    const errors: string[] = [];
     const messenger = data["_flash_messenger"];
-    if (typeof messenger !== "object" || messenger === null) {
-      return [];
+    if (typeof messenger === "object" && messenger !== null) {
+      const raw = (messenger as Readonly<Record<string, unknown>>)["error"];
+      if (Array.isArray(raw)) {
+        for (const entry of raw) {
+          if (typeof entry === "string") {
+            errors.push(entry);
+          }
+        }
+      }
     }
-    const errors = (messenger as Readonly<Record<string, unknown>>)["error"];
-    if (!Array.isArray(errors)) {
-      return [];
+    const flashMessages = data["flashMessages"];
+    if (Array.isArray(flashMessages)) {
+      for (const entry of flashMessages) {
+        if (typeof entry === "object" && entry !== null) {
+          const obj = entry as Readonly<Record<string, unknown>>;
+          if (obj["isError"] === true && typeof obj["message"] === "string") {
+            errors.push(obj["message"]);
+          }
+        }
+      }
     }
-    return errors.filter((entry): entry is string => typeof entry === "string");
+    return errors;
   } catch {
     return [];
   }
+}
+
+export interface RevealOutcome {
+  readonly quantity: number | null;
+  readonly hasOptions: boolean;
+}
+
+function addedVariantLabel(added: ReadonlyArray<unknown>): string | null {
+  const first = added[0];
+  if (typeof first !== "object" || first === null) {
+    return null;
+  }
+  const rawVariant = (first as Readonly<Record<string, unknown>>)["variant"];
+  if (typeof rawVariant !== "string") {
+    return null;
+  }
+  const label = rawVariant.trim();
+  return label.length === 0 ? null : label;
 }
 
 export async function revealVariant(
@@ -229,7 +285,7 @@ export async function revealVariant(
   logger: Logger,
   options: Readonly<Record<string, string>> = {},
   fetchFn: WrappedFetch = fetch,
-): Promise<number | null> {
+): Promise<RevealOutcome> {
   const origin = `https://${domain}`;
   const baseHeaders: Readonly<Record<string, string>> = {
     "User-Agent": USER_AGENT,
@@ -248,21 +304,62 @@ export async function revealVariant(
     const addText = await addResponse.text();
     if (isCloudflareChallenge(addText)) {
       logger.warn("basketreveal.challenge blocked", { domain, stockId });
-      return null;
+      return { quantity: null, hasOptions: false };
     }
     if (!addResponse.ok) {
       throw new Error(`basket add failed with status ${addResponse.status}: ${truncateMessage(addText)}`);
     }
     let added: ReadonlyArray<unknown> = [];
+    let addedQuantity: number | null = null;
+    let basketQuantity: number | null = null;
     try {
       const data = JSON.parse(addText) as Readonly<Record<string, unknown>>;
       const rawAdded = data["added"];
       if (Array.isArray(rawAdded)) {
         added = rawAdded;
       }
+      const rawAddedItem = data["addedItem"];
+      if (typeof rawAddedItem === "object" && rawAddedItem !== null) {
+        const addedItem = rawAddedItem as Readonly<Record<string, unknown>>;
+        const rawQuantity = addedItem["quantity"];
+        if (typeof rawQuantity === "number") {
+          addedQuantity = rawQuantity;
+        }
+        const rawAddedQuantity = addedItem["addedQuantity"];
+        if (addedQuantity === null && typeof rawAddedQuantity === "number") {
+          addedQuantity = rawAddedQuantity;
+        }
+      }
+      const rawBasket = data["basket"];
+      if (typeof rawBasket === "object" && rawBasket !== null) {
+        const rawItems = (rawBasket as Readonly<Record<string, unknown>>)["items"];
+        if (typeof rawItems === "object" && rawItems !== null) {
+          const list = (rawItems as Readonly<Record<string, unknown>>)["list"];
+          if (Array.isArray(list)) {
+            for (const entry of list) {
+              if (typeof entry !== "object" || entry === null) {
+                continue;
+              }
+              const item = entry as Readonly<Record<string, unknown>>;
+              if (item["variantId"] !== stockId) {
+                continue;
+              }
+              const rawQuantity = item["quantity"];
+              if (typeof rawQuantity === "number") {
+                basketQuantity = rawQuantity;
+              }
+              break;
+            }
+          }
+        }
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn("basketreveal.add response parse failed", { domain, stockId, error: message });
+    }
+    const hasOptions = addedVariantLabel(added) !== null;
+    if (addedQuantity !== null) {
+      return { quantity: addedQuantity, hasOptions };
     }
     const addWarning = extractWarning(addText, logger);
     if (addWarning !== null) {
@@ -275,8 +372,11 @@ export async function revealVariant(
             itemId = rawId;
           }
         }
-        return quantity;
+        return { quantity, hasOptions };
       }
+    }
+    if (basketQuantity !== null) {
+      return { quantity: basketQuantity, hasOptions };
     }
     const first = added[0];
     if (typeof first !== "object" || first === null) {
@@ -284,15 +384,15 @@ export async function revealVariant(
         /nieaktywn|wyprzedan|sold out|out of stock|niedost[ęe]pn/i.test(entry),
       );
       if (unavailable) {
-        return 0;
+        return { quantity: 0, hasOptions };
       }
       logger.warn("basketreveal.add empty for variant product", { domain, stockId });
-      return null;
+      return { quantity: null, hasOptions };
     }
     const firstObj = first as Readonly<Record<string, unknown>>;
     if (typeof firstObj["id"] !== "number") {
       logger.warn("basketreveal.add has no item id", { domain, stockId });
-      return null;
+      return { quantity: null, hasOptions };
     }
     itemId = firstObj["id"];
     const cookie = extractCookiesFromResponse(addResponse.headers);
@@ -306,20 +406,20 @@ export async function revealVariant(
     const putText = await putResponse.text();
     if (isCloudflareChallenge(putText)) {
       logger.warn("basketreveal.challenge blocked", { domain, stockId });
-      return null;
+      return { quantity: null, hasOptions: false };
     }
     const warning = extractWarning(putText, logger);
     if (warning !== null) {
       const quantity = parseBasketWarning(warning);
       if (quantity !== null) {
-        return quantity;
+        return { quantity, hasOptions: false };
       }
     }
-    return parseBasketWarning(putText);
+    return { quantity: parseBasketWarning(putText), hasOptions: false };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.warn("basketreveal failed", { domain, stockId, error: message });
-    return null;
+    return { quantity: null, hasOptions: false };
   }
 }
 
@@ -439,35 +539,80 @@ export async function revealProduct(
   product: Product,
   logger: Logger,
   fetchFn: CatalogFetch = fetch,
+  comboConcurrency: number = REVEAL_CONCURRENCY,
+  limiter?: ConcurrencyLimiter,
 ): Promise<Variant[]> {
   const baseVariant = product.variants[0];
   if (baseVariant === undefined) {
     return [];
   }
-  if (!baseVariant.available) {
-    return [{ ...baseVariant, quantity: 0, available: false }];
+  const base = baseVariant;
+  if (!base.available) {
+    return [{ ...base, quantity: 0, available: false }];
   }
-  const stockId = Number(baseVariant.id);
+  const stockId = Number(base.id);
   const simple = await revealVariant(domain, stockId, logger, {}, fetchFn);
-  if (simple !== null) {
-    return [{ ...baseVariant, quantity: simple, available: simple > 0 }];
+  if (simple.quantity !== null && !simple.hasOptions) {
+    return [{ ...base, quantity: simple.quantity, available: simple.quantity > 0 }];
   }
   const configuration = await fetchOptionConfiguration(domain, product.id, logger, fetchFn);
   const combos = buildOptionCombos(configuration);
   if (combos.length === 0) {
     return [...product.variants];
   }
+  const explosion = combos.length > MAX_COMBOS_PER_PRODUCT;
+  const probed = explosion ? combos.slice(0, MAX_COMBOS_PER_PRODUCT) : combos;
+  if (explosion) {
+    logger.warn("basketreveal.option explosion", {
+      domain,
+      productId: product.id,
+      combos: combos.length,
+      cappedTo: MAX_COMBOS_PER_PRODUCT,
+    });
+  }
   const revealed: Variant[] = [];
-  for (const combo of combos) {
-    const quantity = await revealVariant(domain, stockId, logger, combo.options, fetchFn);
-    if (quantity !== null) {
+  function pushCombo(combo: OptionCombo, outcome: RevealOutcome): void {
+    if (outcome.quantity !== null) {
       revealed.push({
-        ...baseVariant,
+        ...base,
         id: `${product.id}-${combo.label}`,
         title: combo.label,
-        quantity,
-        available: quantity > 0,
+        quantity: outcome.quantity,
+        available: outcome.quantity > 0,
       });
+    }
+  }
+  if (explosion) {
+    let consecutiveEmpty = 0;
+    for (const combo of probed) {
+      const outcome = await revealVariant(domain, stockId, logger, combo.options, fetchFn);
+      if (outcome.quantity === null) {
+        consecutiveEmpty += 1;
+        if (consecutiveEmpty >= MAX_CONSECUTIVE_ADD_EMPTY) {
+          logger.warn("basketreveal.dead combos", {
+            domain,
+            productId: product.id,
+            consecutiveEmpty,
+          });
+          break;
+        }
+      } else {
+        consecutiveEmpty = 0;
+      }
+      pushCombo(combo, outcome);
+    }
+  } else {
+    const comboResults = await mapPool(
+      probed,
+      comboConcurrency,
+      async (combo) => {
+        const outcome = await revealVariant(domain, stockId, logger, combo.options, fetchFn);
+        return { combo, outcome };
+      },
+      limiter,
+    );
+    for (const entry of comboResults) {
+      pushCombo(entry.combo, entry.outcome);
     }
   }
   if (revealed.length === 0) {
@@ -493,6 +638,9 @@ export function buildBasketRevealProvider(
     return fetch(url, init);
   };
   const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, "proxy");
+  const proxyUrl = process.env["HTTPS_PROXY"] ?? process.env["WEBSHARE_URL"] ?? null;
+  const probeFetch = measureFetch(createFreshFetch(proxyUrl), logger, config.id, "proxy");
+  const limiter = new ConcurrencyLimiter(GLOBAL_CONCURRENCY);
   return buildStockRevealer(
     config,
     logger,
@@ -500,15 +648,41 @@ export function buildBasketRevealProvider(
     async (target: StockRevealTarget): Promise<Catalog> => {
       const catalog = await fetchShoperCatalog(config.endpoint, config.domain, logger, catalogFetch);
       const wanted = new Set<string>(target.productIds);
-      const products: Product[] = [];
-      for (const product of catalog.products) {
+      const excluded = new Set<number>(config.excludedStockIds ?? []);
+      const targets = catalog.products.filter((product) => {
         if (wanted.size > 0 && !wanted.has(product.id)) {
-          continue;
+          return false;
         }
-        const variants = await revealProduct(config.domain, product, logger, catalogFetch);
-        products.push({ ...product, variants });
+        const first = product.variants[0];
+        if (first === undefined) {
+          return false;
+        }
+        return !excluded.has(Number(first.id));
+      });
+      if (excluded.size > 0) {
+        logger.info("basketreveal.excluded", {
+          domain: config.domain,
+          excludedIds: [...excluded].join(","),
+          remaining: targets.length,
+        });
       }
-      return { domain: config.domain, fetchedAt: new Date().toISOString(), products };
+      const revealed = await mapPool(
+        targets,
+        REVEAL_CONCURRENCY,
+        async (product) => {
+          const variants = await revealProduct(
+            config.domain,
+            product,
+            logger,
+            probeFetch,
+            REVEAL_CONCURRENCY,
+            limiter,
+          );
+          return { ...product, variants };
+        },
+        limiter,
+      );
+      return { domain: config.domain, fetchedAt: new Date().toISOString(), products: revealed };
     },
   );
 }

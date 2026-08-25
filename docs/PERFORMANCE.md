@@ -128,3 +128,53 @@ from every IP.
 magdabutrym is disabled. It buffers too much memory.
 
 influcenter is disabled. Its shop blocked the VPS IP.
+
+## The 429 block is per connection, not per IP
+
+This discovery came from wkdzik. The shop rate-limits the connections.
+
+A reused keep-alive connection triggers the block. The shop returns
+429 when many requests reuse one connection. The request headers do
+not matter. The HTTP protocol (1.1 or 2) does not matter. A fresh
+cookie does not release the block.
+
+A fresh connection per request avoids the block. The same rate with
+fresh connections returns zero 429. The webshare is not needed for
+this. The VPS IP stays safe with fresh connections.
+
+### The evidence (local test, no proxy)
+
+| Connection mode | Result |
+| --------------- | ------ |
+| Reused keep-alive, concurrency 25 | 12-24% requests get 429 |
+| Fresh connection per request, concurrency 25 | 0% requests get 429 |
+| curl (fresh connection per request) | 0% requests get 429 |
+| Different headers or HTTP version | no change |
+
+### The rule
+
+The mutations must use a fresh connection per request. The module
+createFreshFetch does this. The catalog GETs may reuse connections.
+
+The safe concurrency is 8. The full wkdzik pass with fresh connections
+ran at zero 429 over 1203 requests.
+
+## Option explosion prevention
+
+Some shops expose huge option matrices. sklepskolim has an Etui
+product with 1276 combinations (Marka x Model). The old reveal probed
+every combination. One stock id got 2438 attempts in a single run.
+This risked a VPS IP block.
+
+The reveal now caps the combos per product. The cap is 200. A product
+over the cap probes the first 200 combos and logs an explosion
+warning. It stops early after 15 consecutive empty adds. The log
+record is "basketreveal.option explosion".
+
+The config may exclude stock ids per provider. The field is
+excludedStockIds. The reveal skips them. sklepskolim excludes the
+Etui product (5054). The shop runs three times faster.
+
+The nested pools multiply the concurrency. The product pool (8) times
+the combo pool (8) equals 64 concurrent requests. Some shops answer
+with 429. The fix is a global concurrency budget. Not done yet.

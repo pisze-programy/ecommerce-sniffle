@@ -1,8 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../../logger.ts";
 import type { LogRecord, Logger } from "../../logger.ts";
-import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos, revealProduct, fetchShoperCatalog, extractCookiesFromResponse } from "./basket-reveal.ts";
+import { parseBasketWarning, parseShoperList, parseShoperPages, extractWarning, revealVariant, buildOptionCombos, revealProduct, fetchShoperCatalog, extractCookiesFromResponse, buildBasketRevealProvider } from "./basket-reveal.ts";
 import type { Product } from "@ecommerce-sniffle/providers";
+
+const { undiciFetchMock, closeableAgent } = vi.hoisted(() => ({
+  undiciFetchMock: vi.fn(),
+  closeableAgent: class {
+    async close(): Promise<void> {}
+  },
+}));
+
+vi.mock("undici", () => ({
+  fetch: undiciFetchMock,
+  Agent: closeableAgent,
+  ProxyAgent: closeableAgent,
+}));
 
 interface Capture {
   readonly records: LogRecord[];
@@ -36,6 +49,18 @@ describe("extractWarning", () => {
     expect(capture.records).toHaveLength(0);
   });
 
+  it("extracts the warning from the flashMessages key", () => {
+    const capture = capturingLogger();
+    const raw =
+      '{"flashMessages":[{"isError":true,"message":"Ten produkt nie jest dost\u0119pny w wybranej ilo\u015bci. Maksymalna dost\u0119pna ilo\u015b\u0107 to 1505 szt.","showInBasketOnly":false}]}';
+    const warning = extractWarning(raw, capture.logger);
+    expect(warning).toBe(
+      "Ten produkt nie jest dostępny w wybranej ilości. Maksymalna dostępna ilość to 1505 szt.",
+    );
+    expect(parseBasketWarning(warning ?? "")).toBe(1505);
+    expect(capture.records).toHaveLength(0);
+  });
+
   it("returns null when the flash messenger is missing", () => {
     const capture = capturingLogger();
     expect(extractWarning('{"basket":{}}', capture.logger)).toBeNull();
@@ -51,6 +76,38 @@ describe("extractWarning", () => {
   });
 });
 
+describe("parseBasketWarning", () => {
+  it("reads the maximum available quantity message", () => {
+    expect(parseBasketWarning("Maksymalna dostępna ilość to 1505 szt.")).toBe(1505);
+  });
+
+  it("reads the maximum available quantity message from a longer text", () => {
+    const text =
+      "Ten produkt nie jest dostępny w wybranej ilości. Maksymalna dostępna ilość to 1505 szt.";
+    expect(parseBasketWarning(text)).toBe(1505);
+  });
+
+  it("reads the plain spelling variant", () => {
+    expect(parseBasketWarning("Maksymalna dostepna ilosc to 42 szt")).toBe(42);
+  });
+
+  it("keeps the existing current-stock message", () => {
+    expect(parseBasketWarning("Aktualnie dostępna ilość to: Kubek - 13 szt. .")).toBe(13);
+    expect(parseBasketWarning("Current stock is: Mug - 7 szt.")).toBe(7);
+  });
+
+  it("reads the last number when the product name contains a count", () => {
+    const text =
+      "Ilość produktów w koszyku przekracza dostępny stan magazynowy. <br /> " +
+      "Aktualnie dostępna ilość to: SOSY ZERO SŁODKIE DZIK® - 2 SZT. - 1505 szt. [Smak 1: Jagoda; Smak 2: Jagoda].";
+    expect(parseBasketWarning(text)).toBe(1505);
+  });
+
+  it("returns null when no quantity message is present", () => {
+    expect(parseBasketWarning("Produkt dodany do koszyka.")).toBeNull();
+  });
+});
+
 describe("revealVariant", () => {
   it("logs a warning when the add response is not valid json", async () => {
     const capture = capturingLogger();
@@ -62,7 +119,7 @@ describe("revealVariant", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
-    expect(result).toBeNull();
+    expect(result?.quantity).toBeNull();
     expect(
       capture.records.some((record) => record.message === "basketreveal.add response parse failed"),
     ).toBe(true);
@@ -80,7 +137,7 @@ describe("revealVariant", () => {
       }),
     );
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
-    expect(result).toBeNull();
+    expect(result?.quantity).toBeNull();
     expect(
       capture.records.some((record) => record.message === "basketreveal failed"),
     ).toBe(true);
@@ -100,7 +157,7 @@ describe("revealVariant", () => {
       }),
     );
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
-    expect(result).toBe(0);
+    expect(result?.quantity).toBe(0);
   });
 
   it("falls back to the put when the add response has no clamp", async () => {
@@ -126,7 +183,7 @@ describe("revealVariant", () => {
         }),
     );
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
-    expect(result).toBe(13);
+    expect(result?.quantity).toBe(13);
   });
 
   it("blocks and logs when the basket add hits a cloudflare challenge", async () => {
@@ -141,7 +198,7 @@ describe("revealVariant", () => {
       }),
     );
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
-    expect(result).toBeNull();
+    expect(result?.quantity).toBeNull();
     expect(
       capture.records.some((record) => record.message === "basketreveal.challenge blocked"),
     ).toBe(true);
@@ -160,11 +217,78 @@ describe("revealVariant", () => {
     vi.stubGlobal("fetch", fetchMock);
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(result).toBe(13);
+    expect(result?.quantity).toBe(13);
     expect(fetchMock.mock.calls.length).toBe(1);
     const addCall = fetchMock.mock.calls[0];
     const addInit = addCall?.[1];
     expect(String(addInit?.body)).toContain("999999999");
+  });
+
+  it("reads the exact quantity from the addedItem field", async () => {
+    const capture = capturingLogger();
+    const addBody =
+      '{"flashMessages":[{"isError":true,"message":"Maksymalna dost\u0119pna ilo\u015b\u0107 to 1505 szt."}],"addedItem":{"itemId":"abc123","quantity":1505,"addedQuantity":1505}}';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => addBody,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await revealVariant("wkdzik.pl", 7318, capture.logger);
+    expect(result?.quantity).toBe(1505);
+    expect(fetchMock.mock.calls.length).toBe(1);
+    expect(capture.records.some((record) => record.message === "basketreveal.add empty for variant product")).toBe(false);
+  });
+
+  it("reads the exact quantity from the addedQuantity fallback", async () => {
+    const capture = capturingLogger();
+    const addBody = '{"addedItem":{"itemId":"abc123","addedQuantity":42}}';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => addBody,
+      }),
+    );
+    const result = await revealVariant("wkdzik.pl", 7318, capture.logger);
+    expect(result?.quantity).toBe(42);
+  });
+
+  it("reads the quantity from the basket item matched by variantId", async () => {
+    const capture = capturingLogger();
+    const addBody =
+      '{"basket":{"items":{"list":[{"variantId":111,"quantity":99},{"variantId":7318,"quantity":1505}]}}}';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => addBody,
+      }),
+    );
+    const result = await revealVariant("wkdzik.pl", 7318, capture.logger);
+    expect(result?.quantity).toBe(1505);
+  });
+
+  it("reads the quantity from the flashMessages clamp message", async () => {
+    const capture = capturingLogger();
+    const addBody =
+      '{"flashMessages":[{"isError":true,"message":"Ten produkt nie jest dost\u0119pny w wybranej ilo\u015bci. Maksymalna dost\u0119pna ilo\u015b\u0107 to 1505 szt."}]}';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => addBody,
+      }),
+    );
+    const result = await revealVariant("wkdzik.pl", 7318, capture.logger);
+    expect(result?.quantity).toBe(1505);
   });
 
   it("blocks and logs when the basket put hits a cloudflare challenge", async () => {
@@ -188,10 +312,46 @@ describe("revealVariant", () => {
         }),
     );
     const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
-    expect(result).toBeNull();
+    expect(result?.quantity).toBeNull();
     expect(
       capture.records.some((record) => record.message === "basketreveal.challenge blocked"),
     ).toBe(true);
+  });
+
+  it("marks the product as having options when the added item has a variant label", async () => {
+    const capture = capturingLogger();
+    const addBody =
+      '{"added":[{"id":596940,"name":"SOSY ZERO","variant":"Smak 1: Jagoda; Smak 2: Jagoda","quantity":999999999}],"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: SOSY ZERO - 2 SZT. - 1505 szt. [Smak 1: Jagoda; Smak 2: Jagoda]"],"error":[]}}';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => addBody,
+      }),
+    );
+    const result = await revealVariant("wkdzik.pl", 7318, capture.logger);
+    expect(result?.quantity).toBe(1505);
+    expect(result?.hasOptions).toBe(true);
+  });
+
+  it("marks the product as simple when the added item has no variant label", async () => {
+    const capture = capturingLogger();
+    const addBody =
+      '{"added":[{"id":596940,"name":"Kubek"}],"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: Kubek - 13 szt. ."],"error":[]}}';
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => addBody,
+      }),
+    );
+    const result = await revealVariant("sklepskolim.pl", 47, capture.logger);
+    expect(result?.quantity).toBe(13);
+    expect(result?.hasOptions).toBe(false);
   });
 });
 
@@ -268,6 +428,90 @@ describe("revealProduct", () => {
       json: async () => JSON.parse(body),
     };
   }
+
+  it("expands the option combos when the base add reveals options", async () => {
+    const capture = capturingLogger();
+    const baseAdd =
+      '{"added":[{"id":1,"variant":"Smak 1: A; Smak 2: B"}],"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: SOSY - 2 SZT. - 1505 szt. [Smak 1: A; Smak 2: B]"],"error":[]}}';
+    const detailTwo = JSON.stringify({
+      options_configuration: [
+        { id: 37, name: "Smak 1", values: [{ id: "351", name: "A" }, { id: "352", name: "C" }] },
+      ],
+    });
+    const comboA =
+      '{"added":[{"id":1,"variant":"Smak 1: A"}],"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: SOSY - 2 SZT. - 10 szt. [Smak 1: A]"],"error":[]}}';
+    const comboC =
+      '{"added":[{"id":1,"variant":"Smak 1: C"}],"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: SOSY - 2 SZT. - 0 szt. [Smak 1: C]"],"error":[]}}';
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(okResponse(baseAdd))
+        .mockResolvedValueOnce(okResponse(detailTwo))
+        .mockResolvedValueOnce(okResponse(comboA))
+        .mockResolvedValueOnce(okResponse(comboC)),
+    );
+    const variants = await revealProduct("sklepskolim.pl", variantProduct, capture.logger);
+    expect(variants).toHaveLength(2);
+    expect(variants[0]?.id).toBe("31-Smak 1: A");
+    expect(variants[0]?.quantity).toBe(10);
+    expect(variants[1]?.id).toBe("31-Smak 1: C");
+    expect(variants[1]?.quantity).toBe(0);
+  });
+
+  it("caps an option explosion and stops on dead combos", async () => {
+    const capture = capturingLogger();
+    const detailExplosion = JSON.stringify({
+      options_configuration: [
+        { id: 1, name: "A", values: Array.from({ length: 15 }, (_, i) => ({ id: String(i), name: `a${i}` })) },
+        { id: 2, name: "B", values: Array.from({ length: 15 }, (_, i) => ({ id: String(i), name: `b${i}` })) },
+      ],
+    });
+    let calls = 0;
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      calls += 1;
+      if (u.includes("/products/PLN/")) {
+        return okResponse(detailExplosion);
+      }
+      return okResponse(addEmpty);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const variants = await revealProduct("sklepskolim.pl", variantProduct, capture.logger);
+    expect(calls).toBeLessThanOrEqual(17);
+    expect(
+      capture.records.some((record) => record.message === "basketreveal.option explosion"),
+    ).toBe(true);
+    expect(
+      capture.records.some((record) => record.message === "basketreveal.dead combos"),
+    ).toBe(true);
+    expect(variants).toHaveLength(1);
+  });
+
+  it("probes all combos when the count stays under the cap", async () => {
+    const capture = capturingLogger();
+    const detailBelow = JSON.stringify({
+      options_configuration: [
+        { id: 1, name: "A", values: [{ id: "1", name: "x" }, { id: "2", name: "y" }] },
+        { id: 2, name: "B", values: [{ id: "3", name: "z" }] },
+      ],
+    });
+    let basketCalls = 0;
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("/products/PLN/")) {
+        return okResponse(detailBelow);
+      }
+      basketCalls += 1;
+      return okResponse(addEmpty);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await revealProduct("sklepskolim.pl", variantProduct, capture.logger);
+    expect(basketCalls).toBe(3);
+    expect(
+      capture.records.some((record) => record.message === "basketreveal.option explosion"),
+    ).toBe(false);
+  });
 
   it("expands a variant product with a unique per-product id", async () => {
     const capture = capturingLogger();
@@ -507,5 +751,77 @@ describe("parseShoperList", () => {
   it("skips malformed products", () => {
     const products = parseShoperList({ list: [null, "bad", { id: 1 }] }, DOMAIN);
     expect(products).toEqual([]);
+  });
+});
+
+describe("buildBasketRevealProvider exclusion", () => {
+  const excludedCfg = {
+    id: "test-shop",
+    domain: "test.pl",
+    platform: "shoper" as const,
+    schedule: "* * * * *",
+    window: "both" as const,
+    mode: "vps-mutation" as const,
+    stockSource: "basket-reveal" as const,
+    ratePerSecond: 1,
+    durationSeconds: 60,
+    requiresProxy: true,
+    endpoint: "https://test.pl/webapi/front/pl_PL/products/PLN/list",
+    excludedStockIds: [5054],
+    enabled: true,
+  };
+
+  function okResponse(body: string) {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => body,
+      arrayBuffer: async () => Buffer.from(body).buffer as ArrayBuffer,
+      json: async () => JSON.parse(body),
+    };
+  }
+
+  it("skips the excluded stock ids during the reveal", async () => {
+    const capture = capturingLogger();
+    const catalogBody = JSON.stringify({
+      pages: 1,
+      list: [
+        {
+          id: 1,
+          stockId: 5054,
+          name: "ETUI",
+          url: "https://test.pl/p/etui",
+          can_buy: true,
+          price: { gross: { final_float: 10, base_float: 10 } },
+        },
+        {
+          id: 2,
+          stockId: 999,
+          name: "KOSZULKA",
+          url: "https://test.pl/p/koszulka",
+          can_buy: true,
+          price: { gross: { final_float: 20, base_float: 20 } },
+        },
+      ],
+    });
+    const addBody =
+      '{"added":[{"id":1}],"_flash_messenger":{"warning":["Aktualnie dost\u0119pna ilo\u015b\u0107 to: Koszulka - 5 szt. ."],"error":[]}}';
+    const fetchMock = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("/products/PLN/list")) {
+        return okResponse(catalogBody);
+      }
+      return okResponse(addBody);
+    });
+    undiciFetchMock.mockResolvedValue(okResponse(addBody));
+    const provider = buildBasketRevealProvider(excludedCfg, capture.logger, fetchMock);
+    const result = await provider.revealStock({ productIds: [] });
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]?.id).toBe("2");
+    expect(
+      capture.records.some((record) => record.message === "basketreveal.excluded"),
+    ).toBe(true);
+    expect(undiciFetchMock).toHaveBeenCalledTimes(1);
   });
 });

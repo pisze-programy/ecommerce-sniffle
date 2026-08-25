@@ -1,5 +1,6 @@
 import type { ProviderConfig } from "./types.ts";
 import { assertNonEmptyString, assertPositiveInteger } from "./helpers.ts";
+import { EXCLUDED_STOCK_IDS } from "./providers/shoper/excluded-stock-ids.ts";
 
 function validateConfig(config: ProviderConfig): ProviderConfig {
   assertNonEmptyString(config.id, "config.id");
@@ -46,11 +47,13 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
   { id: "hdrey", domain: "hdrey.com", platform: "shopify", schedule: "15 4 * * *", window: "both", mode: "vps-mutation", stockSource: "cart-probe", ratePerSecond: 1, durationSeconds: 1200, requiresProxy: true, endpoint: "https://hdrey.com/products.json", enabled: false },
   { id: "wakenbake", domain: "wakenbake.pl", platform: "shopify", schedule: "15 4 * * *", window: "both", mode: "vps-mutation", stockSource: "cart-probe", ratePerSecond: 1, durationSeconds: 300, requiresProxy: true, endpoint: "https://wakenbake.pl/products.json", enabled: false },
   // Shoper - catalog (GET) + exact stock via basket-reveal (mutation, via proxy)
-  { id: "arustamian", domain: "arustamian.com", platform: "shoper", schedule: "30 4 * * *", window: "both", mode: "vps-mutation", stockSource: "basket-reveal", ratePerSecond: 1, durationSeconds: 1000, requiresProxy: true, endpoint: "https://arustamian.com/webapi/front/pl_PL/products/PLN/list", enabled: false },
+  { id: "arustamian", domain: "arustamian.com", platform: "shoper", schedule: "30 4 * * *", window: "both", mode: "vps-mutation", stockSource: "basket-reveal", ratePerSecond: 1, durationSeconds: 1000, requiresProxy: true, endpoint: "https://arustamian.com/webapi/front/pl_PL/products/PLN/list", enabled: true },
   { id: "e-daag", domain: "e-daag.com.pl", platform: "shoper", schedule: "30 4 * * *", window: "both", mode: "vps-mutation", stockSource: "basket-reveal", ratePerSecond: 1, durationSeconds: 1300, requiresProxy: true, endpoint: "https://e-daag.com.pl/webapi/front/pl_PL/products/PLN/list", enabled: true },
   { id: "emereedivine", domain: "emereedivine.com", platform: "shoper", schedule: "30 4 * * *", window: "both", mode: "vps-mutation", stockSource: "basket-reveal", ratePerSecond: 1, durationSeconds: 40, requiresProxy: true, endpoint: "https://emereedivine.com/webapi/front/pl_PL/products/PLN/list", enabled: true },
+  // sklepskolim: excluded stock ids live in the shoper exclusion file.
   { id: "sklepskolim", domain: "sklepskolim.pl", platform: "shoper", schedule: "30 4 * * *", window: "both", mode: "vps-mutation", stockSource: "basket-reveal", ratePerSecond: 1, durationSeconds: 700, requiresProxy: true, endpoint: "https://sklepskolim.pl/webapi/front/pl_PL/products/PLN/list", enabled: true },
   { id: "wkdzik", domain: "wkdzik.pl", platform: "shoper", schedule: "30 4 * * *", window: "both", mode: "vps-mutation", stockSource: "basket-reveal", ratePerSecond: 1, durationSeconds: 1000, requiresProxy: true, endpoint: "https://wkdzik.pl/webapi/front/pl_PL/products/PLN/list", enabled: true },
+  // osmpower: excluded stock ids live in the shoper exclusion file.
   { id: "osmpower", domain: "osmpower.pl", platform: "shoper", schedule: "35 4 * * *", window: "both", mode: "vps-mutation", stockSource: "basket-reveal", ratePerSecond: 1, durationSeconds: 600, requiresProxy: true, endpoint: "https://osmpower.pl/webapi/front/pl_PL/products/PLN/list", enabled: true },
   // Web - exact stock via HTML/JSON (GET), no mutation, no proxy
   { id: "rever", domain: "rever.com.pl", platform: "woocommerce", schedule: "45 4 * * *", window: "both", mode: "cf-get", stockSource: "html", ratePerSecond: 1, durationSeconds: 10, requiresProxy: false, endpoint: "https://rever.com.pl/product-sitemap.xml", enabled: true },
@@ -60,4 +63,10 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
   { id: "premieresociety", domain: "premieresociety.com", platform: "custom", schedule: "45 4 * * *", window: "both", mode: "cf-get", stockSource: "html", ratePerSecond: 1, durationSeconds: 20, requiresProxy: false, endpoint: "https://premieresociety.com/pl/3-sklep", enabled: true },
 ];
 
-export const PROVIDERS: readonly ProviderConfig[] = RAW_CONFIGS.map(validateConfig);
+export const PROVIDERS: readonly ProviderConfig[] = RAW_CONFIGS.map((config) => {
+  const excluded = EXCLUDED_STOCK_IDS[config.id];
+  if (excluded === undefined) {
+    return validateConfig(config);
+  }
+  return validateConfig({ ...config, excludedStockIds: excluded });
+});

@@ -19,6 +19,7 @@ export interface ProviderConfig {
   readonly requiresProxy: boolean;
   readonly endpoint: string;
   readonly enabled: boolean;
+  readonly excludedStockIds?: readonly number[];
 }
 
 export interface Money {
