@@ -1,7 +1,7 @@
 import { PROVIDERS } from '../../config.ts';
 import { requireValue } from '../../helpers.ts';
 import type { ProviderModule } from '../../module.ts';
-import { buildEmbeddedInventoryProvider, parseBisVariantData } from './implementations/embedded-inventory.ts';
+import { buildMcpInventoryProvider } from './implementations/mcp-inventory.ts';
 
 const config = requireValue(
   PROVIDERS.find((c) => c.id === 'forcer'),
@@ -11,6 +11,6 @@ const config = requireValue(
 export const forcerModule: ProviderModule = {
   config,
   build(deps) {
-    return buildEmbeddedInventoryProvider(config, deps.logger, parseBisVariantData, deps.directFetch);
+    return buildMcpInventoryProvider(config, deps.logger, deps.directFetch);
   },
 };

@@ -1,7 +1,7 @@
 import { PROVIDERS } from '../../config.ts';
 import { requireValue } from '../../helpers.ts';
 import type { ProviderModule } from '../../module.ts';
-import { buildCartProbeProvider } from './implementations/cart-probe.ts';
+import { buildMcpInventoryProvider } from './implementations/mcp-inventory.ts';
 
 const config = requireValue(
   PROVIDERS.find((c) => c.id === 'hdrey'),
@@ -11,6 +11,6 @@ const config = requireValue(
 export const hdreyModule: ProviderModule = {
   config,
   build(deps) {
-    return buildCartProbeProvider(config, deps.logger, deps.directFetch);
+    return buildMcpInventoryProvider(config, deps.logger, deps.directFetch);
   },
 };

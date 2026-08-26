@@ -123,7 +123,7 @@ describe('isStockRevealer', () => {
   });
 
   it('returns false for an embedded-json provider', () => {
-    const provider = findModule('forcer').build({ logger: silentLogger() });
+    const provider = findModule('rever').build({ logger: silentLogger() });
     expect(isStockRevealer(provider)).toBe(false);
   });
 });
@@ -131,30 +131,29 @@ describe('isStockRevealer', () => {
 describe('runVpsPass', () => {
   it('processes exactly the vps providers', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
-    expect(result.processed).toBe(13);
+    expect(result.processed).toBe(12);
   });
 
   it('collects all not-implemented providers as failures', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
-    expect(result.failed).toHaveLength(13);
+    expect(result.failed).toHaveLength(12);
   });
 
   it('reports the expected vps provider ids', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
     expect([...result.failed].sort()).toEqual([
-      'bloozie',
+      'booso',
       'derichgallery',
       'dobrerzeczy',
-      'e-daag',
-      'emereedivine',
-      'laboratoriumpanidomu',
+      'forcer',
+      'godsavequeens',
+      'gymglamour',
+      'hdrey',
+      'icon-amsterdam',
       'monartofficial',
-      'osmpower',
-      'phlov',
-      'shapellx',
-      'sklepskolim',
+      'nago',
       'theodderside',
-      'wkdzik',
+      'wakenbake',
     ]);
   });
 
@@ -167,9 +166,9 @@ describe('runVpsPass', () => {
   it('logs a warning for every failed provider', async () => {
     const capture = capturingLogger();
     const result = await runVpsPass(capture.logger, { directFetch: networkDisabledFetch() });
-    expect(result.failed).toHaveLength(13);
+    expect(result.failed).toHaveLength(12);
     const warns = capture.records.filter((record) => record.message === 'run provider failed');
-    expect(warns).toHaveLength(13);
+    expect(warns).toHaveLength(12);
   });
 
   it('sends a snapshot for a successful reveal', async () => {

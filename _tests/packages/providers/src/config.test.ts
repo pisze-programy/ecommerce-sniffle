@@ -103,12 +103,12 @@ describe('PROVIDERS config', () => {
     expect(phlov?.requiresProxy).toBe(false);
   });
 
-  it('has 17 mutation providers, 4 get providers, 15 vps-get providers', () => {
+  it('has 20 mutation providers, 4 get providers, 12 vps-get providers', () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === 'vps-mutation');
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
-    expect(mutation.length).toBe(17);
+    expect(mutation.length).toBe(20);
     expect(get.length).toBe(4);
-    expect(vpsGet.length).toBe(15);
+    expect(vpsGet.length).toBe(12);
   });
 });

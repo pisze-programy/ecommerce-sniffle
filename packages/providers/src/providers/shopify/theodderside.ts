@@ -1,9 +1,7 @@
 import { PROVIDERS } from '../../config.ts';
 import { requireValue } from '../../helpers.ts';
 import type { ProviderModule } from '../../module.ts';
-import { buildStorefrontAvailabilityProvider } from './implementations/storefront-graphql.ts';
-
-export * from './implementations/storefront-graphql.ts';
+import { buildMcpInventoryProvider } from './implementations/mcp-inventory.ts';
 
 const config = requireValue(
   PROVIDERS.find((c) => c.id === 'theodderside'),
@@ -13,6 +11,6 @@ const config = requireValue(
 export const theoddersideModule: ProviderModule = {
   config,
   build(deps) {
-    return buildStorefrontAvailabilityProvider(config, deps.logger, deps.directFetch);
+    return buildMcpInventoryProvider(config, deps.logger, deps.directFetch);
   },
 };
