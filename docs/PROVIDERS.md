@@ -36,79 +36,65 @@ Every provider has a config. The config controls the provider.
 - `boolean`: availability only (1 or 0).
 - `mcp-inventory`: Shopify MCP server cart clamp (mutation, proxy).
 
-## The 16 providers
-
-### Shopify - embedded JSON (vps-get)
-
-The shop embeds `bis-variant-data`, `variantInventoryData`, or
-`_RestockRocketConfig.variantsInventoryQuantity` in the product page.
-The JSON has the exact count. This is a free GET source.
-
-The provider fetches the product page for every product. Shopify
-rate-limits bursts of page fetches. The provider paces the fetches at
-`ratePerSecond` (1 request per second). A full catalog takes minutes.
-The Cloudflare worker has a 30 second limit. This is why the
-mode is `vps-get`, not `cf-get`.
-
-| id         | domain         | stock source  |
-| ---------- | -------------- | ------------- |
-| forcer     | forcer.pl      | embedded-json |
-| misbhv     | misbhv.com     | embedded-json |
-| gymglamour | gymglamour.com | embedded-json |
-| montiel    | montiel.com    | embedded-json |
-| noo-ma     | noo.ma         | embedded-json |
-
-gymglamour uses the Restock Rocket app. The page has
-`_RestockRocketConfig.variantsInventoryQuantity`, a map of variant id
-to exact count. This is free exact, no cart probe needed.
-
-montiel reveals exact in the `.js` product endpoint. The provider
-fetches `products/{handle}.js` and reads `inventory_quantity` per
-variant. Free exact.
-
-noo.ma embeds `variant: { id, inventory_quantity }` in the product
-page. The page shows only the default variant, so the provider fetches
-`?variant={id}` for every variant. Free exact.
-
-### Shopify - cart probe (vps-mutation)
-
-| id        | domain       | stock source |
-| --------- | ------------ | ------------ |
-| booso     | booso.pl     | cart-probe   |
-| hdrey     | hdrey.com    | cart-probe   |
-| wakenbake | wakenbake.pl | cart-probe   |
+## The active providers
 
 ### Shopify - MCP inventory (vps-mutation)
-
-| id             | domain             | stock source  |
-| -------------- | ------------------ | ------------- |
-| derichgallery  | derichgallery.com  | mcp-inventory |
-| monartofficial | monartofficial.com | mcp-inventory |
 
 The MCP server clamps a huge cart quantity to the exact stock.
 The cart-probe returned 429 and 403 at production scale. The MCP
 server does not. One request holds 10 variants. The transfer is about
 3 KB per request. See [SHOPIFY-MCP-INVENTORY.md](./SHOPIFY-MCP-INVENTORY.md).
 
+| id             | domain               | stock source  | Webshare/run |
+| -------------- | -------------------- | ------------- | ------------ |
+| derichgallery  | derichgallery.com    | mcp-inventory | ~33 KB       |
+| monartofficial | monartofficial.com   | mcp-inventory | ~138 KB      |
+| wakenbake      | wakenbake.pl         | mcp-inventory | ~6 KB        |
+| forcer         | forcer.pl            | mcp-inventory | ~82 KB       |
+| nago           | nago.com             | mcp-inventory | ~221 KB      |
+| hdrey          | hdrey.com            | mcp-inventory | ~488 KB      |
+| godsavequeens  | pl.godsavequeens.com | mcp-inventory | ~498 KB      |
+| theodderside   | theodderside.com     | mcp-inventory | ~506 KB      |
+| icon-amsterdam | icon-amsterdam.com   | mcp-inventory | ~622 KB      |
+| booso          | booso.pl             | mcp-inventory | ~650 KB      |
+| gymglamour     | gymglamour.com       | mcp-inventory | ~898 KB      |
+
+All eleven shops give masked 0 on a full run. Shapellx did not pass
+the 1 MB webshare rule (about 1.6 MB per run). It stays disabled.
+Noo-ma and seembols accept the whole 999999 (no clamp). The MCP gives
+no exact count for them, so they keep their exact GET sources.
+
 ### Shoper - basket reveal (vps-mutation)
 
-| id           | domain           | stock source  |
-| ------------ | ---------------- | ------------- |
-| arustamian   | arustamian.com   | basket-reveal |
-| e-daag       | e-daag.com.pl    | basket-reveal |
-| emereedivine | emereedivine.com | basket-reveal |
-| sklepskolim  | sklepskolim.pl   | basket-reveal |
-| wkdzik       | wkdzik.pl        | basket-reveal |
+The shop hides the count in the catalog list. The basket reveal
+clamps a huge quantity. See below for the flow.
+
+| id           | domain           | stock source  | Webshare/run |
+| ------------ | ---------------- | ------------- | ------------ |
+| emereedivine | emereedivine.com | basket-reveal | ~69 KB       |
+| sklepskolim  | sklepskolim.pl   | basket-reveal | ~701 KB      |
+| wkdzik       | wkdzik.pl        | basket-reveal | ~1.4 MB      |
+| e-daag       | e-daag.com.pl    | basket-reveal | ~1.9 MB      |
+
+Arustamian (1.6 MB) and osmpower (877 KB) stay disabled.
+
+### Prestashop - cart reveal (vps-mutation)
+
+| id                   | domain                  | stock source |
+| -------------------- | ----------------------- | ------------ |
+| laboratoriumpanidomu | laboratoriumpanidomu.pl | cart-probe   |
+
+The page has a hidden form token. The cart clamps the quantity on add.
+See [PROBING.md](./PROBING.md).
 
 ### Web - HTML stock (cf-get)
 
-| id              | domain              | stock source |
-| --------------- | ------------------- | ------------ |
-| rever           | rever.com.pl        | html         |
-| dobrerzeczy     | dobrerzeczy.pl      | html         |
-| royalwatch      | royalwatch.pl       | html         |
-| mushi           | mushi.pl            | html         |
-| premieresociety | premieresociety.com | html         |
+| id          | domain         | stock source | mode    |
+| ----------- | -------------- | ------------ | ------- |
+| rever       | rever.com.pl   | html         | cf-get  |
+| royalwatch  | royalwatch.pl  | html         | cf-get  |
+| mushi       | mushi.pl       | html         | cf-get  |
+| dobrerzeczy | dobrerzeczy.pl | html         | vps-get |
 
 ### Web - exact stock notes
 
@@ -174,18 +160,17 @@ Each variant gets an id like `{productId}-Rozmiar: XL`.
   Shoper bundle products (a `PAKIET` pack) stay masked. The basket add
   needs the bundle children data and answers
   `Nieprawidłowe dane produktów składowych` without it.
-- hdrey.com hides exact stock from every GET source. The cart probe is
-  the only way. The probe runs at a calm pace and retries challenged
-  variants after a cooldown. A few challenges can stay masked on a run.
+- hdrey.com hides exact stock from every GET source. The MCP server
+  is the way. The run gives masked 0.
 - dobrerzeczy.pl blocks datacenter IPs on its GETs. The provider runs
   on the VPS with `requiresProxy: true`, so its GETs go through the
   webshare proxy.
 - Shopify rate-limits bursts. The embedded JSON enrichment runs at
   `ratePerSecond` and must finish on the VPS, not the worker.
-- booso, hdrey and wakenbake are cart-probe shops. The shops answer
-  cart mutations with a Cloudflare challenge after a few requests.
-  The probes are disabled. The queue retry path can re-enable them
-  when a challenge solver is ready.
+- The old cart-probe shops (booso, hdrey, wakenbake, godsavequeens,
+  icon-amsterdam, theodderside) answered cart mutations with a
+  Cloudflare challenge after a few requests. They moved to the MCP
+  inventory source. The MCP server does not challenge.
 - misbhv.com product `knitted-beanie-251a518` has no embedded script.
   The shop does not emit it for this product. The variant stays masked.
 - Catalog fetches run direct from the VPS (no proxy). Only the mutations

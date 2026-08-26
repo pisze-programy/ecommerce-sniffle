@@ -116,14 +116,29 @@ the MCP requests.
 The measured full runs use about 0.4 MB for both shops. The 1 MB
 webshare budget covers about two full runs.
 
-## Verified results (local IP, no proxy)
+## Verified results
 
-| Shop               | Variants | Masked | Time  |
-| ------------------ | -------- | ------ | ----- |
-| derichgallery.com  | 58       | 0      | 1.3 s |
-| monartofficial.com | 487      | 0      | 5.2 s |
+All eleven active shops give masked 0 on a full run (local IP and the
+VPS cron). The transfer is the webshare bytes per run.
+
+| Shop                 | Variants | Masked | Webshare/run |
+| -------------------- | -------- | ------ | ------------ |
+| derichgallery.com    | 58       | 0      | ~33 KB       |
+| monartofficial.com   | 487      | 0      | ~138 KB      |
+| wakenbake.pl         | 18       | 0      | ~6 KB        |
+| forcer.pl            | 367      | 0      | ~82 KB       |
+| nago.com             | 783      | 0      | ~221 KB      |
+| hdrey.com            | 1061     | 0      | ~488 KB      |
+| pl.godsavequeens.com | 1917     | 0      | ~498 KB      |
+| theodderside.com     | 3339     | 0      | ~506 KB      |
+| icon-amsterdam.com   | 2232     | 0      | ~622 KB      |
+| booso.pl             | 4170     | 0      | ~650 KB      |
+| gymglamour.com       | 3432     | 0      | ~898 KB      |
 
 PINK RESERVE reads 4. The browser cart reads 4. The counts match.
+
+Shapellx gives masked 0 too but uses about 1.6 MB per run. It fails
+the 1 MB webshare rule, so it stays disabled.
 
 ## The mode
 

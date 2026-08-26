@@ -131,12 +131,12 @@ describe('isStockRevealer', () => {
 describe('runVpsPass', () => {
   it('processes exactly the vps providers', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
-    expect(result.processed).toBe(12);
+    expect(result.processed).toBe(17);
   });
 
   it('collects all not-implemented providers as failures', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
-    expect(result.failed).toHaveLength(12);
+    expect(result.failed).toHaveLength(17);
   });
 
   it('reports the expected vps provider ids', async () => {
@@ -145,15 +145,20 @@ describe('runVpsPass', () => {
       'booso',
       'derichgallery',
       'dobrerzeczy',
+      'e-daag',
+      'emereedivine',
       'forcer',
       'godsavequeens',
       'gymglamour',
       'hdrey',
       'icon-amsterdam',
+      'laboratoriumpanidomu',
       'monartofficial',
       'nago',
+      'sklepskolim',
       'theodderside',
       'wakenbake',
+      'wkdzik',
     ]);
   });
 
@@ -166,9 +171,9 @@ describe('runVpsPass', () => {
   it('logs a warning for every failed provider', async () => {
     const capture = capturingLogger();
     const result = await runVpsPass(capture.logger, { directFetch: networkDisabledFetch() });
-    expect(result.failed).toHaveLength(12);
+    expect(result.failed).toHaveLength(17);
     const warns = capture.records.filter((record) => record.message === 'run provider failed');
-    expect(warns).toHaveLength(12);
+    expect(warns).toHaveLength(17);
   });
 
   it('sends a snapshot for a successful reveal', async () => {

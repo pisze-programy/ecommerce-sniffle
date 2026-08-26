@@ -74,17 +74,16 @@ cd /path/to/orchestrator
 if [ -f ../.env ]; then
   . ../.env
 fi
-if [ -n "$WEBSHARE_URL" ]; then
-  export HTTPS_PROXY="$WEBSHARE_URL"
-  export NODE_USE_ENV_PROXY="1"
-fi
 export CAPTCHA_KEY
+export WEBSHARE_URL
 export BACKEND_URL
 export INGEST_SECRET
+export SNITCH_URL
+export SNITCH_TOKEN
 exec node dist/index.js
 ```
 
-`NODE_USE_ENV_PROXY` makes Node route every fetch through the proxy.
+`export WEBSHARE_URL` passes the rotating proxy to the probe fetches.
 `export CAPTCHA_KEY` passes the 2captcha key to the Node process.
 `export BACKEND_URL` and `export INGEST_SECRET` pass the ingest target.
 Mutations go through the webshare residential proxy.
