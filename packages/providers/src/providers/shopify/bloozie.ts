@@ -1,15 +1,18 @@
-import { buildProvider } from "../../factory.ts";
-import { PROVIDERS } from "../../config.ts";
-import { requireValue } from "../../helpers.ts";
-import { BROWSER_HEADERS } from "../../browser-headers.ts";
-import type { DirectFetch, DirectFetchOptions, ProviderModule } from "../../module.ts";
-import type { Logger } from "../../logger.ts";
-import type { Catalog, Product, Provider, ProviderConfig, Variant } from "../../types.ts";
-import { fetchShopifyCatalog } from "./adapter.ts";
+import { buildProvider } from '../../factory.ts';
+import { PROVIDERS } from '../../config.ts';
+import { requireValue } from '../../helpers.ts';
+import { BROWSER_HEADERS } from '../../browser-headers.ts';
+import type { DirectFetch, DirectFetchOptions, ProviderModule } from '../../module.ts';
+import type { Logger } from '../../logger.ts';
+import type { Catalog, Product, Provider, ProviderConfig, Variant } from '../../types.ts';
+import { fetchShopifyCatalog } from './implementations/adapter.ts';
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "bloozie"), "config bloozie");
+const config = requireValue(
+  PROVIDERS.find((c) => c.id === 'bloozie'),
+  'config bloozie'
+);
 
-const BASE_URL = "https://www.bloozie.pl";
+const BASE_URL = 'https://www.bloozie.pl';
 const PAGE_ABORT_BYTES = 220_000;
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
@@ -25,7 +28,7 @@ export function parseDataVariants(html: string): readonly DataVariant[] {
   if (match === null) {
     return [];
   }
-  const decoded = match[1] === undefined ? "" : match[1].replace(/&quot;/g, '"');
+  const decoded = match[1] === undefined ? '' : match[1].replace(/&quot;/g, '"');
   let data: unknown;
   try {
     data = JSON.parse(decoded);
@@ -37,22 +40,22 @@ export function parseDataVariants(html: string): readonly DataVariant[] {
   }
   const result: DataVariant[] = [];
   for (const entry of data) {
-    if (typeof entry !== "object" || entry === null) {
+    if (typeof entry !== 'object' || entry === null) {
       continue;
     }
-    const id = (entry as Readonly<Record<string, unknown>>)["id"];
-    const available = (entry as Readonly<Record<string, unknown>>)["available"];
-    const quantity = (entry as Readonly<Record<string, unknown>>)["inventory_quantity"];
-    if (typeof id !== "string") {
+    const id = (entry as Readonly<Record<string, unknown>>)['id'];
+    const available = (entry as Readonly<Record<string, unknown>>)['available'];
+    const quantity = (entry as Readonly<Record<string, unknown>>)['inventory_quantity'];
+    if (typeof id !== 'string') {
       continue;
     }
-    const parsedQuantity = typeof quantity === "number" ? quantity : Number(quantity);
+    const parsedQuantity = typeof quantity === 'number' ? quantity : Number(quantity);
     if (Number.isNaN(parsedQuantity)) {
       continue;
     }
     result.push({
       id,
-      available: available === true || available === "true",
+      available: available === true || available === 'true',
       quantity: parsedQuantity,
     });
   }
@@ -62,7 +65,7 @@ export function parseDataVariants(html: string): readonly DataVariant[] {
 type CatalogFetch = (
   url: string,
   init?: RequestInit,
-  options?: DirectFetchOptions,
+  options?: DirectFetchOptions
 ) => Promise<{
   ok: boolean;
   status: number;
@@ -70,25 +73,15 @@ type CatalogFetch = (
   text(): Promise<string>;
 }>;
 
-async function fetchProductPage(
-  url: string,
-  fetchFn: CatalogFetch,
-): Promise<string> {
+async function fetchProductPage(url: string, fetchFn: CatalogFetch): Promise<string> {
   let attempt = 0;
   while (true) {
     attempt += 1;
-    const response = await fetchFn(
-      url,
-      { headers: { ...BROWSER_HEADERS } },
-      { maxBytes: PAGE_ABORT_BYTES },
-    );
+    const response = await fetchFn(url, { headers: { ...BROWSER_HEADERS } }, { maxBytes: PAGE_ABORT_BYTES });
     if (response.ok) {
       return response.text();
     }
-    if (
-      (response.status === 429 || response.status === 403 || response.status >= 500) &&
-      attempt < MAX_ATTEMPTS
-    ) {
+    if ((response.status === 429 || response.status === 403 || response.status >= 500) && attempt < MAX_ATTEMPTS) {
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
       continue;
     }
@@ -99,7 +92,7 @@ async function fetchProductPage(
 export function buildBloozieProvider(
   providerConfig: ProviderConfig,
   logger: Logger,
-  directFetch?: DirectFetch,
+  directFetch?: DirectFetch
 ): Provider {
   const fetchFn: CatalogFetch = (url, init, options) => {
     if (directFetch !== undefined) {
@@ -112,7 +105,7 @@ export function buildBloozieProvider(
     const products: Product[] = [];
     for (const product of catalog.products) {
       try {
-        const handle = product.url.split("/products/")[1] ?? "";
+        const handle = product.url.split('/products/')[1] ?? '';
         const html = await fetchProductPage(`${BASE_URL}/products/${handle}`, fetchFn);
         const parsed = parseDataVariants(html);
         const byId = new Map(parsed.map((entry) => [entry.id, entry]));
@@ -130,11 +123,11 @@ export function buildBloozieProvider(
         products.push({ ...product, variants });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.warn("bloozie.product fetch failed", { productId: product.id, error: message });
+        logger.warn('bloozie.product fetch failed', { productId: product.id, error: message });
         products.push(product);
       }
     }
-    logger.debug("bloozie catalog fetched", { domain: providerConfig.domain, products: products.length });
+    logger.debug('bloozie catalog fetched', { domain: providerConfig.domain, products: products.length });
     return { domain: providerConfig.domain, fetchedAt: new Date().toISOString(), products };
   });
 }

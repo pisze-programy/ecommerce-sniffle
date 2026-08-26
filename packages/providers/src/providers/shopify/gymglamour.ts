@@ -1,9 +1,12 @@
-import { PROVIDERS } from "../../config.ts";
-import { requireValue } from "../../helpers.ts";
-import type { ProviderModule } from "../../module.ts";
-import { buildEmbeddedInventoryProvider, parseRestockRocketQuantity } from "./embedded-inventory.ts";
+import { PROVIDERS } from '../../config.ts';
+import { requireValue } from '../../helpers.ts';
+import type { ProviderModule } from '../../module.ts';
+import { buildEmbeddedInventoryProvider, parseRestockRocketQuantity } from './implementations/embedded-inventory.ts';
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "gymglamour"), "config gymglamour");
+const config = requireValue(
+  PROVIDERS.find((c) => c.id === 'gymglamour'),
+  'config gymglamour'
+);
 
 export const gymglamourModule: ProviderModule = {
   config,

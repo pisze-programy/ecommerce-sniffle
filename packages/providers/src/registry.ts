@@ -1,5 +1,5 @@
-import type { ProviderModule } from "./module.ts";
-import { requireValue } from "./helpers.ts";
+import type { ProviderModule } from './module.ts';
+import { requireValue } from './helpers.ts';
 
 export interface ProviderRegistry {
   readonly modules: readonly ProviderModule[];

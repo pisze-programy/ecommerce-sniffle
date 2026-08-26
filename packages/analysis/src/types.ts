@@ -1,16 +1,9 @@
-export type Confidence = "exact" | "lower-bound" | "masked" | "low";
+export type Confidence = 'exact' | 'lower-bound' | 'masked' | 'low';
 
 export type EventType =
-  | "sold"
-  | "restock"
-  | "soldOut"
-  | "backInStock"
-  | "promoStart"
-  | "promoEnd"
-  | "productNew"
-  | "productRemoved";
+  'sold' | 'restock' | 'soldOut' | 'backInStock' | 'promoStart' | 'promoEnd' | 'productNew' | 'productRemoved';
 
-export type SnapshotWindow = "morning" | "evening" | "unknown";
+export type SnapshotWindow = 'morning' | 'evening' | 'unknown';
 
 export interface VariantState {
   readonly productId: string;

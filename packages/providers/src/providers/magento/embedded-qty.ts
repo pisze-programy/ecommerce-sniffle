@@ -1,15 +1,16 @@
-import { buildProvider } from "../../factory.ts";
-import { measureFetch } from "../../network/manager.ts";
-import type { WrappedFetch } from "../../network/manager.ts";
-import { BROWSER_HEADERS } from "../../browser-headers.ts";
-import type { DirectFetch, DirectFetchOptions } from "../../module.ts";
-import type { Logger } from "../../logger.ts";
-import type { Catalog, Product, Provider, ProviderConfig, Variant } from "../../types.ts";
+import { buildProvider } from '../../factory.ts';
+import { measureFetch } from '../../network/manager.ts';
+import { createFreshFetch } from '../../network/fresh-fetch.ts';
+import type { WrappedFetch } from '../../network/manager.ts';
+import { BROWSER_HEADERS } from '../../browser-headers.ts';
+import type { DirectFetch, DirectFetchOptions } from '../../module.ts';
+import type { Logger } from '../../logger.ts';
+import type { Catalog, Product, Provider, ProviderConfig, Variant } from '../../types.ts';
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
 const MAX_COOKIE_ROTATIONS = 2;
-const COOKIE_FETCH_PATH = "/";
+const COOKIE_FETCH_PATH = '/';
 
 export interface EmbeddedVariant {
   readonly id: string;
@@ -28,7 +29,7 @@ export interface EmbeddedProduct {
 
 export function parseCurrency(html: string): string {
   const match = /"currency_code"\s*:\s*"([A-Z]{3})"/.exec(html);
-  return match === null || match[1] === undefined ? "PLN" : match[1];
+  return match === null || match[1] === undefined ? 'PLN' : match[1];
 }
 
 export function parseEmbeddedQty(html: string, base: string): readonly EmbeddedProduct[] {
@@ -43,14 +44,14 @@ export function parseEmbeddedQty(html: string, base: string): readonly EmbeddedP
       continue;
     }
     const skuById = new Map<string, string>();
-    const skuMap = match[4] ?? "";
+    const skuMap = match[4] ?? '';
     for (const skuMatch of skuMap.matchAll(/"(\d+)":"([^"]+)"/g)) {
       if (skuMatch[1] !== undefined && skuMatch[2] !== undefined) {
         skuById.set(skuMatch[1], skuMatch[2]);
       }
     }
     const variants: EmbeddedVariant[] = [];
-    const index = match[3] ?? "";
+    const index = match[3] ?? '';
     for (const variantMatch of index.matchAll(/"(\d+)":\{"\d+":"(\d+)"\}/g)) {
       if (variantMatch[1] === undefined || variantMatch[2] === undefined) {
         continue;
@@ -58,7 +59,7 @@ export function parseEmbeddedQty(html: string, base: string): readonly EmbeddedP
       variants.push({
         id: variantMatch[1],
         quantity: Number(variantMatch[2]),
-        sku: skuById.get(variantMatch[1]) ?? "",
+        sku: skuById.get(variantMatch[1]) ?? '',
       });
     }
     blocks.set(id, { price: Number(match[1] ?? 0), variants });
@@ -88,7 +89,7 @@ export function parseEmbeddedQty(html: string, base: string): readonly EmbeddedP
 type CatalogFetch = (
   url: string,
   init?: RequestInit,
-  options?: DirectFetchOptions,
+  options?: DirectFetchOptions
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 function delayMs(ms: number): Promise<void> {
@@ -98,18 +99,15 @@ function delayMs(ms: number): Promise<void> {
 export async function fetchMagentoCookie(
   domain: string,
   logger: Logger,
-  fetchFn: WrappedFetch = fetch,
+  fetchFn: WrappedFetch = fetch
 ): Promise<string | null> {
   try {
     const response = await fetchFn(`https://${domain}${COOKIE_FETCH_PATH}`, {
-      headers: { "User-Agent": BROWSER_HEADERS["User-Agent"] as string },
+      headers: { 'User-Agent': BROWSER_HEADERS['User-Agent'] as string },
     });
-    const getSetCookie = (response.headers as { getSetCookie?: () => string[] } | undefined)
-      ?.getSetCookie;
+    const getSetCookie = (response.headers as { getSetCookie?: () => string[] } | undefined)?.getSetCookie;
     const values =
-      typeof getSetCookie === "function" && response.headers !== undefined
-        ? getSetCookie.call(response.headers)
-        : [];
+      typeof getSetCookie === 'function' && response.headers !== undefined ? getSetCookie.call(response.headers) : [];
     if (response.body !== undefined && response.body !== null) {
       await response.body.cancel().catch(() => {});
     }
@@ -118,11 +116,11 @@ export async function fetchMagentoCookie(
     }
     const pairs = values
       .map((value) => /^([^=;]+=[^;]+)/.exec(value)?.[1])
-      .filter((value): value is string => typeof value === "string");
-    return pairs.length > 0 ? pairs.join("; ") : null;
+      .filter((value): value is string => typeof value === 'string');
+    return pairs.length > 0 ? pairs.join('; ') : null;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn("magento.cookie failed", { domain, error: message });
+    logger.warn('magento.cookie failed', { domain, error: message });
     return null;
   }
 }
@@ -138,30 +136,27 @@ async function fetchText(
   fetchFn: CatalogFetch,
   state: FetchState,
   logger: Logger,
-  cookieFetch: WrappedFetch,
+  cookieFetch: WrappedFetch
 ): Promise<string> {
   let attempt = 0;
   while (true) {
     attempt += 1;
     const headers: Record<string, string> = { ...BROWSER_HEADERS };
     if (state.cookie !== null) {
-      headers["Cookie"] = state.cookie;
+      headers['Cookie'] = state.cookie;
     }
     const response = await fetchFn(url, { headers });
     if (response.ok) {
       return await response.text();
     }
     if (response.status === 429 && state.rotations < MAX_COOKIE_ROTATIONS) {
-      logger.warn("magento.rate limited", { url, status: 429 });
+      logger.warn('magento.rate limited', { url, status: 429 });
       state.rotations += 1;
       state.cookie = await fetchMagentoCookie(domain, logger, cookieFetch);
-      logger.info("magento.cookie rotated", { domain, present: state.cookie !== null });
+      logger.info('magento.cookie rotated', { domain, present: state.cookie !== null });
       continue;
     }
-    if (
-      (response.status === 403 || response.status >= 500) &&
-      attempt < MAX_ATTEMPTS
-    ) {
+    if ((response.status === 403 || response.status >= 500) && attempt < MAX_ATTEMPTS) {
       await delayMs(RETRY_DELAY_MS * attempt);
       continue;
     }
@@ -170,11 +165,15 @@ async function fetchText(
 }
 
 function isCatalogPath(url: string): boolean {
-  const path = url.replace(/^https:\/\/[^/]+/, "");
-  if (/^\/(customer|checkout|media|static|kontakt|regulamin|polityka|dostawa|reklamacje|zwroty|blog|wishlist|search|account|login|sales|o-nas|koszyk|sklep|p\/|produkt|product|konto|newsletter|faq|about|contact|marki)\/?$/.test(path)) {
+  const path = url.replace(/^https:\/\/[^/]+/, '');
+  if (
+    /^\/(customer|checkout|media|static|kontakt|regulamin|polityka|dostawa|reklamacje|zwroty|blog|wishlist|search|account|login|sales|o-nas|koszyk|sklep|p\/|produkt|product|konto|newsletter|faq|about|contact|marki)\/?$/.test(
+      path
+    )
+  ) {
     return false;
   }
-  if (path.slice(1).includes("/") && !/^\/(marki|en|kolekcje)\//.test(path)) {
+  if (path.slice(1).includes('/') && !/^\/(marki|en|kolekcje)\//.test(path)) {
     return false;
   }
   return true;
@@ -190,7 +189,7 @@ function expandPagination(html: string, base: string, seen: Set<string>, queue: 
     if (href === undefined) {
       continue;
     }
-    const full = href.startsWith("http") ? href : `${base}${href}`;
+    const full = href.startsWith('http') ? href : `${base}${href}`;
     if (!seen.has(full)) {
       seen.add(full);
       queue.push(full);
@@ -201,29 +200,22 @@ function expandPagination(html: string, base: string, seen: Set<string>, queue: 
 export function buildEmbeddedQtyProvider(
   providerConfig: ProviderConfig,
   logger: Logger,
-  directFetch?: DirectFetch,
+  _directFetch?: DirectFetch
 ): Provider {
   const base = `https://${providerConfig.domain}`;
   const domain = providerConfig.domain;
   const waitMs = providerConfig.ratePerSecond > 0 ? Math.round(1000 / providerConfig.ratePerSecond) : 0;
-  const fetchFn: CatalogFetch = (url, init, options) => {
-    if (directFetch !== undefined) {
-      return directFetch(url, init, options);
-    }
-    return fetch(url, init);
-  };
-  const cookieFetch = measureFetch(
-      (input, init) => fetch(input, init),
-      logger,
-      providerConfig.id,
-      "proxy",
-    );
+  // The pages and the cookie go through the webshare. This keeps the VPS IP clean.
+  const proxyUrl = process.env['HTTPS_PROXY'] ?? process.env['WEBSHARE_URL'] ?? null;
+  const freshFetch = createFreshFetch(proxyUrl);
+  const fetchFn: CatalogFetch = measureFetch(freshFetch, logger, providerConfig.id, 'proxy');
+  const cookieFetch = measureFetch(freshFetch, logger, providerConfig.id, 'proxy');
   return buildProvider(providerConfig, logger, async (): Promise<Catalog> => {
     const state: FetchState = {
       cookie: await fetchMagentoCookie(domain, logger, cookieFetch),
       rotations: 0,
     };
-    logger.info("magento.cookie", { domain, reason: "session-start", present: state.cookie !== null });
+    logger.info('magento.cookie', { domain, reason: 'session-start', present: state.cookie !== null });
     const home = await fetchText(`${base}/`, domain, fetchFn, state, logger, cookieFetch);
     const urls = new Set<string>();
     for (const match of home.matchAll(/href="(https:\/\/[^/]+\/[a-z0-9-]+)"/g)) {
@@ -232,7 +224,7 @@ export function buildEmbeddedQtyProvider(
         urls.add(url);
       }
     }
-    if (urls.size > 0 && home.includes("/marki")) {
+    if (urls.size > 0 && home.includes('/marki')) {
       try {
         const marki = await fetchText(`${base}/marki`, domain, fetchFn, state, logger, cookieFetch);
         for (const match of marki.matchAll(/href="(https:\/\/[^/]+\/marki\/[a-z0-9_-]+)"/g)) {
@@ -243,7 +235,7 @@ export function buildEmbeddedQtyProvider(
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.warn("magento.brands failed", { domain, error: message });
+        logger.warn('magento.brands failed', { domain, error: message });
       }
     }
     const seen = new Set<string>(urls);
@@ -266,7 +258,7 @@ export function buildEmbeddedQtyProvider(
         covered += 1;
         const variants: readonly Variant[] = parsed.variants.map((variant) => ({
           id: variant.id,
-          title: "default",
+          title: 'default',
           sku: variant.sku.length > 0 ? variant.sku : null,
           price: { amount: parsed.price, currency: parsed.currency },
           regularPrice: null,
@@ -281,7 +273,7 @@ export function buildEmbeddedQtyProvider(
         });
       }
     }
-    logger.info("magento.embedded catalog", {
+    logger.info('magento.embedded catalog', {
       domain,
       pages,
       covered,

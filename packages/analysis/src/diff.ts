@@ -1,5 +1,5 @@
-import { computeVariantDelta } from "./classify.js";
-import type { Snapshot, StockEvent, VariantState } from "./types.js";
+import { computeVariantDelta } from './classify.js';
+import type { Snapshot, StockEvent, VariantState } from './types.js';
 
 function indexVariants(variants: readonly VariantState[]): ReadonlyMap<string, VariantState> {
   const index = new Map<string, VariantState>();
@@ -22,13 +22,13 @@ export function diffSnapshots(prev: Snapshot, curr: Snapshot): readonly StockEve
     const prevVariant = prevById.get(currVariant.variantId);
     if (prevVariant === undefined) {
       events.push({
-        type: "productNew",
+        type: 'productNew',
         productId: currVariant.productId,
         variantId: currVariant.variantId,
         from: null,
         to: currVariant,
         units: currVariant.quantity === null ? 0 : currVariant.quantity,
-        confidence: "exact",
+        confidence: 'exact',
       });
       continue;
     }
@@ -41,13 +41,13 @@ export function diffSnapshots(prev: Snapshot, curr: Snapshot): readonly StockEve
   for (const prevVariant of prev.variants) {
     if (!currById.has(prevVariant.variantId)) {
       events.push({
-        type: "productRemoved",
+        type: 'productRemoved',
         productId: prevVariant.productId,
         variantId: prevVariant.variantId,
         from: prevVariant,
         to: null,
         units: 0,
-        confidence: "exact",
+        confidence: 'exact',
       });
     }
   }

@@ -1,4 +1,4 @@
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export type LogContext = Readonly<Record<string, string | number | boolean | null>>;
 
@@ -29,7 +29,7 @@ function formatRecord(record: LogRecord): string {
   return JSON.stringify(record);
 }
 
-export function createLogger(sink: LogSink, minLevel: LogLevel = "debug"): Logger {
+export function createLogger(sink: LogSink, minLevel: LogLevel = 'debug'): Logger {
   const threshold = LEVEL_ORDER[minLevel];
 
   function emit(level: LogLevel, message: string, context: LogContext): void {
@@ -47,27 +47,27 @@ export function createLogger(sink: LogSink, minLevel: LogLevel = "debug"): Logge
 
   return {
     debug(message: string, context: LogContext = {}): void {
-      emit("debug", message, context);
+      emit('debug', message, context);
     },
     info(message: string, context: LogContext = {}): void {
-      emit("info", message, context);
+      emit('info', message, context);
     },
     warn(message: string, context: LogContext = {}): void {
-      emit("warn", message, context);
+      emit('warn', message, context);
     },
     error(message: string, context: LogContext = {}): void {
-      emit("error", message, context);
+      emit('error', message, context);
     },
   };
 }
 
 export const consoleSink: LogSink = (record: LogRecord): void => {
   const line = formatRecord(record);
-  if (record.level === "error") {
+  if (record.level === 'error') {
     console.error(line);
     return;
   }
-  if (record.level === "warn") {
+  if (record.level === 'warn') {
     console.warn(line);
     return;
   }

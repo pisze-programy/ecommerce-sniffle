@@ -1,11 +1,14 @@
-import { PROVIDERS } from "../../config.ts";
-import { requireValue } from "../../helpers.ts";
-import type { ProviderModule } from "../../module.ts";
-import { buildStorefrontApiProvider } from "./storefront.ts";
+import { PROVIDERS } from '../../config.ts';
+import { requireValue } from '../../helpers.ts';
+import type { ProviderModule } from '../../module.ts';
+import { buildStorefrontApiProvider } from './implementations/storefront.ts';
 
-export { parseStorefrontToken, parseVariantId, parseGraphQLCatalog } from "./storefront.ts";
+export { parseStorefrontToken, parseVariantId, parseGraphQLCatalog } from './implementations/storefront.ts';
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "shapellx"), "config shapellx");
+const config = requireValue(
+  PROVIDERS.find((c) => c.id === 'shapellx'),
+  'config shapellx'
+);
 
 export const shapellxModule: ProviderModule = {
   config,

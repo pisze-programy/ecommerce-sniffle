@@ -1,4 +1,4 @@
-import type { Logger, ProviderModule } from "@ecommerce-sniffle/providers";
+import type { Logger, ProviderModule } from '@ecommerce-sniffle/providers';
 
 export interface QueueStatement {
   bind(...values: unknown[]): QueueStatement;
@@ -35,7 +35,7 @@ export interface TaskStore {
     leaseMs: number,
     now: number,
     maxAttempts: number,
-    modes: readonly string[],
+    modes: readonly string[]
   ): Promise<Task | null>;
   completeTask(taskId: string, maskedCount: number | null, now: number): Promise<void>;
   failTask(taskId: string, error: string, now: number, backoffMs: number): Promise<void>;
@@ -44,29 +44,29 @@ export interface TaskStore {
 }
 
 function rowToTask(row: unknown): Task | null {
-  if (typeof row !== "object" || row === null) {
+  if (typeof row !== 'object' || row === null) {
     return null;
   }
   const obj = row as Readonly<Record<string, unknown>>;
-  const taskId = obj["task_id"];
-  const providerId = obj["provider_id"];
-  const domain = obj["domain"];
-  const mode = obj["mode"];
-  const window = obj["window"];
-  const status = obj["status"];
-  const attempts = obj["attempts"];
-  const createdAt = obj["created_at"];
-  const durationSeconds = obj["duration_seconds"];
+  const taskId = obj['task_id'];
+  const providerId = obj['provider_id'];
+  const domain = obj['domain'];
+  const mode = obj['mode'];
+  const window = obj['window'];
+  const status = obj['status'];
+  const attempts = obj['attempts'];
+  const createdAt = obj['created_at'];
+  const durationSeconds = obj['duration_seconds'];
   if (
-    typeof taskId !== "string" ||
-    typeof providerId !== "string" ||
-    typeof domain !== "string" ||
-    typeof mode !== "string" ||
-    typeof window !== "string" ||
-    typeof status !== "string" ||
-    typeof attempts !== "number" ||
-    typeof createdAt !== "number" ||
-    typeof durationSeconds !== "number"
+    typeof taskId !== 'string' ||
+    typeof providerId !== 'string' ||
+    typeof domain !== 'string' ||
+    typeof mode !== 'string' ||
+    typeof window !== 'string' ||
+    typeof status !== 'string' ||
+    typeof attempts !== 'number' ||
+    typeof createdAt !== 'number' ||
+    typeof durationSeconds !== 'number'
   ) {
     return null;
   }
@@ -78,34 +78,34 @@ function rowToTask(row: unknown): Task | null {
     window,
     status,
     attempts,
-    leaseUntil: typeof obj["lease_until"] === "number" ? obj["lease_until"] : null,
-    workerId: typeof obj["worker_id"] === "string" ? obj["worker_id"] : null,
-    maskedCount: typeof obj["masked_count"] === "number" ? obj["masked_count"] : null,
-    error: typeof obj["error"] === "string" ? obj["error"] : null,
+    leaseUntil: typeof obj['lease_until'] === 'number' ? obj['lease_until'] : null,
+    workerId: typeof obj['worker_id'] === 'string' ? obj['worker_id'] : null,
+    maskedCount: typeof obj['masked_count'] === 'number' ? obj['masked_count'] : null,
+    error: typeof obj['error'] === 'string' ? obj['error'] : null,
     createdAt,
-    finishedAt: typeof obj["finished_at"] === "number" ? obj["finished_at"] : null,
+    finishedAt: typeof obj['finished_at'] === 'number' ? obj['finished_at'] : null,
     durationSeconds,
   };
 }
 
 export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
   const insert = db.prepare(
-    "INSERT OR IGNORE INTO tasks (task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at, duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    'INSERT OR IGNORE INTO tasks (task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at, duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   const complete = db.prepare(
-    "UPDATE tasks SET status = 'done', masked_count = ?, finished_at = ?, lease_until = NULL, worker_id = NULL WHERE task_id = ?",
+    "UPDATE tasks SET status = 'done', masked_count = ?, finished_at = ?, lease_until = NULL, worker_id = NULL WHERE task_id = ?"
   );
   const fail = db.prepare(
-    "UPDATE tasks SET status = 'pending', error = ?, lease_until = ?, worker_id = NULL WHERE task_id = ?",
+    "UPDATE tasks SET status = 'pending', error = ?, lease_until = ?, worker_id = NULL WHERE task_id = ?"
   );
   const reap = db.prepare(
     "UPDATE tasks SET status = CASE WHEN attempts >= ? THEN 'dlq' ELSE 'pending' END, " +
-      "lease_until = NULL, worker_id = NULL WHERE status = 'claimed' AND lease_until < ?",
+      "lease_until = NULL, worker_id = NULL WHERE status = 'claimed' AND lease_until < ?"
   );
   const reapPending = db.prepare(
-    "UPDATE tasks SET status = 'dlq' WHERE status = 'pending' AND attempts >= ? AND lease_until IS NULL",
+    "UPDATE tasks SET status = 'dlq' WHERE status = 'pending' AND attempts >= ? AND lease_until IS NULL"
   );
-  const counts = db.prepare("SELECT status, count(*) AS c FROM tasks GROUP BY status");
+  const counts = db.prepare('SELECT status, count(*) AS c FROM tasks GROUP BY status');
 
   return {
     async createTask(task: Task): Promise<void> {
@@ -125,36 +125,36 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
             task.error,
             task.createdAt,
             task.finishedAt,
-            task.durationSeconds,
+            task.durationSeconds
           )
           .run();
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("queue.createTask failed", { taskId: task.taskId, error: message });
+        logger.error('queue.createTask failed', { taskId: task.taskId, error: message });
         throw error;
       }
     },
 
     async claimTask(workerId, leaseMs, now, maxAttempts, modes): Promise<Task | null> {
       try {
-        const placeholders = modes.map(() => "?").join(", ");
+        const placeholders = modes.map(() => '?').join(', ');
         const claim = db.prepare(
           "UPDATE tasks SET status = 'claimed', lease_until = ?, worker_id = ?, attempts = attempts + 1 " +
-            "WHERE task_id = (" +
-            "SELECT task_id FROM tasks " +
+            'WHERE task_id = (' +
+            'SELECT task_id FROM tasks ' +
             `WHERE mode IN (${placeholders}) AND attempts < ? AND (` +
             "status = 'pending' AND (lease_until IS NULL OR lease_until < ?)" +
             " OR (status = 'claimed' AND lease_until < ?)" +
-            ") AND domain NOT IN (" +
+            ') AND domain NOT IN (' +
             "SELECT domain FROM tasks WHERE status = 'claimed' AND lease_until >= ?" +
-            ") ORDER BY duration_seconds ASC, created_at ASC LIMIT 1" +
-            ") RETURNING task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at, duration_seconds",
+            ') ORDER BY duration_seconds ASC, created_at ASC LIMIT 1' +
+            ') RETURNING task_id, provider_id, domain, mode, window, status, attempts, lease_until, worker_id, masked_count, error, created_at, finished_at, duration_seconds'
         );
         const row = await claim.bind(now + leaseMs, workerId, ...modes, maxAttempts, now, now, now).first();
         return rowToTask(row);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("queue.claimTask failed", { workerId, error: message });
+        logger.error('queue.claimTask failed', { workerId, error: message });
         throw error;
       }
     },
@@ -164,7 +164,7 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
         await complete.bind(maskedCount, now, taskId).run();
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("queue.completeTask failed", { taskId, error: message });
+        logger.error('queue.completeTask failed', { taskId, error: message });
         throw error;
       }
     },
@@ -174,7 +174,7 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
         await fail.bind(error, now + backoffMs, taskId).run();
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("queue.failTask failed", { taskId, error: message });
+        logger.error('queue.failTask failed', { taskId, error: message });
         throw error;
       }
     },
@@ -186,7 +186,7 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
         return first.meta.changes + second.meta.changes;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("queue.reapExpired failed", { error: message });
+        logger.error('queue.reapExpired failed', { error: message });
         throw error;
       }
     },
@@ -196,20 +196,20 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
         const result = await counts.all();
         const output: Record<string, number> = {};
         for (const row of result.results) {
-          if (typeof row !== "object" || row === null) {
+          if (typeof row !== 'object' || row === null) {
             continue;
           }
           const obj = row as Readonly<Record<string, unknown>>;
-          const status = obj["status"];
-          const count = obj["c"];
-          if (typeof status === "string" && typeof count === "number") {
+          const status = obj['status'];
+          const count = obj['c'];
+          if (typeof status === 'string' && typeof count === 'number') {
             output[status] = count;
           }
         }
         return output;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("queue.statusCounts failed", { error: message });
+        logger.error('queue.statusCounts failed', { error: message });
         throw error;
       }
     },
@@ -220,9 +220,9 @@ export async function enqueueProviders(
   db: QueueDb,
   logger: Logger,
   modules: readonly ProviderModule[],
-  window: "morning" | "evening",
+  window: 'morning' | 'evening',
   day: string,
-  now: number,
+  now: number
 ): Promise<number> {
   const store = createTaskStore(db, logger);
   let count = 0;
@@ -230,7 +230,7 @@ export async function enqueueProviders(
     if (!module.config.enabled) {
       continue;
     }
-    const inWindow = module.config.window === "both" || module.config.window === window;
+    const inWindow = module.config.window === 'both' || module.config.window === window;
     if (!inWindow) {
       continue;
     }
@@ -240,7 +240,7 @@ export async function enqueueProviders(
       domain: module.config.domain,
       mode: module.config.mode,
       window,
-      status: "pending",
+      status: 'pending',
       attempts: 0,
       leaseUntil: null,
       workerId: null,

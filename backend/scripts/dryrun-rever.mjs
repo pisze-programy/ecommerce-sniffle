@@ -1,5 +1,5 @@
-import { ALL_MODULES, createLogger, consoleSink, createRegistry } from "@ecommerce-sniffle/providers";
-import { aggregateDaily, diffSnapshots } from "@ecommerce-sniffle/analysis";
+import { ALL_MODULES, createLogger, consoleSink, createRegistry } from '@ecommerce-sniffle/providers';
+import { aggregateDaily, diffSnapshots } from '@ecommerce-sniffle/analysis';
 
 function variantToState(productId, variant) {
   return {
@@ -24,9 +24,9 @@ function catalogToSnapshot(catalog, window, snapshotAt) {
 
 const logger = createLogger(consoleSink);
 const registry = createRegistry(ALL_MODULES);
-const rever = registry.getModule("rever").build({ logger });
+const rever = registry.getModule('rever').build({ logger });
 
-logger.info("dryrun.rever.fetch", {});
+logger.info('dryrun.rever.fetch', {});
 const catalog = await rever.fetchCatalog();
 
 let variants = 0;
@@ -48,7 +48,7 @@ for (const product of catalog.products) {
   }
 }
 
-logger.info("dryrun.rever.coverage", {
+logger.info('dryrun.rever.coverage', {
   products: catalog.products.length,
   variants,
   withExactQty,
@@ -57,8 +57,8 @@ logger.info("dryrun.rever.coverage", {
 });
 
 const snapshotAt = new Date().toISOString();
-const snapshot = catalogToSnapshot(catalog, "evening", snapshotAt);
-logger.info("dryrun.rever.seed", { shop: snapshot.shop, variants: snapshot.variants.length });
+const snapshot = catalogToSnapshot(catalog, 'evening', snapshotAt);
+logger.info('dryrun.rever.seed', { shop: snapshot.shop, variants: snapshot.variants.length });
 
 // second run: simulate a sale of 2 units on the first tracked variant with qty > 2
 const secondCatalog = structuredClone(catalog);
@@ -75,16 +75,16 @@ for (const product of secondCatalog.products) {
     break;
   }
 }
-const secondSnapshot = catalogToSnapshot(secondCatalog, "morning", new Date().toISOString());
+const secondSnapshot = catalogToSnapshot(secondCatalog, 'morning', new Date().toISOString());
 const events = diffSnapshots(snapshot, secondSnapshot);
 const day = snapshotAt.slice(0, 10);
 const stats = aggregateDaily({ shop: snapshot.shop, day, events });
 
-logger.info("dryrun.rever.diff", {
+logger.info('dryrun.rever.diff', {
   events: events.length,
   firstEventType: events.length === 0 ? null : events[0].type,
   unitsSold: stats.unitsSold,
   revenue: stats.revenue,
 });
 
-console.log("\nDAILY_STATS", JSON.stringify(stats, null, 2));
+console.log('\nDAILY_STATS', JSON.stringify(stats, null, 2));

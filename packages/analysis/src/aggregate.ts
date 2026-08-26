@@ -1,5 +1,5 @@
-import { salePrice } from "./classify.js";
-import type { DailyStats, StockEvent } from "./types.js";
+import { salePrice } from './classify.js';
+import type { DailyStats, StockEvent } from './types.js';
 
 export interface DailyStatsInput {
   readonly shop: string;
@@ -16,27 +16,27 @@ export function aggregateDaily(input: DailyStatsInput): DailyStats {
   let maskedCount = 0;
 
   for (const event of input.events) {
-    if (event.type === "sold") {
+    if (event.type === 'sold') {
       const price = event.to === null ? 0 : salePrice(event.to);
       unitsSold += event.units;
       revenue += event.units * price;
       continue;
     }
-    if (event.type === "soldOut") {
+    if (event.type === 'soldOut') {
       soldOutCount += 1;
-      if (event.confidence === "exact") {
+      if (event.confidence === 'exact') {
         const price = event.to === null ? 0 : salePrice(event.to);
         unitsSold += event.units;
         revenue += event.units * price;
       }
       continue;
     }
-    if (event.type === "restock") {
+    if (event.type === 'restock') {
       restocked += event.units;
       maskedCount += 1;
       continue;
     }
-    if (event.type === "promoStart") {
+    if (event.type === 'promoStart') {
       promotionCount += 1;
       continue;
     }

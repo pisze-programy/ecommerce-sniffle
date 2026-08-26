@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.wrangler/
+.playwright-cli/
+.idea/
+_internal/
+.git/
+coverage/
+public/
+.env
+.env.*
+package-lock.json
+*.tsbuildinfo
+*.log

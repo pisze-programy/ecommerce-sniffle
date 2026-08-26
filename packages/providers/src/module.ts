@@ -1,5 +1,5 @@
-import type { Logger } from "./logger.ts";
-import type { Provider, ProviderConfig, StockRevealer } from "./types.ts";
+import type { Logger } from './logger.ts';
+import type { Provider, ProviderConfig, StockRevealer } from './types.ts';
 
 export interface DirectFetchResponse {
   readonly ok: boolean;
@@ -17,7 +17,7 @@ export interface DirectFetchOptions {
 export type DirectFetch = (
   input: string | URL | Request,
   init?: RequestInit,
-  options?: DirectFetchOptions,
+  options?: DirectFetchOptions
 ) => Promise<DirectFetchResponse>;
 
 export interface ProviderDeps {

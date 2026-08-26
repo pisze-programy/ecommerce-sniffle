@@ -1,14 +1,17 @@
-import { PROVIDERS } from "../../config.ts";
-import { requireValue } from "../../helpers.ts";
-import type { ProviderModule } from "../../module.ts";
-import { buildProvider } from "../../factory.ts";
-import type { Catalog, Money, Product, Variant } from "../../types.ts";
-import type { Logger } from "../../logger.ts";
+import { PROVIDERS } from '../../config.ts';
+import { requireValue } from '../../helpers.ts';
+import type { ProviderModule } from '../../module.ts';
+import { buildProvider } from '../../factory.ts';
+import type { Catalog, Money, Product, Variant } from '../../types.ts';
+import type { Logger } from '../../logger.ts';
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "dobrerzeczy"), "config dobrerzeczy");
+const config = requireValue(
+  PROVIDERS.find((c) => c.id === 'dobrerzeczy'),
+  'config dobrerzeczy'
+);
 
 const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 const MAX_DEPTH = 60;
 const MAX_ATTEMPTS = 3;
@@ -21,11 +24,11 @@ export function parseNuxtPayload(html: string, logger?: Logger): readonly unknow
   }
   let data: unknown;
   try {
-    data = JSON.parse(match[1] ?? "");
+    data = JSON.parse(match[1] ?? '');
   } catch (error: unknown) {
     if (logger !== undefined) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn("dobrerzeczy.nuxt payload parse failed", { error: message });
+      logger.warn('dobrerzeczy.nuxt payload parse failed', { error: message });
     }
     return null;
   }
@@ -36,19 +39,17 @@ export function parseNuxtPayload(html: string, logger?: Logger): readonly unknow
 }
 
 function deref(payload: readonly unknown[], node: unknown): unknown {
-  if (typeof node === "number" && node >= 0 && node < payload.length) {
+  if (typeof node === 'number' && node >= 0 && node < payload.length) {
     return payload[node];
   }
   return node;
 }
 
 function isProductObject(obj: Readonly<Record<string, unknown>>): boolean {
-  return "_id" in obj && "price" in obj && "sizes" in obj && "slug" in obj;
+  return '_id' in obj && 'price' in obj && 'sizes' in obj && 'slug' in obj;
 }
 
-export function findAllProducts(
-  payload: readonly unknown[],
-): readonly Readonly<Record<string, unknown>>[] {
+export function findAllProducts(payload: readonly unknown[]): readonly Readonly<Record<string, unknown>>[] {
   const products: Readonly<Record<string, unknown>>[] = [];
   const visited = new Set<number>();
   const seenObjects = new Set<object>();
@@ -56,7 +57,7 @@ export function findAllProducts(
     if (depth > MAX_DEPTH) {
       return;
     }
-    if (typeof node === "number") {
+    if (typeof node === 'number') {
       if (node < 0 || node >= payload.length || visited.has(node)) {
         return;
       }
@@ -70,7 +71,7 @@ export function findAllProducts(
       }
       return;
     }
-    if (typeof node === "object" && node !== null) {
+    if (typeof node === 'object' && node !== null) {
       const obj = node as Readonly<Record<string, unknown>>;
       if (isProductObject(obj)) {
         if (!seenObjects.has(obj)) {
@@ -89,50 +90,50 @@ export function findAllProducts(
 }
 
 function money(amount: number): Money {
-  return { amount, currency: "PLN" };
+  return { amount, currency: 'PLN' };
 }
 
 export function parseProductFromPayload(
   payload: readonly unknown[],
   productObject: Readonly<Record<string, unknown>>,
   domain: string,
-  logger: Logger,
+  logger: Logger
 ): Product | null {
-  const rawId = deref(payload, productObject["_id"]);
-  const slug = deref(payload, productObject["slug"]);
-  const id = typeof rawId === "string" ? rawId : typeof slug === "string" ? slug : null;
+  const rawId = deref(payload, productObject['_id']);
+  const slug = deref(payload, productObject['slug']);
+  const id = typeof rawId === 'string' ? rawId : typeof slug === 'string' ? slug : null;
   if (id === null) {
-    logger.warn("dobrerzeczy.product no id", {});
+    logger.warn('dobrerzeczy.product no id', {});
     return null;
   }
-  const url = typeof slug === "string" ? `https://${domain}/produkt/${slug}` : `https://${domain}/`;
-  const rawTitle = deref(payload, productObject["name"]);
-  const title = typeof rawTitle === "string" ? rawTitle : id;
-  const rawPrice = deref(payload, productObject["price"]);
-  const price = typeof rawPrice === "number" ? rawPrice : 0;
-  const rawPreorder = deref(payload, productObject["isPreorder"]);
+  const url = typeof slug === 'string' ? `https://${domain}/produkt/${slug}` : `https://${domain}/`;
+  const rawTitle = deref(payload, productObject['name']);
+  const title = typeof rawTitle === 'string' ? rawTitle : id;
+  const rawPrice = deref(payload, productObject['price']);
+  const price = typeof rawPrice === 'number' ? rawPrice : 0;
+  const rawPreorder = deref(payload, productObject['isPreorder']);
   const isPreorder = rawPreorder === true;
-  const rawSizes = deref(payload, productObject["sizes"]);
+  const rawSizes = deref(payload, productObject['sizes']);
   const variants: Variant[] = [];
   if (Array.isArray(rawSizes)) {
     for (const ref of rawSizes) {
       const rawEntry = deref(payload, ref);
-      if (typeof rawEntry !== "object" || rawEntry === null) {
+      if (typeof rawEntry !== 'object' || rawEntry === null) {
         continue;
       }
       const entry = rawEntry as Readonly<Record<string, unknown>>;
-      const rawSize = deref(payload, entry["size"]);
+      const rawSize = deref(payload, entry['size']);
       const sizeName =
-        typeof rawSize === "object" && rawSize !== null
-          ? deref(payload, (rawSize as Readonly<Record<string, unknown>>)["name"])
+        typeof rawSize === 'object' && rawSize !== null
+          ? deref(payload, (rawSize as Readonly<Record<string, unknown>>)['name'])
           : null;
-      const rawSizeId = deref(payload, entry["_id"]);
-      const rawStock = deref(payload, entry["stock"]);
-      const stock = typeof rawStock === "number" ? rawStock : null;
+      const rawSizeId = deref(payload, entry['_id']);
+      const rawStock = deref(payload, entry['stock']);
+      const stock = typeof rawStock === 'number' ? rawStock : null;
       const available = isPreorder ? true : stock !== null && stock > 0;
       variants.push({
-        id: typeof rawSizeId === "string" ? rawSizeId : `${id}-${String(variants.length)}`,
-        title: typeof sizeName === "string" ? sizeName : "default",
+        id: typeof rawSizeId === 'string' ? rawSizeId : `${id}-${String(variants.length)}`,
+        title: typeof sizeName === 'string' ? sizeName : 'default',
         sku: null,
         price: money(price),
         regularPrice: null,
@@ -142,7 +143,7 @@ export function parseProductFromPayload(
     }
   }
   if (variants.length === 0) {
-    logger.warn("dobrerzeczy.product has no sizes", { url });
+    logger.warn('dobrerzeczy.product has no sizes', { url });
     return null;
   }
   return { id, title, url, variants };
@@ -152,7 +153,7 @@ async function fetchText(url: string, logger: Logger): Promise<string> {
   let attempt = 0;
   while (true) {
     attempt += 1;
-    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
     if (response.ok) {
       return response.text();
     }
@@ -162,7 +163,7 @@ async function fetchText(url: string, logger: Logger): Promise<string> {
         continue;
       }
     }
-    logger.warn("dobrerzeczy.fetch failed", { url, status: response.status });
+    logger.warn('dobrerzeczy.fetch failed', { url, status: response.status });
     throw new Error(`GET ${url} failed with status ${response.status}`);
   }
 }
@@ -174,11 +175,11 @@ export const dobrerzeczyModule: ProviderModule = {
       const html = await fetchText(config.endpoint, deps.logger);
       const payload = parseNuxtPayload(html, deps.logger);
       if (payload === null) {
-        throw new Error("dobrerzeczy payload missing");
+        throw new Error('dobrerzeczy payload missing');
       }
       const objects = findAllProducts(payload);
       if (objects.length === 0) {
-        throw new Error("dobrerzeczy catalog empty");
+        throw new Error('dobrerzeczy catalog empty');
       }
       const products: Product[] = [];
       for (const obj of objects) {
@@ -188,9 +189,9 @@ export const dobrerzeczyModule: ProviderModule = {
         }
       }
       if (products.length === 0) {
-        throw new Error("dobrerzeczy catalog empty");
+        throw new Error('dobrerzeczy catalog empty');
       }
-      deps.logger.debug("dobrerzeczy catalog fetched", {
+      deps.logger.debug('dobrerzeczy catalog fetched', {
         domain: config.domain,
         products: products.length,
       });

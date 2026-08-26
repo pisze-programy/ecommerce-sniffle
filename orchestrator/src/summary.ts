@@ -1,7 +1,7 @@
-import { createLogger, consoleSink } from "@ecommerce-sniffle/providers";
-import type { Logger } from "@ecommerce-sniffle/providers";
-import { sendReport, cronReport } from "./snitch.ts";
-import type { SnitchStatus } from "./snitch.ts";
+import { createLogger, consoleSink } from '@ecommerce-sniffle/providers';
+import type { Logger } from '@ecommerce-sniffle/providers';
+import { sendReport, cronReport } from './snitch.ts';
+import type { SnitchStatus } from './snitch.ts';
 
 interface SummaryEntry {
   readonly providerId: string;
@@ -21,10 +21,10 @@ interface Summary {
 const WARN_BYTES = 1024 * 1024;
 
 export async function runCronSummary(window: string, logger: Logger): Promise<void> {
-  const backendUrl = process.env["BACKEND_URL"];
-  const secret = process.env["INGEST_SECRET"];
+  const backendUrl = process.env['BACKEND_URL'];
+  const secret = process.env['INGEST_SECRET'];
   if (backendUrl === undefined || backendUrl.length === 0 || secret === undefined || secret.length === 0) {
-    logger.warn("summary disabled: BACKEND_URL or INGEST_SECRET not set");
+    logger.warn('summary disabled: BACKEND_URL or INGEST_SECRET not set');
     return;
   }
   const day = new Date().toISOString().slice(0, 10);
@@ -34,21 +34,21 @@ export async function runCronSummary(window: string, logger: Logger): Promise<vo
       headers: { Authorization: `Bearer ${secret}` },
     });
     if (!response.ok) {
-      logger.warn("summary query failed", { status: response.status });
+      logger.warn('summary query failed', { status: response.status });
       return;
     }
     summary = (await response.json()) as Summary;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn("summary query error", { error: message });
+    logger.warn('summary query error', { error: message });
     return;
   }
   const messages: string[] = [];
   for (const entry of summary.failed) {
-    messages.push(`FAILED ${entry.providerId}: ${entry.error ?? "no error"}`);
+    messages.push(`FAILED ${entry.providerId}: ${entry.error ?? 'no error'}`);
   }
   if (summary.pending.length > 0) {
-    messages.push(`PENDING: ${summary.pending.join(", ")}`);
+    messages.push(`PENDING: ${summary.pending.join(', ')}`);
   }
   for (const entry of summary.perProvider) {
     if (entry.bytes > WARN_BYTES) {
@@ -56,10 +56,9 @@ export async function runCronSummary(window: string, logger: Logger): Promise<vo
     }
   }
   if (messages.length === 0) {
-    messages.push("all providers done, no errors, no pending");
+    messages.push('all providers done, no errors, no pending');
   }
-  const status: SnitchStatus =
-    summary.failed.length > 0 || summary.pending.length > 0 ? "failed" : "ok";
+  const status: SnitchStatus = summary.failed.length > 0 || summary.pending.length > 0 ? 'failed' : 'ok';
   const transferMb = (summary.transferBytes / WARN_BYTES).toFixed(1);
   await sendReport(
     cronReport(
@@ -73,29 +72,29 @@ export async function runCronSummary(window: string, logger: Logger): Promise<vo
         transferBytes: summary.transferBytes,
         transferMb: Number(transferMb),
       },
-      messages.join("\n"),
+      messages.join('\n')
     ),
-    logger,
+    logger
   );
 }
 
 function main(): void {
   const logger = createLogger(consoleSink);
-  const window = process.argv[2] ?? "";
-  if (window !== "morning" && window !== "evening") {
-    logger.error("usage: node dist/summary.js <morning|evening>");
+  const window = process.argv[2] ?? '';
+  if (window !== 'morning' && window !== 'evening') {
+    logger.error('usage: node dist/summary.js <morning|evening>');
     return;
   }
   runCronSummary(window, logger)
     .then(() => process.exit(0))
     .catch((error: unknown) => {
-      logger.error("summary failed", {
+      logger.error('summary failed', {
         error: error instanceof Error ? error.message : String(error),
       });
       process.exit(1);
     });
 }
 
-if (import.meta.url.endsWith("summary.js")) {
+if (import.meta.url.endsWith('summary.js')) {
   main();
 }

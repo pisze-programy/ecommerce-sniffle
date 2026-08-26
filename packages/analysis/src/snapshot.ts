@@ -1,12 +1,12 @@
-import type { Catalog, Variant } from "@ecommerce-sniffle/providers";
-import type { Snapshot, SnapshotWindow, VariantState } from "./types.ts";
+import type { Catalog, Variant } from '@ecommerce-sniffle/providers';
+import type { Snapshot, SnapshotWindow, VariantState } from './types.ts';
 
 export function currentWindow(at: Date = new Date()): SnapshotWindow {
   const hour = at.getUTCHours();
   if (hour < 12) {
-    return "morning";
+    return 'morning';
   }
-  return "evening";
+  return 'evening';
 }
 
 function variantToState(productId: string, variant: Variant): VariantState {
@@ -20,11 +20,7 @@ function variantToState(productId: string, variant: Variant): VariantState {
   };
 }
 
-export function catalogToSnapshot(
-  catalog: Catalog,
-  window: SnapshotWindow,
-  snapshotAt: string,
-): Snapshot {
+export function catalogToSnapshot(catalog: Catalog, window: SnapshotWindow, snapshotAt: string): Snapshot {
   const variants: VariantState[] = [];
   for (const product of catalog.products) {
     for (const variant of product.variants) {

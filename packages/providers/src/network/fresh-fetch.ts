@@ -1,5 +1,5 @@
-import { Agent, ProxyAgent, fetch as undiciFetch } from "undici";
-import type { WrappedFetch } from "./manager.ts";
+import { Agent, ProxyAgent, fetch as undiciFetch } from 'undici';
+import type { WrappedFetch } from './manager.ts';
 
 export interface FreshResponse {
   readonly ok: boolean;
@@ -15,11 +15,7 @@ export interface Closeable {
   close(): Promise<void>;
 }
 
-type FetchImpl = (
-  input: string,
-  init: RequestInit,
-  dispatcher: unknown,
-) => Promise<FreshResponse>;
+type FetchImpl = (input: string, init: RequestInit, dispatcher: unknown) => Promise<FreshResponse>;
 
 type MakeAgent = (proxyUrl: string | null) => Closeable;
 
@@ -38,10 +34,7 @@ const defaultMakeAgent: MakeAgent = (proxyUrl) => {
   return new ProxyAgent(proxyUrl);
 };
 
-export function createFreshFetch(
-  proxyUrl: string | null,
-  deps: FreshFetchDeps = {},
-): WrappedFetch {
+export function createFreshFetch(proxyUrl: string | null, deps: FreshFetchDeps = {}): WrappedFetch {
   const fetchImpl = deps.fetchImpl ?? defaultFetchImpl;
   const makeAgent = deps.makeAgent ?? defaultMakeAgent;
   return async (input, init) => {

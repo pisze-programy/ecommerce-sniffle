@@ -1,15 +1,18 @@
-import { buildProvider } from "../../factory.ts";
-import { PROVIDERS } from "../../config.ts";
-import { requireValue } from "../../helpers.ts";
-import { BROWSER_HEADERS } from "../../browser-headers.ts";
-import type { ProviderModule } from "../../module.ts";
-import type { Logger } from "../../logger.ts";
-import type { Catalog, Money, Product, Variant } from "../../types.ts";
+import { buildProvider } from '../../factory.ts';
+import { PROVIDERS } from '../../config.ts';
+import { requireValue } from '../../helpers.ts';
+import { BROWSER_HEADERS } from '../../browser-headers.ts';
+import type { ProviderModule } from '../../module.ts';
+import type { Logger } from '../../logger.ts';
+import type { Catalog, Money, Product, Variant } from '../../types.ts';
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "magdabutrym"), "config magdabutrym");
+const config = requireValue(
+  PROVIDERS.find((c) => c.id === 'magdabutrym'),
+  'config magdabutrym'
+);
 
-const BASE_URL = "https://www.magdabutrym.com";
-const LOCALE = "/pl-en";
+const BASE_URL = 'https://www.magdabutrym.com';
+const LOCALE = '/pl-en';
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
 
@@ -18,7 +21,7 @@ function delayMs(ms: number): Promise<void> {
 }
 
 export function money(amount: number): Money {
-  return { amount, currency: "PLN" };
+  return { amount, currency: 'PLN' };
 }
 
 export function parseRscQuantityAvailable(html: string): ReadonlyMap<string, number> {
@@ -46,13 +49,10 @@ export function extractHandle(url: string): string | null {
 
 type CatalogFetch = (
   url: string,
-  init?: RequestInit,
+  init?: RequestInit
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
-async function fetchText(
-  url: string,
-  fetchFn: CatalogFetch = fetch,
-): Promise<string> {
+async function fetchText(url: string, fetchFn: CatalogFetch = fetch): Promise<string> {
   let attempt = 0;
   while (true) {
     attempt += 1;
@@ -62,10 +62,7 @@ async function fetchText(
     if (response.ok) {
       return response.text();
     }
-    if (
-      (response.status === 429 || response.status === 403 || response.status >= 500) &&
-      attempt < MAX_ATTEMPTS
-    ) {
+    if ((response.status === 429 || response.status === 403 || response.status >= 500) && attempt < MAX_ATTEMPTS) {
       await delayMs(RETRY_DELAY_MS * attempt);
       continue;
     }
@@ -76,7 +73,8 @@ async function fetchText(
 async function fetchProductHandles(logger: Logger, fetchFn: CatalogFetch): Promise<string[]> {
   const index = await fetchText(`${BASE_URL}/sitemap.xml`, fetchFn);
   const allSitemap = /<loc>([^<]*sitemap-category\/all\.xml[^<]*)<\/loc>/.exec(index);
-  const sitemapUrl = allSitemap !== null && allSitemap[1] !== undefined ? allSitemap[1] : `${BASE_URL}/sitemap-category/all.xml`;
+  const sitemapUrl =
+    allSitemap !== null && allSitemap[1] !== undefined ? allSitemap[1] : `${BASE_URL}/sitemap-category/all.xml`;
   const xml = await fetchText(sitemapUrl, fetchFn);
   const handles: string[] = [];
   const seen = new Set<string>();
@@ -92,14 +90,14 @@ async function fetchProductHandles(logger: Logger, fetchFn: CatalogFetch): Promi
     }
   }
   if (handles.length === 0) {
-    logger.warn("magdabutrym catalog empty", { domain: config.domain });
+    logger.warn('magdabutrym catalog empty', { domain: config.domain });
   }
   return handles;
 }
 
 async function fetchProduct(
   handle: string,
-  fetchFn: CatalogFetch,
+  fetchFn: CatalogFetch
 ): Promise<{
   readonly title: string;
   readonly variants: readonly Variant[];
@@ -116,7 +114,7 @@ async function fetchProduct(
     const normalized = quantity < 0 ? 1 : quantity;
     variants.push({
       id,
-      title: "default",
+      title: 'default',
       sku: null,
       price: money(0),
       regularPrice: null,
@@ -149,7 +147,7 @@ export const magdabutrymModule: ProviderModule = {
         try {
           const product = await fetchProduct(handle, fetchFn);
           if (product === null) {
-            deps.logger.warn("magdabutrym.product no inventory", { handle });
+            deps.logger.warn('magdabutrym.product no inventory', { handle });
             continue;
           }
           products.push({
@@ -160,10 +158,10 @@ export const magdabutrymModule: ProviderModule = {
           });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          deps.logger.warn("magdabutrym.product fetch failed", { handle, error: message });
+          deps.logger.warn('magdabutrym.product fetch failed', { handle, error: message });
         }
       }
-      deps.logger.debug("magdabutrym catalog fetched", {
+      deps.logger.debug('magdabutrym catalog fetched', {
         domain: config.domain,
         handles: handles.length,
         products: products.length,

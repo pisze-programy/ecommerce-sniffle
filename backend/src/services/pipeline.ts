@@ -1,8 +1,8 @@
-import type { Provider } from "@ecommerce-sniffle/providers";
-import { aggregateDaily, catalogToSnapshot, currentWindow, diffSnapshots } from "@ecommerce-sniffle/analysis";
-import type { DailyStats, Snapshot, StockEvent } from "@ecommerce-sniffle/analysis";
-import type { Logger } from "@ecommerce-sniffle/providers";
-import type { Storage } from "../services/storage.ts";
+import type { Provider } from '@ecommerce-sniffle/providers';
+import { aggregateDaily, catalogToSnapshot, currentWindow, diffSnapshots } from '@ecommerce-sniffle/analysis';
+import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
+import type { Logger } from '@ecommerce-sniffle/providers';
+import type { Storage } from '../services/storage.ts';
 
 export interface PipelineResult {
   readonly shop: string;
@@ -12,15 +12,11 @@ export interface PipelineResult {
   readonly stats: DailyStats | null;
 }
 
-export async function storeSnapshot(
-  storage: Storage,
-  snapshot: Snapshot,
-  logger: Logger,
-): Promise<PipelineResult> {
+export async function storeSnapshot(storage: Storage, snapshot: Snapshot, logger: Logger): Promise<PipelineResult> {
   const previous = await storage.readLatestSnapshot(snapshot.shop);
   await storage.writeSnapshot(snapshot);
   if (previous === null) {
-    logger.info("pipeline.seeded", { shop: snapshot.shop, variants: snapshot.variants.length });
+    logger.info('pipeline.seeded', { shop: snapshot.shop, variants: snapshot.variants.length });
     return { shop: snapshot.shop, snapshotAt: snapshot.snapshotAt, seeded: true, events: 0, stats: null };
   }
   const events: readonly StockEvent[] = diffSnapshots(previous, snapshot);
@@ -28,7 +24,7 @@ export async function storeSnapshot(
   await storage.writeEvents(snapshot.shop, day, snapshot.snapshotAt, events);
   const stats = aggregateDaily({ shop: snapshot.shop, day, events });
   await storage.writeDailyStats(stats);
-  logger.info("pipeline.finished", {
+  logger.info('pipeline.finished', {
     shop: snapshot.shop,
     events: events.length,
     unitsSold: stats.unitsSold,
@@ -38,7 +34,7 @@ export async function storeSnapshot(
 
 export async function runShopPipeline(provider: Provider, storage: Storage, logger: Logger): Promise<PipelineResult> {
   const shop = provider.config.domain;
-  logger.info("pipeline.fetchCatalog", { providerId: provider.config.id, shop });
+  logger.info('pipeline.fetchCatalog', { providerId: provider.config.id, shop });
   const catalog = await provider.fetchCatalog();
   const snapshotAt = new Date().toISOString();
   const snapshot = catalogToSnapshot(catalog, currentWindow(), snapshotAt);

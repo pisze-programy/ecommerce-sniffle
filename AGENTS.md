@@ -42,6 +42,7 @@ No Polish comments.
 ## Tests (must)
 
 Unit tests cover:
+
 - happy path
 - edge cases
 - mixed calls
@@ -69,6 +70,8 @@ Two layers use the same providers.
    - does NOT use tailscale
    - runs on a 256 MB VPS with 0 swap, shares RAM with panperyskop
    - must exit gracefully before out-of-memory, never kill another cron
+   - NEVER run npm install on the VPS. It dies of OOM. Copy the
+     built folder and the node_modules from the developer machine.
 
 The CF worker cannot use a residential proxy. This is why mutations run
 on the VPS. The VPS IP stays clean.
@@ -80,6 +83,7 @@ on the VPS. The VPS IP stays clean.
 - `requiresProxy: true` means the provider needs webshare.
 
 One provider gives 100% stock coverage:
+
 - exact count where the shop tracks stock
 - 1 when available (buyable)
 - 0 when sold out
@@ -105,16 +109,18 @@ npm run typecheck
 ```
 
 Backend deploy:
+
 ```
 cd backend
 npx wrangler deploy
 ```
 
 VPS orchestrator (1:1 mirror, no Docker):
+
 ```
 cd orchestrator
 npx tsup
-# copy the folder to the VPS
-# on the VPS: npm ci --omit=dev
+# copy the folder and the node_modules to the VPS
+# NEVER run npm install on the VPS. It dies of OOM.
 # on the VPS: node dist/index.js
 ```

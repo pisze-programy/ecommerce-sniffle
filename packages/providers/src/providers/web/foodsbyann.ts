@@ -1,11 +1,14 @@
-import { buildProvider } from "../../factory.ts";
-import { PROVIDERS } from "../../config.ts";
-import { requireValue } from "../../helpers.ts";
-import { BROWSER_HEADERS } from "../../browser-headers.ts";
-import type { ProviderModule } from "../../module.ts";
-import type { Catalog, Money, Product, Variant } from "../../types.ts";
+import { buildProvider } from '../../factory.ts';
+import { PROVIDERS } from '../../config.ts';
+import { requireValue } from '../../helpers.ts';
+import { BROWSER_HEADERS } from '../../browser-headers.ts';
+import type { ProviderModule } from '../../module.ts';
+import type { Catalog, Money, Product, Variant } from '../../types.ts';
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "foodsbyann"), "config foodsbyann");
+const config = requireValue(
+  PROVIDERS.find((c) => c.id === 'foodsbyann'),
+  'config foodsbyann'
+);
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
@@ -52,12 +55,12 @@ export function parseIdoSellPrice(html: string): number {
 }
 
 export function money(amount: number): Money {
-  return { amount, currency: "PLN" };
+  return { amount, currency: 'PLN' };
 }
 
 type CatalogFetch = (
   url: string,
-  init?: RequestInit,
+  init?: RequestInit
 ) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string> }>;
 
 async function fetchBody(url: string, fetchFn: CatalogFetch = fetch): Promise<string> {
@@ -70,19 +73,16 @@ async function fetchBody(url: string, fetchFn: CatalogFetch = fetch): Promise<st
       const isGzip = buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b;
       if (isGzip) {
         try {
-          const { gunzipSync } = await import("node:zlib");
-          return gunzipSync(buffer).toString("utf8");
+          const { gunzipSync } = await import('node:zlib');
+          return gunzipSync(buffer).toString('utf8');
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           throw new Error(`gunzip failed for ${url}: ${message}`);
         }
       }
-      return buffer.toString("utf8");
+      return buffer.toString('utf8');
     }
-    if (
-      (response.status === 429 || response.status === 403 || response.status >= 500) &&
-      attempt < MAX_ATTEMPTS
-    ) {
+    if ((response.status === 429 || response.status === 403 || response.status >= 500) && attempt < MAX_ATTEMPTS) {
       await delayMs(RETRY_DELAY_MS * attempt);
       continue;
     }
@@ -106,9 +106,9 @@ async function fetchSitemapUrls(fetchFn: CatalogFetch): Promise<string[]> {
       if (loc === undefined) {
         continue;
       }
-      if (loc.includes("product-pol-")) {
+      if (loc.includes('product-pol-')) {
         urls.push(loc);
-      } else if (loc.includes("sitemap")) {
+      } else if (loc.includes('sitemap')) {
         queue.push(loc);
       }
     }
@@ -139,7 +139,7 @@ export const foodsbyannModule: ProviderModule = {
           const html = await fetchBody(url, fetchFn);
           const sizes = parseIdoSellSizes(html);
           if (sizes.length === 0) {
-            deps.logger.warn("foodsbyann.product no sizes", { url });
+            deps.logger.warn('foodsbyann.product no sizes', { url });
             continue;
           }
           const productId = parseIdoSellProductId(url);
@@ -157,7 +157,7 @@ export const foodsbyannModule: ProviderModule = {
           products.push({ id: productId, title, url, variants });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          deps.logger.warn("foodsbyann.product fetch failed", { url, error: message });
+          deps.logger.warn('foodsbyann.product fetch failed', { url, error: message });
         }
       }
       return { domain: config.domain, fetchedAt: new Date().toISOString(), products };

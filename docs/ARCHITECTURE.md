@@ -6,6 +6,7 @@ This document explains the whole flow. It uses Simplified Technical English.
 
 Track stock and price for e-commerce shops.
 Every day, for every product, we store:
+
 - current price and regular price
 - availability and exact stock quantity where the shop tracks it
 

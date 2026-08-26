@@ -1,10 +1,10 @@
-import { ConcurrencyLimiter } from "./limiter.ts";
+import { ConcurrencyLimiter } from './limiter.ts';
 
 export async function mapPool<T, R>(
   items: readonly T[],
   concurrency: number,
   fn: (item: T, index: number) => Promise<R>,
-  limiter?: ConcurrencyLimiter,
+  limiter?: ConcurrencyLimiter
 ): Promise<R[]> {
   const results = new Array<R>(items.length);
   let index = 0;

@@ -7,18 +7,18 @@ It uses Simplified Technical English.
 
 Every provider has a config. The config controls the provider.
 
-| Field | Meaning |
-|---|---|
-| `id` | unique name of the provider |
-| `domain` | shop domain |
-| `platform` | shopify, shoper, woocommerce, custom |
-| `schedule` | cron expression - how often it runs |
-| `mode` | cf-get, vps-get or vps-mutation - where it runs |
-| `stockSource` | where exact stock comes from |
-| `ratePerSecond` | max requests per second |
-| `requiresProxy` | true if the provider needs a residential proxy |
-| `endpoint` | where the call happens |
-| `enabled` | true to run it |
+| Field           | Meaning                                         |
+| --------------- | ----------------------------------------------- |
+| `id`            | unique name of the provider                     |
+| `domain`        | shop domain                                     |
+| `platform`      | shopify, shoper, woocommerce, custom            |
+| `schedule`      | cron expression - how often it runs             |
+| `mode`          | cf-get, vps-get or vps-mutation - where it runs |
+| `stockSource`   | where exact stock comes from                    |
+| `ratePerSecond` | max requests per second                         |
+| `requiresProxy` | true if the provider needs a residential proxy  |
+| `endpoint`      | where the call happens                          |
+| `enabled`       | true to run it                                  |
 
 ## Execution modes
 
@@ -34,6 +34,7 @@ Every provider has a config. The config controls the provider.
 - `basket-reveal`: Shoper basket PUT (mutation, proxy).
 - `html`: stock in HTML (GET).
 - `boolean`: availability only (1 or 0).
+- `mcp-inventory`: Shopify MCP server cart clamp (mutation, proxy).
 
 ## The 16 providers
 
@@ -49,13 +50,13 @@ rate-limits bursts of page fetches. The provider paces the fetches at
 The Cloudflare worker has a 30 second limit. This is why the
 mode is `vps-get`, not `cf-get`.
 
-| id | domain | stock source |
-|---|---|---|
-| forcer | forcer.pl | embedded-json |
-| misbhv | misbhv.com | embedded-json |
+| id         | domain         | stock source  |
+| ---------- | -------------- | ------------- |
+| forcer     | forcer.pl      | embedded-json |
+| misbhv     | misbhv.com     | embedded-json |
 | gymglamour | gymglamour.com | embedded-json |
-| montiel | montiel.com | embedded-json |
-| noo-ma | noo.ma | embedded-json |
+| montiel    | montiel.com    | embedded-json |
+| noo-ma     | noo.ma         | embedded-json |
 
 gymglamour uses the Restock Rocket app. The page has
 `_RestockRocketConfig.variantsInventoryQuantity`, a map of variant id
@@ -71,31 +72,43 @@ page. The page shows only the default variant, so the provider fetches
 
 ### Shopify - cart probe (vps-mutation)
 
-| id | domain | stock source |
-|---|---|---|
-| booso | booso.pl | cart-probe |
-| hdrey | hdrey.com | cart-probe |
-| wakenbake | wakenbake.pl | cart-probe |
+| id        | domain       | stock source |
+| --------- | ------------ | ------------ |
+| booso     | booso.pl     | cart-probe   |
+| hdrey     | hdrey.com    | cart-probe   |
+| wakenbake | wakenbake.pl | cart-probe   |
+
+### Shopify - MCP inventory (vps-mutation)
+
+| id             | domain             | stock source  |
+| -------------- | ------------------ | ------------- |
+| derichgallery  | derichgallery.com  | mcp-inventory |
+| monartofficial | monartofficial.com | mcp-inventory |
+
+The MCP server clamps a huge cart quantity to the exact stock.
+The cart-probe returned 429 and 403 at production scale. The MCP
+server does not. One request holds 10 variants. The transfer is about
+3 KB per request. See [SHOPIFY-MCP-INVENTORY.md](./SHOPIFY-MCP-INVENTORY.md).
 
 ### Shoper - basket reveal (vps-mutation)
 
-| id | domain | stock source |
-|---|---|---|
-| arustamian | arustamian.com | basket-reveal |
-| e-daag | e-daag.com.pl | basket-reveal |
+| id           | domain           | stock source  |
+| ------------ | ---------------- | ------------- |
+| arustamian   | arustamian.com   | basket-reveal |
+| e-daag       | e-daag.com.pl    | basket-reveal |
 | emereedivine | emereedivine.com | basket-reveal |
-| sklepskolim | sklepskolim.pl | basket-reveal |
-| wkdzik | wkdzik.pl | basket-reveal |
+| sklepskolim  | sklepskolim.pl   | basket-reveal |
+| wkdzik       | wkdzik.pl        | basket-reveal |
 
 ### Web - HTML stock (cf-get)
 
-| id | domain | stock source |
-|---|---|---|
-| rever | rever.com.pl | html |
-| dobrerzeczy | dobrerzeczy.pl | html |
-| royalwatch | royalwatch.pl | html |
-| mushi | mushi.pl | html |
-| premieresociety | premieresociety.com | html |
+| id              | domain              | stock source |
+| --------------- | ------------------- | ------------ |
+| rever           | rever.com.pl        | html         |
+| dobrerzeczy     | dobrerzeczy.pl      | html         |
+| royalwatch      | royalwatch.pl       | html         |
+| mushi           | mushi.pl            | html         |
+| premieresociety | premieresociety.com | html         |
 
 ### Web - exact stock notes
 

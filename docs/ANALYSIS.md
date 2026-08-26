@@ -33,18 +33,18 @@ We only see two stock values.
 
 We compare the previous state with the current state.
 
-| Change | Classification | Confidence |
-|---|---|---|
-| quantity decreased | sold = previous - current | exact |
-| quantity decreased and a restock could hide sales | sold = previous - current | lower-bound |
-| quantity increased | restock = current - previous; sales unknown | masked |
-| quantity unchanged, price decreased (regular > price) | promo start | exact |
-| quantity unchanged, price increased to regular | promo end | exact |
-| quantity unchanged, price unchanged | no change | exact |
-| availability true -> false | sold out | exact (unit count unknown if untracked) |
-| availability false -> true | back in stock | exact |
-| new product appears | product new | exact |
-| product disappears | product removed | exact |
+| Change                                                | Classification                              | Confidence                              |
+| ----------------------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| quantity decreased                                    | sold = previous - current                   | exact                                   |
+| quantity decreased and a restock could hide sales     | sold = previous - current                   | lower-bound                             |
+| quantity increased                                    | restock = current - previous; sales unknown | masked                                  |
+| quantity unchanged, price decreased (regular > price) | promo start                                 | exact                                   |
+| quantity unchanged, price increased to regular        | promo end                                   | exact                                   |
+| quantity unchanged, price unchanged                   | no change                                   | exact                                   |
+| availability true -> false                            | sold out                                    | exact (unit count unknown if untracked) |
+| availability false -> true                            | back in stock                               | exact                                   |
+| new product appears                                   | product new                                 | exact                                   |
+| product disappears                                    | product removed                             | exact                                   |
 
 ## The honest limitation
 

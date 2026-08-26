@@ -29,49 +29,49 @@ The estimate is 0.6 seconds per product for the embedded shops.
 
 ### Cloudflare Worker, no webshare
 
-| Provider         | Call                | Time   | Webshare |
-| ---------------- | ------------------- | ------ | -------- |
-| rever            | WooCommerce html GET| ~30 s  | 0        |
-| royalwatch       | WooCommerce html GET| ~30 s  | 0        |
-| mushi            | custom html GET     | ~10 s  | 0        |
-| premieresociety  | custom html GET     | ~1 min | 0        |
+| Provider        | Call                 | Time   | Webshare |
+| --------------- | -------------------- | ------ | -------- |
+| rever           | WooCommerce html GET | ~30 s  | 0        |
+| royalwatch      | WooCommerce html GET | ~30 s  | 0        |
+| mushi           | custom html GET      | ~10 s  | 0        |
+| premieresociety | custom html GET      | ~1 min | 0        |
 
 ### VPS, direct IP, cookie only via webshare
 
-| Provider         | Call                    | Time     | Webshare |
-| ---------------- | ----------------------- | -------- | -------- |
-| forcer           | Shopify embedded GET    | 214 s    | ~2.5 KB  |
-| nago             | Shopify embedded GET    | 273 s    | ~2.5 KB  |
-| misbhv           | Shopify embedded GET    | ~16 min  | ~2.5 KB  |
-| gymglamour       | Shopify embedded GET    | ~34 min  | ~2.5 KB  |
-| noo-ma           | Shopify embedded GET    | ~13 min  | ~2.5 KB  |
-| montiel          | Shopify embedded GET    | disabled |          |
-| magdabutrym      | Shopify embedded GET    | disabled |          |
-| shapellx         | Storefront API GraphQL  | ~1-2 min | 0        |
-| bloozie          | products.json GET       | ~1 min   | 0        |
-| foodsbyann       | custom web GET          | 228 s    | 0        |
-| dobrerzeczy      | Nuxt payload GET        | 3 s      | 0        |
-| lexon            | Magento embedded GET    | 35 s     | ~8.5 KB  |
-| influcenter      | Magento embedded GET    | disabled |          |
+| Provider    | Call                   | Time     | Webshare |
+| ----------- | ---------------------- | -------- | -------- |
+| forcer      | Shopify embedded GET   | 214 s    | ~2.5 KB  |
+| nago        | Shopify embedded GET   | 273 s    | ~2.5 KB  |
+| misbhv      | Shopify embedded GET   | ~16 min  | ~2.5 KB  |
+| gymglamour  | Shopify embedded GET   | ~34 min  | ~2.5 KB  |
+| noo-ma      | Shopify embedded GET   | ~13 min  | ~2.5 KB  |
+| montiel     | Shopify embedded GET   | disabled |          |
+| magdabutrym | Shopify embedded GET   | disabled |          |
+| shapellx    | Storefront API GraphQL | ~1-2 min | 0        |
+| bloozie     | products.json GET      | ~1 min   | 0        |
+| foodsbyann  | custom web GET         | 228 s    | 0        |
+| dobrerzeczy | Nuxt payload GET       | 3 s      | 0        |
+| lexon       | Magento embedded GET   | 35 s     | ~8.5 KB  |
+| influcenter | Magento embedded GET   | disabled |          |
 
 montiel is disabled. The shop is gone. Its products.json returns 401
 from every IP. influcenter is disabled. Its shop blocked the VPS IP.
 
 ### VPS, proxy, webshare
 
-| Provider         | Call                    | Time     | Webshare |
-| ---------------- | ----------------------- | -------- | -------- |
-| godssavequeens   | Shopify cart probe      | 276 s    | ~232 KB  |
-| derichgallery    | Shopify cart probe      | 14 s     | ~10 KB   |
-| theodderside     | Shopify cart probe      | ~5-8 min | ~500 KB  |
-| monartofficial   | Shopify cart probe      | ~2-3 min | ~250 KB  |
-| osmpower         | Shoper basket reveal    | 106 s    | ~422 KB  |
-| emereedivine     | Shoper basket reveal    | 29 s     | ~227 KB  |
-| wkdzik           | Shoper basket reveal    | 349 s    | ~1264 KB |
-| sklepskolim      | Shoper basket reveal    | 433 s    | ~1863 KB |
-| e-daag           | Shoper basket reveal    | ~2-3 min | ~400 KB  |
-| laboratoriumpanidomu | Prestashop cart reveal | 57 s   | ~163 KB  |
-| phlov            | Prestashop cart reveal  | 543 s    | ~528 KB  |
+| Provider             | Call                   | Time     | Webshare |
+| -------------------- | ---------------------- | -------- | -------- |
+| godssavequeens       | Shopify cart probe     | 276 s    | ~232 KB  |
+| derichgallery        | Shopify cart probe     | 14 s     | ~10 KB   |
+| theodderside         | Shopify cart probe     | ~5-8 min | ~500 KB  |
+| monartofficial       | Shopify cart probe     | ~2-3 min | ~250 KB  |
+| osmpower             | Shoper basket reveal   | 106 s    | ~422 KB  |
+| emereedivine         | Shoper basket reveal   | 29 s     | ~227 KB  |
+| wkdzik               | Shoper basket reveal   | 349 s    | ~1264 KB |
+| sklepskolim          | Shoper basket reveal   | 433 s    | ~1863 KB |
+| e-daag               | Shoper basket reveal   | ~2-3 min | ~400 KB  |
+| laboratoriumpanidomu | Prestashop cart reveal | 57 s     | ~163 KB  |
+| phlov                | Prestashop cart reveal | 543 s    | ~528 KB  |
 
 ## Totals per cron pass
 
@@ -91,13 +91,13 @@ The "via" field shows "proxy" for webshare and "direct" for the VPS IP.
 Three providers use the old pattern. They reuse one connection.
 They run sequential. We can apply the same fix as the cart probe.
 
-| Provider            | Current time | Estimated time after fix |
-| ------------------- | ------------ | ------------------------ |
-| gymglamour          | ~34 min      | ~5-8 min                 |
-| misbhv              | ~16 min      | ~3-4 min                 |
-| noo-ma              | ~13 min      | ~2-3 min                 |
-| phlov               | 543 s        | ~60-90 s                 |
-| shoper basket       | ~2-7 min     | ~1-2 min                 |
+| Provider      | Current time | Estimated time after fix |
+| ------------- | ------------ | ------------------------ |
+| gymglamour    | ~34 min      | ~5-8 min                 |
+| misbhv        | ~16 min      | ~3-4 min                 |
+| noo-ma        | ~13 min      | ~2-3 min                 |
+| phlov         | 543 s        | ~60-90 s                 |
+| shoper basket | ~2-7 min     | ~1-2 min                 |
 
 The same pattern applies everywhere. Open a new connection for each
 request. Run requests in parallel. This gives four to eight times
@@ -144,12 +144,12 @@ this. The VPS IP stays safe with fresh connections.
 
 ### The evidence (local test, no proxy)
 
-| Connection mode | Result |
-| --------------- | ------ |
-| Reused keep-alive, concurrency 25 | 12-24% requests get 429 |
-| Fresh connection per request, concurrency 25 | 0% requests get 429 |
-| curl (fresh connection per request) | 0% requests get 429 |
-| Different headers or HTTP version | no change |
+| Connection mode                              | Result                  |
+| -------------------------------------------- | ----------------------- |
+| Reused keep-alive, concurrency 25            | 12-24% requests get 429 |
+| Fresh connection per request, concurrency 25 | 0% requests get 429     |
+| curl (fresh connection per request)          | 0% requests get 429     |
+| Different headers or HTTP version            | no change               |
 
 ### The rule
 

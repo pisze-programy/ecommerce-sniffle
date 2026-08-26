@@ -1,13 +1,13 @@
-import { buildStockRevealer } from "../../factory.ts";
-import { truncateMessage } from "../../helpers.ts";
-import { isCloudflareChallenge } from "../../captcha/detect.ts";
-import { measureFetch } from "../../network/manager.ts";
-import { mapPool } from "../../network/pool.ts";
-import { ConcurrencyLimiter } from "../../network/limiter.ts";
-import { createFreshFetch } from "../../network/fresh-fetch.ts";
-import type { WrappedFetch } from "../../network/manager.ts";
-import type { DirectFetch } from "../../module.ts";
-import type { Logger } from "../../logger.ts";
+import { buildStockRevealer } from '../../factory.ts';
+import { truncateMessage } from '../../helpers.ts';
+import { isCloudflareChallenge } from '../../captcha/detect.ts';
+import { measureFetch } from '../../network/manager.ts';
+import { mapPool } from '../../network/pool.ts';
+import { ConcurrencyLimiter } from '../../network/limiter.ts';
+import { createFreshFetch } from '../../network/fresh-fetch.ts';
+import type { WrappedFetch } from '../../network/manager.ts';
+import type { DirectFetch } from '../../module.ts';
+import type { Logger } from '../../logger.ts';
 import type {
   Catalog,
   Money,
@@ -16,10 +16,10 @@ import type {
   StockRevealTarget,
   StockRevealer,
   Variant,
-} from "../../types.ts";
+} from '../../types.ts';
 
 const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 const MAX_PAGES = 1000;
 const PROBE_QUANTITY = 999999999;
@@ -32,7 +32,7 @@ const MAX_CONSECUTIVE_ADD_EMPTY = 15;
 type CatalogFetch = WrappedFetch;
 
 function money(amount: number): Money {
-  return { amount, currency: "PLN" };
+  return { amount, currency: 'PLN' };
 }
 
 export function parseBasketWarning(text: string): number | null {
@@ -50,35 +50,31 @@ export function parseBasketWarning(text: string): number | null {
 }
 
 function parseListProduct(raw: unknown, domain: string): Product | null {
-  if (typeof raw !== "object" || raw === null) {
+  if (typeof raw !== 'object' || raw === null) {
     return null;
   }
   const obj = raw as Readonly<Record<string, unknown>>;
-  if (typeof obj["id"] !== "number" || typeof obj["stockId"] !== "number") {
+  if (typeof obj['id'] !== 'number' || typeof obj['stockId'] !== 'number') {
     return null;
   }
-  const id = String(obj["id"]);
-  const name = typeof obj["name"] === "string" ? obj["name"] : id;
-  const url = typeof obj["url"] === "string" ? obj["url"] : `https://${domain}/pl/p/${id}`;
-  const canBuy = typeof obj["can_buy"] === "boolean" ? obj["can_buy"] : false;
-  const rawPrice = obj["price"];
+  const id = String(obj['id']);
+  const name = typeof obj['name'] === 'string' ? obj['name'] : id;
+  const url = typeof obj['url'] === 'string' ? obj['url'] : `https://${domain}/pl/p/${id}`;
+  const canBuy = typeof obj['can_buy'] === 'boolean' ? obj['can_buy'] : false;
+  const rawPrice = obj['price'];
   const priceObj =
-    typeof rawPrice === "object" && rawPrice !== null
-      ? (rawPrice as Readonly<Record<string, unknown>>)["gross"]
-      : null;
+    typeof rawPrice === 'object' && rawPrice !== null ? (rawPrice as Readonly<Record<string, unknown>>)['gross'] : null;
   const gross =
-    typeof priceObj === "object" && priceObj !== null
-      ? (priceObj as Readonly<Record<string, unknown>>)
-      : null;
-  const finalFloat = typeof gross?.["final_float"] === "number" ? gross["final_float"] : null;
-  const baseFloat = typeof gross?.["base_float"] === "number" ? gross["base_float"] : null;
+    typeof priceObj === 'object' && priceObj !== null ? (priceObj as Readonly<Record<string, unknown>>) : null;
+  const finalFloat = typeof gross?.['final_float'] === 'number' ? gross['final_float'] : null;
+  const baseFloat = typeof gross?.['base_float'] === 'number' ? gross['base_float'] : null;
   const base = baseFloat === null ? 0 : baseFloat;
   const final = finalFloat === null ? base : finalFloat;
   const regularPrice = base > final ? money(base) : null;
   const variants: Variant[] = [
     {
-      id: String(obj["stockId"]),
-      title: "default",
+      id: String(obj['stockId']),
+      title: 'default',
       sku: null,
       price: money(final),
       regularPrice,
@@ -90,23 +86,23 @@ function parseListProduct(raw: unknown, domain: string): Product | null {
 }
 
 export function parseShoperPages(data: unknown): number | null {
-  if (typeof data !== "object" || data === null) {
+  if (typeof data !== 'object' || data === null) {
     return null;
   }
   const obj = data as Readonly<Record<string, unknown>>;
-  const pages = obj["pages"];
-  if (typeof pages !== "number") {
+  const pages = obj['pages'];
+  if (typeof pages !== 'number') {
     return null;
   }
   return pages;
 }
 
 export function parseShoperList(data: unknown, domain: string): Product[] {
-  if (typeof data !== "object" || data === null) {
+  if (typeof data !== 'object' || data === null) {
     return [];
   }
   const obj = data as Readonly<Record<string, unknown>>;
-  const list = Array.isArray(obj["list"]) ? obj["list"] : [];
+  const list = Array.isArray(obj['list']) ? obj['list'] : [];
   const products: Product[] = [];
   for (const rawProduct of list) {
     const product = parseListProduct(rawProduct, domain);
@@ -121,7 +117,7 @@ export async function fetchShoperCatalog(
   endpoint: string,
   domain: string,
   logger: Logger,
-  fetchFn: CatalogFetch = fetch,
+  fetchFn: CatalogFetch = fetch
 ): Promise<Catalog> {
   const products: Product[] = [];
   const seen = new Set<string>();
@@ -131,10 +127,10 @@ export async function fetchShoperCatalog(
     if (requestCount >= MAX_PAGES) {
       throw new Error(`Shoper catalog too large for ${domain} (more than ${MAX_PAGES} pages)`);
     }
-    const separator = endpoint.includes("?") ? "&" : "?";
+    const separator = endpoint.includes('?') ? '&' : '?';
     const url = `${endpoint}${separator}limit=${LIST_LIMIT}&offset=${offset}`;
     const response = await fetchFn(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
     });
     if (!response.ok) {
       throw new Error(`GET ${url} failed with status ${response.status}`);
@@ -154,7 +150,7 @@ export async function fetchShoperCatalog(
     }
     offset += parsed.length;
   }
-  logger.debug("shoper catalog fetched", { domain, requests: requestCount, products: products.length });
+  logger.debug('shoper catalog fetched', { domain, requests: requestCount, products: products.length });
   return { domain, fetchedAt: new Date().toISOString(), products };
 }
 
@@ -163,7 +159,7 @@ function extractCookies(setCookie: string | null): string | null {
     return null;
   }
   const pairs: string[] = [];
-  for (const part of setCookie.split(",")) {
+  for (const part of setCookie.split(',')) {
     const match = /^\s*([^=;]+=[^;]+)/.exec(part);
     const value = match === null ? undefined : match[1];
     if (value !== undefined) {
@@ -173,17 +169,17 @@ function extractCookies(setCookie: string | null): string | null {
   if (pairs.length === 0) {
     return null;
   }
-  return pairs.join("; ");
+  return pairs.join('; ');
 }
 
 export function extractCookiesFromResponse(
-  headers: { get(name: string): string | null; getSetCookie?: () => string[] } | undefined,
+  headers: { get(name: string): string | null; getSetCookie?: () => string[] } | undefined
 ): string | null {
   if (headers === undefined) {
     return null;
   }
   const getSetCookie = headers.getSetCookie;
-  const values = typeof getSetCookie === "function" ? getSetCookie.call(headers) : [];
+  const values = typeof getSetCookie === 'function' ? getSetCookie.call(headers) : [];
   if (values.length > 0) {
     const pairs: string[] = [];
     for (const value of values) {
@@ -196,27 +192,27 @@ export function extractCookiesFromResponse(
     if (pairs.length === 0) {
       return null;
     }
-    return pairs.join("; ");
+    return pairs.join('; ');
   }
-  return extractCookies(headers.get("set-cookie"));
+  return extractCookies(headers.get('set-cookie'));
 }
 
 export function extractWarning(text: string, logger: Logger): string | null {
   try {
     const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
-    const messenger = data["_flash_messenger"];
-    if (typeof messenger === "object" && messenger !== null) {
-      const warnings = (messenger as Readonly<Record<string, unknown>>)["warning"];
-      if (Array.isArray(warnings) && warnings.length > 0 && typeof warnings[0] === "string") {
+    const messenger = data['_flash_messenger'];
+    if (typeof messenger === 'object' && messenger !== null) {
+      const warnings = (messenger as Readonly<Record<string, unknown>>)['warning'];
+      if (Array.isArray(warnings) && warnings.length > 0 && typeof warnings[0] === 'string') {
         return warnings[0];
       }
     }
-    const flashMessages = data["flashMessages"];
+    const flashMessages = data['flashMessages'];
     if (Array.isArray(flashMessages)) {
       for (const entry of flashMessages) {
-        if (typeof entry === "object" && entry !== null) {
-          const message = (entry as Readonly<Record<string, unknown>>)["message"];
-          if (typeof message === "string") {
+        if (typeof entry === 'object' && entry !== null) {
+          const message = (entry as Readonly<Record<string, unknown>>)['message'];
+          if (typeof message === 'string') {
             return message;
           }
         }
@@ -224,7 +220,7 @@ export function extractWarning(text: string, logger: Logger): string | null {
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn("basketreveal.put response parse failed", { error: message });
+    logger.warn('basketreveal.put response parse failed', { error: message });
   }
   return null;
 }
@@ -233,24 +229,24 @@ function flashErrors(text: string): readonly string[] {
   try {
     const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
     const errors: string[] = [];
-    const messenger = data["_flash_messenger"];
-    if (typeof messenger === "object" && messenger !== null) {
-      const raw = (messenger as Readonly<Record<string, unknown>>)["error"];
+    const messenger = data['_flash_messenger'];
+    if (typeof messenger === 'object' && messenger !== null) {
+      const raw = (messenger as Readonly<Record<string, unknown>>)['error'];
       if (Array.isArray(raw)) {
         for (const entry of raw) {
-          if (typeof entry === "string") {
+          if (typeof entry === 'string') {
             errors.push(entry);
           }
         }
       }
     }
-    const flashMessages = data["flashMessages"];
+    const flashMessages = data['flashMessages'];
     if (Array.isArray(flashMessages)) {
       for (const entry of flashMessages) {
-        if (typeof entry === "object" && entry !== null) {
+        if (typeof entry === 'object' && entry !== null) {
           const obj = entry as Readonly<Record<string, unknown>>;
-          if (obj["isError"] === true && typeof obj["message"] === "string") {
-            errors.push(obj["message"]);
+          if (obj['isError'] === true && typeof obj['message'] === 'string') {
+            errors.push(obj['message']);
           }
         }
       }
@@ -268,11 +264,11 @@ export interface RevealOutcome {
 
 function addedVariantLabel(added: ReadonlyArray<unknown>): string | null {
   const first = added[0];
-  if (typeof first !== "object" || first === null) {
+  if (typeof first !== 'object' || first === null) {
     return null;
   }
-  const rawVariant = (first as Readonly<Record<string, unknown>>)["variant"];
-  if (typeof rawVariant !== "string") {
+  const rawVariant = (first as Readonly<Record<string, unknown>>)['variant'];
+  if (typeof rawVariant !== 'string') {
     return null;
   }
   const label = rawVariant.trim();
@@ -284,26 +280,26 @@ export async function revealVariant(
   stockId: number,
   logger: Logger,
   options: Readonly<Record<string, string>> = {},
-  fetchFn: WrappedFetch = fetch,
+  fetchFn: WrappedFetch = fetch
 ): Promise<RevealOutcome> {
   const origin = `https://${domain}`;
   const baseHeaders: Readonly<Record<string, string>> = {
-    "User-Agent": USER_AGENT,
-    Accept: "application/json, text/plain, */*",
-    "Content-Type": "application/json",
+    'User-Agent': USER_AGENT,
+    Accept: 'application/json, text/plain, */*',
+    'Content-Type': 'application/json',
     Origin: origin,
   };
   const basket = `${origin}/webapi/front/pl_PL/basket/PLN`;
   let itemId: number | null = null;
   try {
     const addResponse = await fetchFn(`${basket}/`, {
-      method: "POST",
+      method: 'POST',
       headers: baseHeaders,
       body: JSON.stringify({ quantity: PROBE_QUANTITY, stock_id: stockId, options }),
     });
     const addText = await addResponse.text();
     if (isCloudflareChallenge(addText)) {
-      logger.warn("basketreveal.challenge blocked", { domain, stockId });
+      logger.warn('basketreveal.challenge blocked', { domain, stockId });
       return { quantity: null, hasOptions: false };
     }
     if (!addResponse.ok) {
@@ -314,38 +310,38 @@ export async function revealVariant(
     let basketQuantity: number | null = null;
     try {
       const data = JSON.parse(addText) as Readonly<Record<string, unknown>>;
-      const rawAdded = data["added"];
+      const rawAdded = data['added'];
       if (Array.isArray(rawAdded)) {
         added = rawAdded;
       }
-      const rawAddedItem = data["addedItem"];
-      if (typeof rawAddedItem === "object" && rawAddedItem !== null) {
+      const rawAddedItem = data['addedItem'];
+      if (typeof rawAddedItem === 'object' && rawAddedItem !== null) {
         const addedItem = rawAddedItem as Readonly<Record<string, unknown>>;
-        const rawQuantity = addedItem["quantity"];
-        if (typeof rawQuantity === "number") {
+        const rawQuantity = addedItem['quantity'];
+        if (typeof rawQuantity === 'number') {
           addedQuantity = rawQuantity;
         }
-        const rawAddedQuantity = addedItem["addedQuantity"];
-        if (addedQuantity === null && typeof rawAddedQuantity === "number") {
+        const rawAddedQuantity = addedItem['addedQuantity'];
+        if (addedQuantity === null && typeof rawAddedQuantity === 'number') {
           addedQuantity = rawAddedQuantity;
         }
       }
-      const rawBasket = data["basket"];
-      if (typeof rawBasket === "object" && rawBasket !== null) {
-        const rawItems = (rawBasket as Readonly<Record<string, unknown>>)["items"];
-        if (typeof rawItems === "object" && rawItems !== null) {
-          const list = (rawItems as Readonly<Record<string, unknown>>)["list"];
+      const rawBasket = data['basket'];
+      if (typeof rawBasket === 'object' && rawBasket !== null) {
+        const rawItems = (rawBasket as Readonly<Record<string, unknown>>)['items'];
+        if (typeof rawItems === 'object' && rawItems !== null) {
+          const list = (rawItems as Readonly<Record<string, unknown>>)['list'];
           if (Array.isArray(list)) {
             for (const entry of list) {
-              if (typeof entry !== "object" || entry === null) {
+              if (typeof entry !== 'object' || entry === null) {
                 continue;
               }
               const item = entry as Readonly<Record<string, unknown>>;
-              if (item["variantId"] !== stockId) {
+              if (item['variantId'] !== stockId) {
                 continue;
               }
-              const rawQuantity = item["quantity"];
-              if (typeof rawQuantity === "number") {
+              const rawQuantity = item['quantity'];
+              if (typeof rawQuantity === 'number') {
                 basketQuantity = rawQuantity;
               }
               break;
@@ -355,7 +351,7 @@ export async function revealVariant(
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn("basketreveal.add response parse failed", { domain, stockId, error: message });
+      logger.warn('basketreveal.add response parse failed', { domain, stockId, error: message });
     }
     const hasOptions = addedVariantLabel(added) !== null;
     if (addedQuantity !== null) {
@@ -366,9 +362,9 @@ export async function revealVariant(
       const quantity = parseBasketWarning(addWarning);
       if (quantity !== null) {
         const first = added[0];
-        if (typeof first === "object" && first !== null) {
-          const rawId = (first as Readonly<Record<string, unknown>>)["id"];
-          if (typeof rawId === "number") {
+        if (typeof first === 'object' && first !== null) {
+          const rawId = (first as Readonly<Record<string, unknown>>)['id'];
+          if (typeof rawId === 'number') {
             itemId = rawId;
           }
         }
@@ -379,33 +375,33 @@ export async function revealVariant(
       return { quantity: basketQuantity, hasOptions };
     }
     const first = added[0];
-    if (typeof first !== "object" || first === null) {
+    if (typeof first !== 'object' || first === null) {
       const unavailable = flashErrors(addText).some((entry) =>
-        /nieaktywn|wyprzedan|sold out|out of stock|niedost[ęe]pn/i.test(entry),
+        /nieaktywn|wyprzedan|sold out|out of stock|niedost[ęe]pn/i.test(entry)
       );
       if (unavailable) {
         return { quantity: 0, hasOptions };
       }
-      logger.warn("basketreveal.add empty for variant product", { domain, stockId });
+      logger.warn('basketreveal.add empty for variant product', { domain, stockId });
       return { quantity: null, hasOptions };
     }
     const firstObj = first as Readonly<Record<string, unknown>>;
-    if (typeof firstObj["id"] !== "number") {
-      logger.warn("basketreveal.add has no item id", { domain, stockId });
+    if (typeof firstObj['id'] !== 'number') {
+      logger.warn('basketreveal.add has no item id', { domain, stockId });
       return { quantity: null, hasOptions };
     }
-    itemId = firstObj["id"];
+    itemId = firstObj['id'];
     const cookie = extractCookiesFromResponse(addResponse.headers);
     const putHeaders: Readonly<Record<string, string>> =
       cookie === null ? { ...baseHeaders } : { ...baseHeaders, Cookie: cookie };
     const putResponse = await fetchFn(`${basket}/${String(itemId)}/`, {
-      method: "PUT",
+      method: 'PUT',
       headers: putHeaders,
       body: JSON.stringify({ quantity: PROBE_QUANTITY }),
     });
     const putText = await putResponse.text();
     if (isCloudflareChallenge(putText)) {
-      logger.warn("basketreveal.challenge blocked", { domain, stockId });
+      logger.warn('basketreveal.challenge blocked', { domain, stockId });
       return { quantity: null, hasOptions: false };
     }
     const warning = extractWarning(putText, logger);
@@ -418,7 +414,7 @@ export async function revealVariant(
     return { quantity: parseBasketWarning(putText), hasOptions: false };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn("basketreveal failed", { domain, stockId, error: message });
+    logger.warn('basketreveal failed', { domain, stockId, error: message });
     return { quantity: null, hasOptions: false };
   }
 }
@@ -445,34 +441,34 @@ function parseOptionGroups(configuration: unknown): OptionGroup[] {
   }
   const groups: OptionGroup[] = [];
   for (const rawGroup of configuration) {
-    if (typeof rawGroup !== "object" || rawGroup === null) {
+    if (typeof rawGroup !== 'object' || rawGroup === null) {
       continue;
     }
     const group = rawGroup as Readonly<Record<string, unknown>>;
-    const rawId = group["id"];
-    const name = group["name"];
-    const rawValues = group["values"];
-    const rawType = group["type"];
-    if ((typeof rawId !== "number" && typeof rawId !== "string") || typeof name !== "string") {
+    const rawId = group['id'];
+    const name = group['name'];
+    const rawValues = group['values'];
+    const rawType = group['type'];
+    if ((typeof rawId !== 'number' && typeof rawId !== 'string') || typeof name !== 'string') {
       continue;
     }
     const values: OptionValue[] = [];
     if (Array.isArray(rawValues)) {
       for (const rawValue of rawValues) {
-        if (typeof rawValue !== "object" || rawValue === null) {
+        if (typeof rawValue !== 'object' || rawValue === null) {
           continue;
         }
         const value = rawValue as Readonly<Record<string, unknown>>;
-        const valueId = value["id"];
-        const valueName = value["name"];
-        if ((typeof valueId !== "number" && typeof valueId !== "string") || typeof valueName !== "string") {
+        const valueId = value['id'];
+        const valueName = value['name'];
+        if ((typeof valueId !== 'number' && typeof valueId !== 'string') || typeof valueName !== 'string') {
           continue;
         }
         values.push({ id: String(valueId), name: valueName });
       }
     }
-    if (values.length === 0 && rawType === "text") {
-      values.push({ id: "x", name: "(text)" });
+    if (values.length === 0 && rawType === 'text') {
+      values.push({ id: 'x', name: '(text)' });
     }
     if (values.length === 0) {
       continue;
@@ -490,7 +486,7 @@ export function buildOptionCombos(configuration: unknown): OptionCombo[] {
   const combos: OptionCombo[] = [];
   function walk(index: number, options: Record<string, string>, parts: string[]): void {
     if (index >= groups.length) {
-      combos.push({ options: { ...options }, label: parts.join(", ") });
+      combos.push({ options: { ...options }, label: parts.join(', ') });
       return;
     }
     const group = groups[index];
@@ -509,16 +505,15 @@ async function fetchOptionConfiguration(
   domain: string,
   productId: string,
   logger: Logger,
-  fetchFn: CatalogFetch = fetch,
+  fetchFn: CatalogFetch = fetch
 ): Promise<unknown> {
   const origin = `https://${domain}`;
   try {
-    const response = await fetchFn(
-      `${origin}/webapi/front/pl_PL/products/PLN/${productId}`,
-      { headers: { "User-Agent": USER_AGENT, Accept: "application/json" } },
-    );
+    const response = await fetchFn(`${origin}/webapi/front/pl_PL/products/PLN/${productId}`, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    });
     if (!response.ok) {
-      logger.warn("basketreveal.product detail failed", {
+      logger.warn('basketreveal.product detail failed', {
         domain,
         productId,
         status: response.status,
@@ -526,10 +521,10 @@ async function fetchOptionConfiguration(
       return null;
     }
     const data = (await response.json()) as Readonly<Record<string, unknown>>;
-    return data["options_configuration"];
+    return data['options_configuration'];
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn("basketreveal.product detail error", { domain, productId, error: message });
+    logger.warn('basketreveal.product detail error', { domain, productId, error: message });
     return null;
   }
 }
@@ -540,7 +535,7 @@ export async function revealProduct(
   logger: Logger,
   fetchFn: CatalogFetch = fetch,
   comboConcurrency: number = REVEAL_CONCURRENCY,
-  limiter?: ConcurrencyLimiter,
+  limiter?: ConcurrencyLimiter
 ): Promise<Variant[]> {
   const baseVariant = product.variants[0];
   if (baseVariant === undefined) {
@@ -563,7 +558,7 @@ export async function revealProduct(
   const explosion = combos.length > MAX_COMBOS_PER_PRODUCT;
   const probed = explosion ? combos.slice(0, MAX_COMBOS_PER_PRODUCT) : combos;
   if (explosion) {
-    logger.warn("basketreveal.option explosion", {
+    logger.warn('basketreveal.option explosion', {
       domain,
       productId: product.id,
       combos: combos.length,
@@ -589,7 +584,7 @@ export async function revealProduct(
       if (outcome.quantity === null) {
         consecutiveEmpty += 1;
         if (consecutiveEmpty >= MAX_CONSECUTIVE_ADD_EMPTY) {
-          logger.warn("basketreveal.dead combos", {
+          logger.warn('basketreveal.dead combos', {
             domain,
             productId: product.id,
             consecutiveEmpty,
@@ -609,7 +604,7 @@ export async function revealProduct(
         const outcome = await revealVariant(domain, stockId, logger, combo.options, fetchFn);
         return { combo, outcome };
       },
-      limiter,
+      limiter
     );
     for (const entry of comboResults) {
       pushCombo(entry.combo, entry.outcome);
@@ -624,22 +619,12 @@ export async function revealProduct(
 export function buildBasketRevealProvider(
   config: ProviderConfig,
   logger: Logger,
-  directFetch?: DirectFetch,
+  _directFetch?: DirectFetch
 ): StockRevealer {
-  const rawCatalogFetch = (
-    input: string | URL | Request,
-    init?: RequestInit,
-    options?: { maxBytes?: number },
-  ) => {
-    const url = String(input);
-    if (directFetch !== undefined) {
-      return directFetch(url, init, options);
-    }
-    return fetch(url, init);
-  };
-  const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, "proxy");
-  const proxyUrl = process.env["HTTPS_PROXY"] ?? process.env["WEBSHARE_URL"] ?? null;
-  const probeFetch = measureFetch(createFreshFetch(proxyUrl), logger, config.id, "proxy");
+  // The catalog goes through the webshare too. This keeps the VPS IP clean.
+  const proxyUrl = process.env['HTTPS_PROXY'] ?? process.env['WEBSHARE_URL'] ?? null;
+  const catalogFetch = measureFetch(createFreshFetch(proxyUrl), logger, config.id, 'proxy');
+  const probeFetch = measureFetch(createFreshFetch(proxyUrl), logger, config.id, 'proxy');
   const limiter = new ConcurrencyLimiter(GLOBAL_CONCURRENCY);
   return buildStockRevealer(
     config,
@@ -660,9 +645,9 @@ export function buildBasketRevealProvider(
         return !excluded.has(Number(first.id));
       });
       if (excluded.size > 0) {
-        logger.info("basketreveal.excluded", {
+        logger.info('basketreveal.excluded', {
           domain: config.domain,
-          excludedIds: [...excluded].join(","),
+          excludedIds: [...excluded].join(','),
           remaining: targets.length,
         });
       }
@@ -670,19 +655,12 @@ export function buildBasketRevealProvider(
         targets,
         REVEAL_CONCURRENCY,
         async (product) => {
-          const variants = await revealProduct(
-            config.domain,
-            product,
-            logger,
-            probeFetch,
-            REVEAL_CONCURRENCY,
-            limiter,
-          );
+          const variants = await revealProduct(config.domain, product, logger, probeFetch, REVEAL_CONCURRENCY, limiter);
           return { ...product, variants };
         },
-        limiter,
+        limiter
       );
       return { domain: config.domain, fetchedAt: new Date().toISOString(), products: revealed };
-    },
+    }
   );
 }

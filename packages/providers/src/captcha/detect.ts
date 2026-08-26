@@ -1,8 +1,8 @@
 export function isCloudflareChallenge(text: string): boolean {
   return (
-    text.includes("_cf_chl_opt") ||
-    text.includes("Verifying your connection") ||
-    text.includes("challenge-platform") ||
+    text.includes('_cf_chl_opt') ||
+    text.includes('Verifying your connection') ||
+    text.includes('challenge-platform') ||
     text.includes("cType: 'managed'")
   );
 }

@@ -1,10 +1,11 @@
-export type Platform = "shopify" | "shoper" | "woocommerce" | "custom" | "prestashop" | "magento";
+export type Platform = 'shopify' | 'shoper' | 'woocommerce' | 'custom' | 'prestashop' | 'magento';
 
-export type StockSource = "embedded-json" | "cart-probe" | "basket-reveal" | "html" | "boolean";
+export type StockSource =
+  'embedded-json' | 'cart-probe' | 'basket-reveal' | 'html' | 'boolean' | 'storefront-availability' | 'mcp-inventory';
 
-export type ExecutionMode = "cf-get" | "vps-get" | "vps-mutation";
+export type ExecutionMode = 'cf-get' | 'vps-get' | 'vps-mutation';
 
-export type TaskWindow = "morning" | "evening" | "both";
+export type TaskWindow = 'morning' | 'evening' | 'both';
 
 export interface ProviderConfig {
   readonly id: string;

@@ -1,7 +1,8 @@
-import { buildStockRevealer } from "../../factory.ts";
-import type { DirectFetch } from "../../module.ts";
-import { measureFetch } from "../../network/manager.ts";
-import type { Logger } from "../../logger.ts";
+import { buildStockRevealer } from '../../factory.ts';
+import type { DirectFetch } from '../../module.ts';
+import { measureFetch } from '../../network/manager.ts';
+import { mapPool } from '../../network/pool.ts';
+import type { Logger } from '../../logger.ts';
 import type {
   Catalog,
   Money,
@@ -10,14 +11,15 @@ import type {
   StockRevealTarget,
   StockRevealer,
   Variant,
-} from "../../types.ts";
+} from '../../types.ts';
 
 const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
-const PROBE_QUANTITY = "999999999";
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const PROBE_QUANTITY = '999999999';
 const MAX_PAGES = 20;
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 500;
+const CATALOG_CONCURRENCY = 6;
 
 function delayMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,7 +30,7 @@ function baseUrl(providerConfig: ProviderConfig): string {
 }
 
 export function money(amount: number): Money {
-  return { amount, currency: "PLN" };
+  return { amount, currency: 'PLN' };
 }
 
 export function extractPrestaProductId(url: string): string | null {
@@ -49,7 +51,7 @@ export function extractCookies(setCookie: string | null): string | null {
     return null;
   }
   const pairs: string[] = [];
-  for (const part of setCookie.split(",")) {
+  for (const part of setCookie.split(',')) {
     const match = /^\s*([^=;]+=[^;]+)/.exec(part);
     const value = match === null ? undefined : match[1];
     if (value !== undefined) {
@@ -59,7 +61,7 @@ export function extractCookies(setCookie: string | null): string | null {
   if (pairs.length === 0) {
     return null;
   }
-  return pairs.join("; ");
+  return pairs.join('; ');
 }
 
 export function parsePrestaCartQuantity(text: string): number | null {
@@ -69,40 +71,39 @@ export function parsePrestaCartQuantity(text: string): number | null {
   } catch {
     return null;
   }
-  if (typeof data !== "object" || data === null) {
+  if (typeof data !== 'object' || data === null) {
     return null;
   }
   const obj = data as Readonly<Record<string, unknown>>;
   const serialized = JSON.stringify(obj);
   const clamp = /Możesz kupić tylko ([\d\s]+) sztuk/.exec(serialized);
   if (clamp !== null && clamp[1] !== undefined) {
-    const parsed = Number(clamp[1]?.replace(/\s/g, ""));
+    const parsed = Number(clamp[1]?.replace(/\s/g, ''));
     if (!Number.isNaN(parsed)) {
       return parsed;
     }
   }
-  const availableMessage =
-    /Dost[ęe]pna ilo[śs][ćc] w zam[óo]wieniu dla tego produktu to (-?\d+)/.exec(serialized);
+  const availableMessage = /Dost[ęe]pna ilo[śs][ćc] w zam[óo]wieniu dla tego produktu to (-?\d+)/.exec(serialized);
   if (availableMessage !== null && availableMessage[1] !== undefined) {
     const parsed = Number(availableMessage[1]);
     if (!Number.isNaN(parsed)) {
       return parsed;
     }
   }
-  const cart = obj["cart"];
-  if (typeof cart !== "object" || cart === null) {
+  const cart = obj['cart'];
+  if (typeof cart !== 'object' || cart === null) {
     return null;
   }
-  const products = (cart as Readonly<Record<string, unknown>>)["products"];
+  const products = (cart as Readonly<Record<string, unknown>>)['products'];
   if (!Array.isArray(products)) {
     return null;
   }
   const first = products[0];
-  if (typeof first !== "object" || first === null) {
+  if (typeof first !== 'object' || first === null) {
     return null;
   }
-  const quantity = (first as Readonly<Record<string, unknown>>)["quantity"];
-  if (typeof quantity === "number") {
+  const quantity = (first as Readonly<Record<string, unknown>>)['quantity'];
+  if (typeof quantity === 'number') {
     return quantity;
   }
   return null;
@@ -115,23 +116,23 @@ export function parsePrestaCartPrice(text: string): number | null {
   } catch {
     return null;
   }
-  if (typeof data !== "object" || data === null) {
+  if (typeof data !== 'object' || data === null) {
     return null;
   }
-  const cart = (data as Readonly<Record<string, unknown>>)["cart"];
-  if (typeof cart !== "object" || cart === null) {
+  const cart = (data as Readonly<Record<string, unknown>>)['cart'];
+  if (typeof cart !== 'object' || cart === null) {
     return null;
   }
-  const products = (cart as Readonly<Record<string, unknown>>)["products"];
+  const products = (cart as Readonly<Record<string, unknown>>)['products'];
   if (!Array.isArray(products)) {
     return null;
   }
   const first = products[0];
-  if (typeof first !== "object" || first === null) {
+  if (typeof first !== 'object' || first === null) {
     return null;
   }
-  const price = (first as Readonly<Record<string, unknown>>)["price"];
-  if (typeof price === "number") {
+  const price = (first as Readonly<Record<string, unknown>>)['price'];
+  if (typeof price === 'number') {
     return price;
   }
   return null;
@@ -142,12 +143,12 @@ export function extractPrestaTitle(url: string): string {
   if (match === null || match[1] === undefined) {
     return url;
   }
-  return match[1].replace(/-/g, " ");
+  return match[1].replace(/-/g, ' ');
 }
 
-type CatalogFetch = (
+export type CatalogFetch = (
   url: string,
-  init?: RequestInit,
+  init?: RequestInit
 ) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 async function fetchText(url: string, fetchFn: CatalogFetch): Promise<string> {
@@ -155,15 +156,12 @@ async function fetchText(url: string, fetchFn: CatalogFetch): Promise<string> {
   while (true) {
     attempt += 1;
     const response = await fetchFn(url, {
-      headers: { "User-Agent": USER_AGENT, "Accept-Language": "pl-PL" },
+      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'pl-PL' },
     });
     if (response.ok) {
       return response.text();
     }
-    if (
-      (response.status === 429 || response.status === 403 || response.status >= 500) &&
-      attempt < MAX_ATTEMPTS
-    ) {
+    if ((response.status === 429 || response.status === 403 || response.status >= 500) && attempt < MAX_ATTEMPTS) {
       await delayMs(RETRY_DELAY_MS * attempt);
       continue;
     }
@@ -171,11 +169,7 @@ async function fetchText(url: string, fetchFn: CatalogFetch): Promise<string> {
   }
 }
 
-async function discoverCategories(
-  base: string,
-  fetchFn: CatalogFetch,
-  logger: Logger,
-): Promise<string[]> {
+async function discoverCategories(base: string, fetchFn: CatalogFetch, logger: Logger): Promise<string[]> {
   const html = await fetchText(`${base}/`, fetchFn);
   const categories = new Set<string>();
   for (const match of html.matchAll(/href="\/(\d+-[^"?]+)"/g)) {
@@ -186,7 +180,7 @@ async function discoverCategories(
   }
   const list = [...categories];
   if (list.length === 0) {
-    logger.warn("presta.catalog no categories found", { domain: base });
+    logger.warn('presta.catalog no categories found', { domain: base });
   }
   return list;
 }
@@ -195,7 +189,7 @@ async function fetchProductUrls(
   base: string,
   category: string,
   ratePerSecond: number,
-  fetchFn: CatalogFetch,
+  fetchFn: CatalogFetch
 ): Promise<string[]> {
   const urls: string[] = [];
   const waitMs = ratePerSecond > 0 ? Math.round(1000 / ratePerSecond) : 0;
@@ -205,7 +199,7 @@ async function fetchProductUrls(
       await delayMs(waitMs);
     }
     first = false;
-    const url = `${base}${category}${page > 1 ? `?page=${page}` : ""}`;
+    const url = `${base}${category}${page > 1 ? `?page=${page}` : ''}`;
     const html = await fetchText(url, fetchFn);
     let added = 0;
     for (const match of html.matchAll(/href="([^"]*\/\d+-[^"#?]*\.html)"/g)) {
@@ -213,7 +207,7 @@ async function fetchProductUrls(
       if (href === undefined) {
         continue;
       }
-      const full = href.startsWith("http") ? href : `${base}${href}`;
+      const full = href.startsWith('http') ? href : `${base}${href}`;
       if (!urls.includes(full)) {
         urls.push(full);
         added += 1;
@@ -226,25 +220,27 @@ async function fetchProductUrls(
   return urls;
 }
 
-async function buildCatalog(
+export async function buildCatalog(
   providerConfig: ProviderConfig,
   logger: Logger,
-  fetchFn: CatalogFetch,
+  fetchFn: CatalogFetch
 ): Promise<Catalog> {
   const base = baseUrl(providerConfig);
   const categories = await discoverCategories(base, fetchFn, logger);
   const products: Product[] = [];
   const seen = new Set<string>();
-  for (const category of categories) {
-    let urls: string[];
+  const categoryResults = await mapPool(categories, CATALOG_CONCURRENCY, async (category) => {
     try {
-      urls = await fetchProductUrls(base, category, providerConfig.ratePerSecond, fetchFn);
+      const urls = await fetchProductUrls(base, category, providerConfig.ratePerSecond, fetchFn);
+      return { category, urls };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn("presta.catalog category failed", { category, error: message });
-      continue;
+      logger.warn('presta.catalog category failed', { category, error: message });
+      return { category, urls: [] };
     }
-    for (const url of urls) {
+  });
+  for (const entry of categoryResults) {
+    for (const url of entry.urls) {
       const id = extractPrestaProductId(url);
       if (id === null) {
         continue;
@@ -256,7 +252,7 @@ async function buildCatalog(
       const variants: Variant[] = [
         {
           id,
-          title: "default",
+          title: 'default',
           sku: null,
           price: money(0),
           regularPrice: null,
@@ -267,34 +263,25 @@ async function buildCatalog(
       products.push({ id, title: extractPrestaTitle(url), url, variants });
     }
   }
-  logger.debug("presta catalog fetched", { domain: providerConfig.domain, products: products.length });
+  logger.debug('presta catalog fetched', { domain: providerConfig.domain, products: products.length });
   return { domain: providerConfig.domain, fetchedAt: new Date().toISOString(), products };
 }
 
 export function buildPrestaShopCartRevealProvider(
   providerConfig: ProviderConfig,
   logger: Logger,
-  directFetch?: DirectFetch,
+  directFetch?: DirectFetch
 ): StockRevealer {
   const base = baseUrl(providerConfig);
-  const rawCatalogFetch = (
-    input: string | URL | Request,
-    init?: RequestInit,
-    options?: { maxBytes?: number },
-  ) => {
+  const rawCatalogFetch = (input: string | URL | Request, init?: RequestInit, options?: { maxBytes?: number }) => {
     const url = String(input);
     if (directFetch !== undefined) {
       return directFetch(url, init, options);
     }
     return fetch(url, init);
   };
-  const catalogFetch = measureFetch(rawCatalogFetch, logger, providerConfig.id, "proxy");
-  const probeFetch = measureFetch(
-      (input, init) => fetch(input, init),
-      logger,
-      providerConfig.id,
-      "proxy",
-    );
+  const catalogFetch = measureFetch(rawCatalogFetch, logger, providerConfig.id, 'proxy');
+  const probeFetch = measureFetch((input, init) => fetch(input, init), logger, providerConfig.id, 'proxy');
   return buildStockRevealer(
     providerConfig,
     logger,
@@ -306,21 +293,21 @@ export function buildPrestaShopCartRevealProvider(
         return catalog;
       }
       const sessionHtml = await probeFetch(`${catalog.products[0]?.url ?? base}`, {
-        headers: { "User-Agent": USER_AGENT, "Accept-Language": "pl-PL" },
+        headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'pl-PL' },
       });
       const sessionText = await sessionHtml.text();
-      const cookies = extractCookies(sessionHtml.headers?.get("set-cookie") ?? null);
+      const cookies = extractCookies(sessionHtml.headers?.get('set-cookie') ?? null);
       const token = extractPrestaToken(sessionText);
       if (token === null) {
-        logger.warn("presta.reveal no token", { domain: providerConfig.domain });
+        logger.warn('presta.reveal no token', { domain: providerConfig.domain });
         return catalog;
       }
       const headers: Readonly<Record<string, string>> = {
-        "User-Agent": USER_AGENT,
-        "Accept-Language": "pl-PL",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        Accept: "application/json, text/javascript, */*; q=0.01",
+        'User-Agent': USER_AGENT,
+        'Accept-Language': 'pl-PL',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
+        Accept: 'application/json, text/javascript, */*; q=0.01',
         ...(cookies !== null ? { Cookie: cookies } : {}),
       };
       const revealedProducts: Product[] = [];
@@ -336,14 +323,14 @@ export function buildPrestaShopCartRevealProvider(
         }
         try {
           const body = new URLSearchParams();
-          body.set("token", token);
-          body.set("id_product", product.id);
-          body.set("id_customization", "0");
-          body.set("qty", PROBE_QUANTITY);
-          body.set("add", "1");
-          body.set("action", "update");
+          body.set('token', token);
+          body.set('id_product', product.id);
+          body.set('id_customization', '0');
+          body.set('qty', PROBE_QUANTITY);
+          body.set('add', '1');
+          body.set('action', 'update');
           const response = await probeFetch(`${base}/koszyk`, {
-            method: "POST",
+            method: 'POST',
             headers,
             body: body.toString(),
           });
@@ -351,23 +338,21 @@ export function buildPrestaShopCartRevealProvider(
           const quantity = parsePrestaCartQuantity(text);
           const price = parsePrestaCartPrice(text);
           if (quantity === null) {
-            logger.warn("presta.reveal no quantity", { productId: product.id, error: text.slice(0, 120) });
+            logger.warn('presta.reveal no quantity', { productId: product.id, error: text.slice(0, 120) });
             revealedProducts.push(product);
             continue;
           }
           revealedProducts.push({
             ...product,
-            variants: [
-              { ...baseVariant, quantity, available: quantity > 0, price: money(price ?? 0) },
-            ],
+            variants: [{ ...baseVariant, quantity, available: quantity > 0, price: money(price ?? 0) }],
           });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
-          logger.warn("presta.reveal failed", { productId: product.id, error: message });
+          logger.warn('presta.reveal failed', { productId: product.id, error: message });
           revealedProducts.push(product);
         }
       }
       return { domain: providerConfig.domain, fetchedAt: new Date().toISOString(), products: revealedProducts };
-    },
+    }
   );
 }

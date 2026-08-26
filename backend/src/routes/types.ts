@@ -1,8 +1,8 @@
-import type { Hono } from "hono";
-import type { ProviderModule } from "@ecommerce-sniffle/providers";
-import type { Logger } from "@ecommerce-sniffle/providers";
-import type { Env } from "../env/types.ts";
-import type { D1Like, Storage } from "../services/storage.ts";
+import type { Hono } from 'hono';
+import type { ProviderModule } from '@ecommerce-sniffle/providers';
+import type { Logger } from '@ecommerce-sniffle/providers';
+import type { Env } from '../env/types.ts';
+import type { D1Like, Storage } from '../services/storage.ts';
 
 export interface AppVariables {
   readonly storage: Storage;

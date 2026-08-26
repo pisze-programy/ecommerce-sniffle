@@ -20,6 +20,15 @@ npm run typecheck
 - `orchestrator` - VPS runner (mutations through the proxy)
 - `docs` - documentation
 
+## VPS
+
+The VPS has 256 MB RAM and 0 swap. It shares RAM with another cron.
+
+NEVER run `npm install` on the VPS. It dies of out-of-memory.
+
+Build on the developer machine. Copy the built folder and the
+`node_modules` to the VPS. Then run `node dist/index.js`.
+
 ## Rules
 
 - TypeScript strict. No `any`, no `as unknown`.

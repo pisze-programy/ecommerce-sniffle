@@ -1,16 +1,16 @@
-import { ALL_MODULES, createRegistry } from "@ecommerce-sniffle/providers";
-import type { Logger, ProviderModule } from "@ecommerce-sniffle/providers";
-import { checkMemory, MIN_AVAILABLE_MB, readProcessRss } from "./guard.ts";
-import { catalogToIngestSnapshot, readIngestConfig, sendSnapshot } from "./ingest.ts";
-import type { IngestConfig } from "./ingest.ts";
-import { createDirectFetch } from "./direct-fetch.ts";
-import { createQueueClient } from "./queue-client.ts";
-import type { QueueClient, Task } from "./queue-client.ts";
-import { isStockRevealer } from "./runner.ts";
-import { createUsageTracking } from "./usage.ts";
-import { sendReport, taskReport } from "./snitch.ts";
-import type { SnitchStatus } from "./snitch.ts";
-import { storeTaskUsage } from "./usage-store.ts";
+import { ALL_MODULES, createRegistry } from '@ecommerce-sniffle/providers';
+import type { Logger, ProviderModule } from '@ecommerce-sniffle/providers';
+import { checkMemory, MIN_AVAILABLE_MB, readProcessRss } from './guard.ts';
+import { catalogToIngestSnapshot, readIngestConfig, sendSnapshot } from './ingest.ts';
+import type { IngestConfig } from './ingest.ts';
+import { createDirectFetch } from './direct-fetch.ts';
+import { createQueueClient } from './queue-client.ts';
+import type { QueueClient, Task } from './queue-client.ts';
+import { isStockRevealer } from './runner.ts';
+import { createUsageTracking } from './usage.ts';
+import { sendReport, taskReport } from './snitch.ts';
+import type { SnitchStatus } from './snitch.ts';
+import { storeTaskUsage } from './usage-store.ts';
 
 const MAX_TASKS = 20;
 const TASK_TIMEOUT_MS = 25 * 60 * 1000;
@@ -63,25 +63,22 @@ async function executeTask(
   ingestConfig: IngestConfig,
   registry: ReturnType<typeof createRegistry>,
   directFetch: ReturnType<typeof createDirectFetch>,
-  task: Task,
+  task: Task
 ): Promise<ExecutedTask> {
   const module = registry.findModule(task.providerId);
   if (module === null) {
     throw new Error(`unknown provider ${task.providerId}`);
   }
-  const needsDirect =
-    task.mode === "vps-mutation" || (task.mode === "vps-get" && !module.config.requiresProxy);
-  const provider = needsDirect
-    ? module.build({ logger, directFetch })
-    : module.build({ logger });
+  const needsDirect = task.mode === 'vps-mutation' || (task.mode === 'vps-get' && !module.config.requiresProxy);
+  const provider = needsDirect ? module.build({ logger, directFetch }) : module.build({ logger });
   const catalog =
-    task.mode === "vps-mutation" && isStockRevealer(provider)
+    task.mode === 'vps-mutation' && isStockRevealer(provider)
       ? await provider.revealStock({ productIds: [] })
       : await provider.fetchCatalog();
   const snapshot = catalogToIngestSnapshot(catalog);
   const masked = snapshot.variants.filter((variant) => variant.quantity === null).length;
   if (masked > 0) {
-    logger.error("task masked", {
+    logger.error('task masked', {
       taskId: task.taskId,
       providerId: task.providerId,
       masked,
@@ -89,11 +86,11 @@ async function executeTask(
   }
   const sent = await sendSnapshot(snapshot, ingestConfig, logger);
   if (!sent) {
-    throw new Error("ingest rejected");
+    throw new Error('ingest rejected');
   }
   const done = await client.complete(task.taskId, masked);
   if (!done) {
-    throw new Error("queue complete rejected");
+    throw new Error('queue complete rejected');
   }
   return {
     taskId: task.taskId,
@@ -104,17 +101,14 @@ async function executeTask(
   };
 }
 
-export async function runExecutorPass(
-  logger: Logger,
-  options: ExecutorPassOptions = {},
-): Promise<ExecutorPassResult> {
+export async function runExecutorPass(logger: Logger, options: ExecutorPassOptions = {}): Promise<ExecutorPassResult> {
   const config = readIngestConfig();
   if (config === null) {
-    logger.warn("executor disabled: BACKEND_URL or INGEST_SECRET not set");
+    logger.warn('executor disabled: BACKEND_URL or INGEST_SECRET not set');
     return { processed: 0, failed: 0 };
   }
   const client = options.queueClient ?? createQueueClient(config.backendUrl, config.secret, logger);
-  const workerId = options.workerId ?? process.env["WORKER_ID"] ?? "vps-executor";
+  const workerId = options.workerId ?? process.env['WORKER_ID'] ?? 'vps-executor';
   const maxTasks = options.maxTasks ?? MAX_TASKS;
   const taskTimeoutMs = options.taskTimeoutMs ?? TASK_TIMEOUT_MS;
   const checkMemoryFn =
@@ -130,31 +124,30 @@ export async function runExecutorPass(
 
   for (let i = 0; i < maxTasks; i += 1) {
     if (!checkMemoryFn()) {
-      logger.warn("memory low, stop executor");
+      logger.warn('memory low, stop executor');
       break;
     }
     if (!checkRssFn()) {
-      logger.error("process rss too high, stop executor");
+      logger.error('process rss too high, stop executor');
       break;
     }
-    const task = await client.claim(["vps-get", "vps-mutation"], workerId);
+    const task = await client.claim(['vps-get', 'vps-mutation'], workerId);
     if (task === null) {
       break;
     }
     processed += 1;
-    const realFetch = globalThis.fetch;
-    const tracking = createUsageTracking(realFetch);
-    globalThis.fetch = tracking.fetchImpl;
+    const tracking = createUsageTracking();
+    const taskLogger = tracking.wrapLogger(logger);
     const startedAt = Date.now();
     try {
       const executed = await withTaskTimeout(
-        executeTask(logger, client, config, registry, directFetch, task),
+        executeTask(taskLogger, client, config, registry, directFetch, task),
         taskTimeoutMs,
-        task.taskId,
+        task.taskId
       );
       const elapsedMs = Date.now() - startedAt;
       const webshareBytes = tracking.stats.requestBytes + tracking.stats.responseBytes;
-      logger.info("task usage", {
+      logger.info('task usage', {
         taskId: executed.taskId,
         providerId: executed.providerId,
         elapsedMs,
@@ -162,12 +155,12 @@ export async function runExecutorPass(
         requestBytes: tracking.stats.requestBytes,
         responseBytes: tracking.stats.responseBytes,
       });
-      logger.info("task done", {
+      logger.info('task done', {
         taskId: executed.taskId,
         providerId: executed.providerId,
         variants: executed.variants,
       });
-      const status: SnitchStatus = executed.masked > 0 ? "failed" : "ok";
+      const status: SnitchStatus = executed.masked > 0 ? 'failed' : 'ok';
       await sendReport(
         taskReport(executed.providerId, status, {
           elapsedMs,
@@ -176,7 +169,7 @@ export async function runExecutorPass(
           variants: executed.variants,
           masked: executed.masked,
         }),
-        logger,
+        logger
       );
       await storeTaskUsage(
         {
@@ -190,13 +183,13 @@ export async function runExecutorPass(
           masked: executed.masked,
           variants: executed.variants,
         },
-        logger,
+        logger
       );
     } catch (error: unknown) {
       const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
       const webshareBytes = tracking.stats.requestBytes + tracking.stats.responseBytes;
-      logger.error("task usage", {
+      logger.error('task usage', {
         taskId: task.taskId,
         providerId: task.providerId,
         elapsedMs,
@@ -204,18 +197,23 @@ export async function runExecutorPass(
         requestBytes: tracking.stats.requestBytes,
         responseBytes: tracking.stats.responseBytes,
       });
-      logger.error("task failed", {
+      logger.error('task failed', {
         taskId: task.taskId,
         providerId: task.providerId,
         error: message,
       });
       await sendReport(
-        taskReport(task.providerId, "failed", {
-          elapsedMs,
-          webshareBytes,
-          requests: tracking.stats.requests,
-        }, message),
-        logger,
+        taskReport(
+          task.providerId,
+          'failed',
+          {
+            elapsedMs,
+            webshareBytes,
+            requests: tracking.stats.requests,
+          },
+          message
+        ),
+        logger
       );
       await storeTaskUsage(
         {
@@ -225,20 +223,18 @@ export async function runExecutorPass(
           day: new Date().toISOString().slice(0, 10),
           elapsedMs,
           webshareBytes,
-          status: "failed",
+          status: 'failed',
           masked: 0,
           variants: 0,
         },
-        logger,
+        logger
       );
       await client.fail(task.taskId, message);
       failed += 1;
-      if (message.includes("task timeout after")) {
-        logger.error("task timeout, stop executor pass", { taskId: task.taskId });
+      if (message.includes('task timeout after')) {
+        logger.error('task timeout, stop executor pass', { taskId: task.taskId });
         break;
       }
-    } finally {
-      globalThis.fetch = realFetch;
     }
   }
 

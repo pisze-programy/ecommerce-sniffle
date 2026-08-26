@@ -61,9 +61,11 @@ Look for these markers in the HTML:
 If found -> exact stock, cf-get, free.
 
 For a page that shows only the default variant, try the variant URL:
+
 ```
 GET https://{domain}/products/{handle}?variant={variantId}
 ```
+
 - noo.ma reveals each variant this way.
 
 ### 5. Cart probe (mutation, webshare)
@@ -77,6 +79,24 @@ POST https://{domain}/cart/change.js  quantity=999
 - This costs webshare (~0.7 KB per variant with the body-abort trick).
 
 Only use this when methods 1-4 fail.
+
+### 6. MCP server (mutation, webshare)
+
+```
+POST https://{domain}/api/mcp  JSON-RPC tools/call update_cart
+add_items: [ { product_variant_id: "gid://shopify/ProductVariant/{id}",
+              quantity: 999999 } ]
+```
+
+- The shop clamps the quantity. The response errors say the exact
+  stock per variant. Sum the counts for one title in one response.
+  A shop can split one clamp into several cart lines (for example a
+  buy-2-get-1 promotion).
+- The endpoint does not challenge IPs. The cart-probe does.
+- Batch 10 variants per request. One request costs about 3 KB.
+- See [SHOPIFY-MCP-INVENTORY.md](./SHOPIFY-MCP-INVENTORY.md).
+
+Prefer this over the cart-probe. It is faster and never 429s.
 
 ## Shoper
 
@@ -138,14 +158,15 @@ locale path, not the bare path). The catalog comes from
 
 ## Cost summary
 
-| Source | Cost | Mode |
-|---|---|---|
-| products.json with inventory | free | cf-get |
-| product page .js with inventory | free | cf-get |
-| product page .xml with inventory | free | cf-get |
-| embedded inventory script | free | cf-get |
-| cart probe | ~0.7 KB / variant | vps-mutation |
-| basket reveal | ~3.4 KB / product | vps-mutation |
+| Source                           | Cost              | Mode         |
+| -------------------------------- | ----------------- | ------------ |
+| products.json with inventory     | free              | cf-get       |
+| product page .js with inventory  | free              | cf-get       |
+| product page .xml with inventory | free              | cf-get       |
+| embedded inventory script        | free              | cf-get       |
+| cart probe                       | ~0.7 KB / variant | vps-mutation |
+| MCP server                       | ~0.3 KB / variant | vps-mutation |
+| basket reveal                    | ~3.4 KB / product | vps-mutation |
 
 ## Workflow for a new shop
 

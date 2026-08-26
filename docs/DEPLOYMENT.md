@@ -45,7 +45,10 @@ npx tsup
 No Docker. The VPS runs Node only.
 
 1. Copy the `orchestrator` folder to the VPS.
-2. On the VPS: `npm ci --omit=dev` (installs `undici`).
+2. Copy `node_modules` (only `undici`, about 2.4 MB) from the
+   developer machine. NEVER run `npm install` on the VPS. The VPS
+   has 256 MB RAM and 0 swap. `npm install` dies of out-of-memory
+   and can kill the other cron job on the same VPS.
 3. Create a `.env` file next to the orchestrator with the proxy URL:
 
 ```
@@ -143,6 +146,21 @@ The orchestrator stays well below the limit:
 - Node.js baseline: about 20 MB
 - no browser, no docker, no heavy libraries
 - sequential processing, one product at a time
+
+NEVER run `npm install` or `npm ci` on the VPS. The install step
+needs more memory than the VPS has. It dies of out-of-memory.
+Copy the built folder and the `node_modules` from the developer
+machine instead.
+
+Verify the block with this command on the VPS:
+
+```
+/home/frog/check-npm-block.sh
+```
+
+The script lives in `orchestrator/check-npm-block.sh` in the repo.
+It proves that `npm install` is blocked and that other npm commands
+still work.
 
 ## Storage bindings
 

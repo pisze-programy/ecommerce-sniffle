@@ -1,72 +1,72 @@
-import type { Snapshot, VariantState } from "@ecommerce-sniffle/analysis";
-import type { Logger } from "@ecommerce-sniffle/providers";
-import type { Storage } from "./storage.ts";
-import { storeSnapshot } from "./pipeline.ts";
-import type { PipelineResult } from "./pipeline.ts";
+import type { Snapshot, VariantState } from '@ecommerce-sniffle/analysis';
+import type { Logger } from '@ecommerce-sniffle/providers';
+import type { Storage } from './storage.ts';
+import { storeSnapshot } from './pipeline.ts';
+import type { PipelineResult } from './pipeline.ts';
 
 function parseVariantState(data: unknown): VariantState | null {
-  if (typeof data !== "object" || data === null) {
+  if (typeof data !== 'object' || data === null) {
     return null;
   }
   const obj = data as Readonly<Record<string, unknown>>;
-  if (typeof obj["productId"] !== "string" || typeof obj["variantId"] !== "string") {
+  if (typeof obj['productId'] !== 'string' || typeof obj['variantId'] !== 'string') {
     return null;
   }
   let quantity: number | null = null;
-  if (obj["quantity"] === null) {
+  if (obj['quantity'] === null) {
     quantity = null;
-  } else if (typeof obj["quantity"] === "number") {
-    quantity = obj["quantity"];
+  } else if (typeof obj['quantity'] === 'number') {
+    quantity = obj['quantity'];
   } else {
     return null;
   }
   let price: number | null = null;
-  if (obj["price"] === null) {
+  if (obj['price'] === null) {
     price = null;
-  } else if (typeof obj["price"] === "number") {
-    price = obj["price"];
+  } else if (typeof obj['price'] === 'number') {
+    price = obj['price'];
   } else {
     return null;
   }
   let regularPrice: number | null = null;
-  if (obj["regularPrice"] === null) {
+  if (obj['regularPrice'] === null) {
     regularPrice = null;
-  } else if (typeof obj["regularPrice"] === "number") {
-    regularPrice = obj["regularPrice"];
+  } else if (typeof obj['regularPrice'] === 'number') {
+    regularPrice = obj['regularPrice'];
   } else {
     return null;
   }
-  if (typeof obj["available"] !== "boolean") {
+  if (typeof obj['available'] !== 'boolean') {
     return null;
   }
   return {
-    productId: obj["productId"],
-    variantId: obj["variantId"],
+    productId: obj['productId'],
+    variantId: obj['variantId'],
     quantity,
     price,
     regularPrice,
-    available: obj["available"],
+    available: obj['available'],
   };
 }
 
 export function parseSnapshotBody(data: unknown): Snapshot | null {
-  if (typeof data !== "object" || data === null) {
+  if (typeof data !== 'object' || data === null) {
     return null;
   }
   const obj = data as Readonly<Record<string, unknown>>;
-  const shop = obj["shop"];
-  const snapshotAt = obj["snapshotAt"];
-  const window = obj["window"];
-  if (typeof shop !== "string" || shop.length === 0) {
+  const shop = obj['shop'];
+  const snapshotAt = obj['snapshotAt'];
+  const window = obj['window'];
+  if (typeof shop !== 'string' || shop.length === 0) {
     return null;
   }
-  if (typeof snapshotAt !== "string" || snapshotAt.length === 0) {
+  if (typeof snapshotAt !== 'string' || snapshotAt.length === 0) {
     return null;
   }
-  if (window !== "morning" && window !== "evening" && window !== "unknown") {
+  if (window !== 'morning' && window !== 'evening' && window !== 'unknown') {
     return null;
   }
-  const variantsRaw = obj["variants"];
+  const variantsRaw = obj['variants'];
   if (!Array.isArray(variantsRaw)) {
     return null;
   }
@@ -81,10 +81,6 @@ export function parseSnapshotBody(data: unknown): Snapshot | null {
   return { shop, snapshotAt, window, variants };
 }
 
-export async function ingestSnapshot(
-  storage: Storage,
-  snapshot: Snapshot,
-  logger: Logger,
-): Promise<PipelineResult> {
+export async function ingestSnapshot(storage: Storage, snapshot: Snapshot, logger: Logger): Promise<PipelineResult> {
   return storeSnapshot(storage, snapshot, logger);
 }

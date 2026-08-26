@@ -1,6 +1,5 @@
-import { DIRECT_FETCH_TIMEOUT_MS } from "./direct-fetch.ts";
-
-const REQUEST_HEADER_BYTES = 512;
+import { createLogger } from '@ecommerce-sniffle/providers';
+import type { Logger, LogRecord } from '@ecommerce-sniffle/providers';
 
 export interface UsageStats {
   requests: number;
@@ -9,80 +8,46 @@ export interface UsageStats {
 }
 
 export interface UsageTracking {
-  readonly fetchImpl: typeof fetch;
+  readonly wrapLogger: (logger: Logger) => Logger;
   readonly stats: UsageStats;
 }
 
-function requestBodyBytes(init: RequestInit | undefined): number {
-  const body = init?.body;
-  if (body === undefined) {
-    return 0;
-  }
-  if (typeof body === "string") {
-    return body.length;
-  }
-  if (body instanceof URLSearchParams) {
-    return body.toString().length;
-  }
-  if (ArrayBuffer.isView(body)) {
-    return body.byteLength;
-  }
-  if (body instanceof ArrayBuffer) {
-    return body.byteLength;
-  }
-  return 0;
+function numberContext(record: LogRecord, key: string): number {
+  const value = record.context[key];
+  return typeof value === 'number' ? value : 0;
 }
 
-function inputUrlBytes(input: Parameters<typeof fetch>[0]): number {
-  if (typeof input === "string") {
-    return input.length;
+function forward(record: LogRecord, logger: Logger): void {
+  switch (record.level) {
+    case 'debug':
+      logger.debug(record.message, record.context);
+      return;
+    case 'info':
+      logger.info(record.message, record.context);
+      return;
+    case 'warn':
+      logger.warn(record.message, record.context);
+      return;
+    case 'error':
+      logger.error(record.message, record.context);
+      return;
   }
-  if (input instanceof URL) {
-    return input.toString().length;
-  }
-  return input.url.length;
 }
 
-export function createUsageTracking(
-  baseFetch: typeof fetch,
-  timeoutMs: number = DIRECT_FETCH_TIMEOUT_MS,
-): UsageTracking {
+export function createUsageTracking(): UsageTracking {
   const stats: UsageStats = { requests: 0, requestBytes: 0, responseBytes: 0 };
-  const fetchImpl: typeof fetch = async (input, init) => {
-    stats.requests += 1;
-    stats.requestBytes += inputUrlBytes(input) + requestBodyBytes(init) + REQUEST_HEADER_BYTES;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, timeoutMs);
-    let response: Response;
-    try {
-      response = await baseFetch(input, { ...init, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-    const responseHeaders = response.headers;
-    if (responseHeaders !== undefined && responseHeaders !== null) {
-      const contentLength = responseHeaders.get("content-length");
-      if (contentLength !== null) {
-        const length = Number(contentLength);
-        if (!Number.isNaN(length)) {
-          stats.responseBytes += length;
-        }
-        return response;
+
+  function wrapLogger(logger: Logger): Logger {
+    const sink = (record: LogRecord): void => {
+      if (record.message === 'proxy.request') {
+        stats.requests += 1;
+        stats.requestBytes += numberContext(record, 'requestBytes');
+        stats.responseBytes += numberContext(record, 'responseBytes');
       }
-    }
-    const body = response.body;
-    if (body !== null && body !== undefined) {
-      const counter = new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          stats.responseBytes += chunk.byteLength;
-          controller.enqueue(chunk);
-        },
-      });
-      return new Response(body.pipeThrough(counter), response);
-    }
-    return response;
-  };
-  return { fetchImpl, stats };
+      forward(record, logger);
+    };
+    return createLogger(sink);
+  }
+
+  return { wrapLogger, stats };
 }

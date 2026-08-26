@@ -1,9 +1,12 @@
-import { PROVIDERS } from "../../config.ts";
-import { requireValue } from "../../helpers.ts";
-import type { ProviderModule } from "../../module.ts";
-import { buildBasketRevealProvider } from "./basket-reveal.ts";
+import { PROVIDERS } from '../../config.ts';
+import { requireValue } from '../../helpers.ts';
+import type { ProviderModule } from '../../module.ts';
+import { buildBasketRevealProvider } from './basket-reveal.ts';
 
-const config = requireValue(PROVIDERS.find((c) => c.id === "sklepskolim"), "config sklepskolim");
+const config = requireValue(
+  PROVIDERS.find((c) => c.id === 'sklepskolim'),
+  'config sklepskolim'
+);
 
 export const sklepskolimModule: ProviderModule = {
   config,

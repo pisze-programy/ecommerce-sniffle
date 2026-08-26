@@ -1,20 +1,20 @@
-import type { Logger } from "./logger.ts";
-import type { Catalog, Provider, ProviderConfig, StockRevealTarget, StockRevealer } from "./types.ts";
+import type { Logger } from './logger.ts';
+import type { Catalog, Provider, ProviderConfig, StockRevealTarget, StockRevealer } from './types.ts';
 
 export class ProviderError extends Error {
   constructor(
     message: string,
-    readonly providerId: string,
+    readonly providerId: string
   ) {
     super(message);
-    this.name = "ProviderError";
+    this.name = 'ProviderError';
   }
 }
 
 export function buildProvider(
   config: ProviderConfig,
   logger: Logger,
-  fetchCatalogImpl: () => Promise<Catalog>,
+  fetchCatalogImpl: () => Promise<Catalog>
 ): Provider {
   return {
     config,
@@ -23,7 +23,7 @@ export function buildProvider(
         return await fetchCatalogImpl();
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("Provider.fetchCatalog failed", {
+        logger.error('Provider.fetchCatalog failed', {
           providerId: config.id,
           domain: config.domain,
           error: message,
@@ -38,7 +38,7 @@ export function buildStockRevealer(
   config: ProviderConfig,
   logger: Logger,
   fetchCatalogImpl: () => Promise<Catalog>,
-  revealStockImpl: (target: StockRevealTarget) => Promise<Catalog>,
+  revealStockImpl: (target: StockRevealTarget) => Promise<Catalog>
 ): StockRevealer {
   const base = buildProvider(config, logger, fetchCatalogImpl);
   return {
@@ -48,7 +48,7 @@ export function buildStockRevealer(
         return await revealStockImpl(target);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error("Provider.revealStock failed", {
+        logger.error('Provider.revealStock failed', {
           providerId: config.id,
           domain: config.domain,
           error: message,

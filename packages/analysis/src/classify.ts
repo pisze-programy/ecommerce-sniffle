@@ -1,4 +1,4 @@
-import type { Confidence, StockEvent, VariantState } from "./types.js";
+import type { Confidence, StockEvent, VariantState } from './types.js';
 
 export function computeVariantDelta(prev: VariantState, curr: VariantState): StockEvent | null {
   const prevQty = prev.quantity;
@@ -8,9 +8,9 @@ export function computeVariantDelta(prev: VariantState, curr: VariantState): Sto
   // Priority 1: availability transition (strongest signal)
   if (prev.available && !curr.available) {
     const units = bothTracked && prevQty !== null ? prevQty : 0;
-    const confidence: Confidence = bothTracked ? "exact" : "low";
+    const confidence: Confidence = bothTracked ? 'exact' : 'low';
     return {
-      type: "soldOut",
+      type: 'soldOut',
       productId: curr.productId,
       variantId: curr.variantId,
       from: prev,
@@ -22,13 +22,13 @@ export function computeVariantDelta(prev: VariantState, curr: VariantState): Sto
 
   if (!prev.available && curr.available) {
     return {
-      type: "backInStock",
+      type: 'backInStock',
       productId: curr.productId,
       variantId: curr.variantId,
       from: prev,
       to: curr,
       units: 0,
-      confidence: "exact",
+      confidence: 'exact',
     };
   }
 
@@ -37,24 +37,24 @@ export function computeVariantDelta(prev: VariantState, curr: VariantState): Sto
     const delta = currQty - prevQty;
     if (delta < 0) {
       return {
-        type: "sold",
+        type: 'sold',
         productId: curr.productId,
         variantId: curr.variantId,
         from: prev,
         to: curr,
         units: -delta,
-        confidence: "exact",
+        confidence: 'exact',
       };
     }
     if (delta > 0) {
       return {
-        type: "restock",
+        type: 'restock',
         productId: curr.productId,
         variantId: curr.variantId,
         from: prev,
         to: curr,
         units: delta,
-        confidence: "masked",
+        confidence: 'masked',
       };
     }
   }
@@ -62,25 +62,25 @@ export function computeVariantDelta(prev: VariantState, curr: VariantState): Sto
   // Priority 3: price change
   if (priceDrop(prev, curr)) {
     return {
-      type: "promoStart",
+      type: 'promoStart',
       productId: curr.productId,
       variantId: curr.variantId,
       from: prev,
       to: curr,
       units: 0,
-      confidence: "exact",
+      confidence: 'exact',
     };
   }
 
   if (priceRise(prev, curr)) {
     return {
-      type: "promoEnd",
+      type: 'promoEnd',
       productId: curr.productId,
       variantId: curr.variantId,
       from: prev,
       to: curr,
       units: 0,
-      confidence: "exact",
+      confidence: 'exact',
     };
   }
 

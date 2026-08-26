@@ -1,8 +1,8 @@
-import type { Logger } from "../logger.ts";
+import type { Logger } from '../logger.ts';
 
-const CREATE_URL = "https://api.2captcha.com/createTask";
-const RESULT_URL = "https://api.2captcha.com/getTaskResult";
-const BALANCE_URL = "https://api.2captcha.com/getBalance";
+const CREATE_URL = 'https://api.2captcha.com/createTask';
+const RESULT_URL = 'https://api.2captcha.com/getTaskResult';
+const BALANCE_URL = 'https://api.2captcha.com/getBalance';
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 90000;
@@ -32,10 +32,10 @@ export interface CaptchaClientOptions {
 }
 
 function apiKey(): string | null {
-  if (typeof process === "undefined") {
+  if (typeof process === 'undefined') {
     return null;
   }
-  const value = process.env["CAPTCHA_KEY"];
+  const value = process.env['CAPTCHA_KEY'];
   if (value === undefined || value.length === 0) {
     return null;
   }
@@ -44,51 +44,47 @@ function apiKey(): string | null {
 
 function buildTask(task: TurnstileTask): Readonly<Record<string, string>> {
   const payload: Record<string, string> = {
-    type: "TurnstileTaskProxyless",
+    type: 'TurnstileTaskProxyless',
     websiteURL: task.websiteURL,
     websiteKey: task.websiteKey,
   };
   if (task.action !== null) {
-    payload["action"] = task.action;
+    payload['action'] = task.action;
   }
   if (task.data !== null) {
-    payload["data"] = task.data;
+    payload['data'] = task.data;
   }
   if (task.pagedata !== null) {
-    payload["pagedata"] = task.pagedata;
+    payload['pagedata'] = task.pagedata;
   }
   return payload;
 }
 
 function errorOf(data: Readonly<Record<string, unknown>>, fallback: string): string {
-  const description = data["errorDescription"];
-  if (typeof description === "string") {
+  const description = data['errorDescription'];
+  if (typeof description === 'string') {
     return description;
   }
   return fallback;
 }
 
-async function createTask(
-  key: string,
-  task: TurnstileTask,
-  logger: Logger,
-): Promise<number | null> {
+async function createTask(key: string, task: TurnstileTask, logger: Logger): Promise<number | null> {
   try {
     const response = await fetch(CREATE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clientKey: key, task: buildTask(task) }),
     });
     const data = (await response.json()) as Readonly<Record<string, unknown>>;
-    if (data["errorId"] === 0 && typeof data["taskId"] === "number") {
-      logger.debug("captcha.task created", { taskId: data["taskId"] });
-      return data["taskId"];
+    if (data['errorId'] === 0 && typeof data['taskId'] === 'number') {
+      logger.debug('captcha.task created', { taskId: data['taskId'] });
+      return data['taskId'];
     }
-    logger.warn("captcha.createTask failed", { error: errorOf(data, String(data["errorId"])) });
+    logger.warn('captcha.createTask failed', { error: errorOf(data, String(data['errorId'])) });
     return null;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn("captcha.createTask error", { error: message });
+    logger.warn('captcha.createTask error', { error: message });
     return null;
   }
 }
@@ -98,43 +94,42 @@ async function pollResult(
   taskId: number,
   logger: Logger,
   pollIntervalMs: number,
-  pollTimeoutMs: number,
+  pollTimeoutMs: number
 ): Promise<CaptchaSolution | null> {
   const started = Date.now();
   while (true) {
     if (Date.now() - started > pollTimeoutMs) {
-      logger.warn("captcha.poll timeout", { taskId });
+      logger.warn('captcha.poll timeout', { taskId });
       return null;
     }
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     try {
       const response = await fetch(RESULT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientKey: key, taskId }),
       });
       const data = (await response.json()) as Readonly<Record<string, unknown>>;
-      if (data["status"] === "ready") {
-        const solution = data["solution"];
-        if (typeof solution === "object" && solution !== null) {
+      if (data['status'] === 'ready') {
+        const solution = data['solution'];
+        if (typeof solution === 'object' && solution !== null) {
           const solutionObj = solution as Readonly<Record<string, unknown>>;
-          const token = typeof solutionObj["token"] === "string" ? solutionObj["token"] : null;
-          const userAgent =
-            typeof solutionObj["userAgent"] === "string" ? solutionObj["userAgent"] : null;
+          const token = typeof solutionObj['token'] === 'string' ? solutionObj['token'] : null;
+          const userAgent = typeof solutionObj['userAgent'] === 'string' ? solutionObj['userAgent'] : null;
           if (token !== null && userAgent !== null) {
             return { token, userAgent };
           }
         }
-        logger.warn("captcha.solution missing token", { taskId });
+        logger.warn('captcha.solution missing token', { taskId });
         return null;
       }
-      if (data["status"] !== "processing") {
-        logger.warn("captcha.poll failed", { taskId, error: errorOf(data, "unknown status") });
+      if (data['status'] !== 'processing') {
+        logger.warn('captcha.poll failed', { taskId, error: errorOf(data, 'unknown status') });
         return null;
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn("captcha.poll error", { taskId, error: message });
+      logger.warn('captcha.poll error', { taskId, error: message });
       return null;
     }
   }
@@ -142,15 +137,13 @@ async function pollResult(
 
 export function createCaptchaClient(options: CaptchaClientOptions = {}): CaptchaClient {
   const key = apiKey();
-  const pollIntervalMs =
-    options.pollIntervalMs === undefined ? POLL_INTERVAL_MS : options.pollIntervalMs;
-  const pollTimeoutMs =
-    options.pollTimeoutMs === undefined ? POLL_TIMEOUT_MS : options.pollTimeoutMs;
+  const pollIntervalMs = options.pollIntervalMs === undefined ? POLL_INTERVAL_MS : options.pollIntervalMs;
+  const pollTimeoutMs = options.pollTimeoutMs === undefined ? POLL_TIMEOUT_MS : options.pollTimeoutMs;
   return {
     enabled: key !== null,
     async solveTurnstile(task: TurnstileTask, logger: Logger): Promise<CaptchaSolution | null> {
       if (key === null) {
-        logger.warn("captcha disabled: CAPTCHA_KEY not set");
+        logger.warn('captcha disabled: CAPTCHA_KEY not set');
         return null;
       }
       const taskId = await createTask(key, task, logger);
@@ -165,19 +158,19 @@ export function createCaptchaClient(options: CaptchaClientOptions = {}): Captcha
       }
       try {
         const response = await fetch(BALANCE_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ clientKey: key }),
         });
         const data = (await response.json()) as Readonly<Record<string, unknown>>;
-        if (data["errorId"] === 0 && typeof data["balance"] === "number") {
-          return data["balance"];
+        if (data['errorId'] === 0 && typeof data['balance'] === 'number') {
+          return data['balance'];
         }
-        logger.warn("captcha.getBalance failed", { error: errorOf(data, String(data["errorId"])) });
+        logger.warn('captcha.getBalance failed', { error: errorOf(data, String(data['errorId'])) });
         return null;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.warn("captcha.getBalance error", { error: message });
+        logger.warn('captcha.getBalance error', { error: message });
         return null;
       }
     },
