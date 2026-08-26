@@ -619,11 +619,19 @@ export async function revealProduct(
 export function buildBasketRevealProvider(
   config: ProviderConfig,
   logger: Logger,
-  _directFetch?: DirectFetch
+  directFetch?: DirectFetch
 ): StockRevealer {
-  // The catalog goes through the webshare too. This keeps the VPS IP clean.
+  // The catalog is a public storefront GET. It works direct from the
+  // VPS IP. Routing it direct cuts the webshare transfer by about half.
+  const rawCatalogFetch = (input: string | URL | Request, init?: RequestInit, options?: { maxBytes?: number }) => {
+    const url = String(input);
+    if (directFetch !== undefined) {
+      return directFetch(url, init, options);
+    }
+    return fetch(url, init);
+  };
+  const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, 'direct');
   const proxyUrl = process.env['HTTPS_PROXY'] ?? process.env['WEBSHARE_URL'] ?? null;
-  const catalogFetch = measureFetch(createFreshFetch(proxyUrl), logger, config.id, 'proxy');
   const probeFetch = measureFetch(createFreshFetch(proxyUrl), logger, config.id, 'proxy');
   const limiter = new ConcurrencyLimiter(GLOBAL_CONCURRENCY);
   return buildStockRevealer(

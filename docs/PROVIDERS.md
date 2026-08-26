@@ -69,14 +69,18 @@ no exact count for them, so they keep their exact GET sources.
 The shop hides the count in the catalog list. The basket reveal
 clamps a huge quantity. See below for the flow.
 
+The catalog is a public storefront GET. It runs direct from the VPS IP.
+Only the basket mutations go through the proxy. This cuts the webshare
+transfer by about half.
+
 | id           | domain           | stock source  | Webshare/run |
 | ------------ | ---------------- | ------------- | ------------ |
-| emereedivine | emereedivine.com | basket-reveal | ~69 KB       |
-| sklepskolim  | sklepskolim.pl   | basket-reveal | ~701 KB      |
-| wkdzik       | wkdzik.pl        | basket-reveal | ~1.4 MB      |
-| e-daag       | e-daag.com.pl    | basket-reveal | ~1.9 MB      |
+| emereedivine | emereedivine.com | basket-reveal | ~43 KB       |
+| e-daag       | e-daag.com.pl    | basket-reveal | ~359 KB      |
+| sklepskolim  | sklepskolim.pl   | basket-reveal | ~469 KB      |
+| wkdzik       | wkdzik.pl        | basket-reveal | ~1.0 MB      |
 
-Arustamian (1.6 MB) and osmpower (877 KB) stay disabled.
+Arustamian and osmpower stay disabled.
 
 ### Prestashop - cart reveal (vps-mutation)
 
@@ -134,12 +138,14 @@ A cart line is small. The provider discards the cart after the probe.
 The shop hides the count in the catalog list.
 The provider puts a huge quantity in the basket.
 
-1. `POST /webapi/front/{lang}/basket/{currency}/` with `stock_id` and `quantity=1`.
-   The response returns the basket item id.
-2. `PUT .../basket/{currency}/{itemId}/` with `quantity=999999999`.
+1. `POST /webapi/front/{lang}/basket/{currency}/` with `stock_id` and `quantity=999999999`.
+   The response adds the item and warns:
+   "Current stock is: NAME - N szt." The number N is the exact stock.
+   The POST alone reveals the stock for a simple product.
+2. Variant products need a fallback:
+   `PUT .../basket/{currency}/{itemId}/` with `quantity=999999999`.
    The shop clamps the line.
 3. The warning says "Aktualnie dostepna ilosc to: NAME - N szt."
-   The number N is the exact stock.
 4. `DELETE .../basket/{currency}/{itemId}/`. This keeps the basket clean.
 
 Variant products need option values. The provider fetches the product

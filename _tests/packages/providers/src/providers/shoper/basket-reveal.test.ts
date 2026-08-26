@@ -850,6 +850,16 @@ describe('buildBasketRevealProvider exclusion', () => {
       }
       return okResponse(addBody);
     });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: unknown) => {
+        const u = String(url);
+        if (u.includes('/products/PLN/list')) {
+          return okResponse(catalogBody);
+        }
+        throw new Error('unexpected direct url ' + u);
+      })
+    );
     const provider = buildBasketRevealProvider(excludedCfg, capture.logger);
     const result = await provider.revealStock({ productIds: [] });
     expect(result.products).toHaveLength(1);
