@@ -1,6 +1,10 @@
 import { Agent, ProxyAgent, fetch as undiciFetch } from 'undici';
 import type { WrappedFetch } from './manager.ts';
 
+// A probe can hang on a dead proxy connection. Abort it and let the
+// caller retry instead of waiting minutes.
+export const REQUEST_TIMEOUT_MS = 20000;
+
 export interface FreshResponse {
   readonly ok: boolean;
   readonly status: number;
@@ -25,7 +29,11 @@ export interface FreshFetchDeps {
 }
 
 const defaultFetchImpl: FetchImpl = (input, init, dispatcher) =>
-  undiciFetch(input, { ...init, dispatcher } as Parameters<typeof undiciFetch>[1]);
+  undiciFetch(input, {
+    ...init,
+    dispatcher,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  } as Parameters<typeof undiciFetch>[1]);
 
 const defaultMakeAgent: MakeAgent = (proxyUrl) => {
   if (proxyUrl === null) {

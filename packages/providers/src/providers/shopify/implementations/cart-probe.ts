@@ -34,7 +34,7 @@ type ProbeFetch = WrappedFetch;
 export function createProbeFetch(): ProbeFetch {
   const proxyUrl = process.env['HTTPS_PROXY'] ?? process.env['WEBSHARE_URL'] ?? null;
   if (proxyUrl === null) {
-    return (url, init) => fetch(url, init);
+    return (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(20000) });
   }
   return async (url, init) => {
     const agent = new ProxyAgent(proxyUrl);
@@ -44,6 +44,7 @@ export function createProbeFetch(): ProbeFetch {
         headers: init?.headers,
         body: init?.body,
         dispatcher: agent,
+        signal: AbortSignal.timeout(20000),
       } as Parameters<typeof undiciFetch>[1]);
     } finally {
       await agent.close();

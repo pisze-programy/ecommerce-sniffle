@@ -5,6 +5,10 @@ export interface UsageStats {
   requests: number;
   requestBytes: number;
   responseBytes: number;
+  // Only the requests that went through the proxy. The direct catalog
+  // fetches are labeled 'direct' and do not count as webshare.
+  proxyRequestBytes: number;
+  proxyResponseBytes: number;
 }
 
 export interface UsageTracking {
@@ -35,14 +39,26 @@ function forward(record: LogRecord, logger: Logger): void {
 }
 
 export function createUsageTracking(): UsageTracking {
-  const stats: UsageStats = { requests: 0, requestBytes: 0, responseBytes: 0 };
+  const stats: UsageStats = {
+    requests: 0,
+    requestBytes: 0,
+    responseBytes: 0,
+    proxyRequestBytes: 0,
+    proxyResponseBytes: 0,
+  };
 
   function wrapLogger(logger: Logger): Logger {
     const sink = (record: LogRecord): void => {
       if (record.message === 'proxy.request') {
         stats.requests += 1;
-        stats.requestBytes += numberContext(record, 'requestBytes');
-        stats.responseBytes += numberContext(record, 'responseBytes');
+        const requestBytes = numberContext(record, 'requestBytes');
+        const responseBytes = numberContext(record, 'responseBytes');
+        stats.requestBytes += requestBytes;
+        stats.responseBytes += responseBytes;
+        if (record.context['via'] === 'proxy') {
+          stats.proxyRequestBytes += requestBytes;
+          stats.proxyResponseBytes += responseBytes;
+        }
       }
       forward(record, logger);
     };

@@ -147,6 +147,7 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
       );
       const elapsedMs = Date.now() - startedAt;
       const webshareBytes = tracking.stats.requestBytes + tracking.stats.responseBytes;
+      const proxyBytes = tracking.stats.proxyRequestBytes + tracking.stats.proxyResponseBytes;
       logger.info('task usage', {
         taskId: executed.taskId,
         providerId: executed.providerId,
@@ -154,6 +155,7 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
         requests: tracking.stats.requests,
         requestBytes: tracking.stats.requestBytes,
         responseBytes: tracking.stats.responseBytes,
+        proxyBytes,
       });
       logger.info('task done', {
         taskId: executed.taskId,
@@ -179,6 +181,7 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
           day: new Date().toISOString().slice(0, 10),
           elapsedMs,
           webshareBytes,
+          proxyBytes,
           status,
           masked: executed.masked,
           variants: executed.variants,
@@ -189,6 +192,7 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
       const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
       const webshareBytes = tracking.stats.requestBytes + tracking.stats.responseBytes;
+      const proxyBytes = tracking.stats.proxyRequestBytes + tracking.stats.proxyResponseBytes;
       logger.error('task usage', {
         taskId: task.taskId,
         providerId: task.providerId,
@@ -196,6 +200,7 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
         requests: tracking.stats.requests,
         requestBytes: tracking.stats.requestBytes,
         responseBytes: tracking.stats.responseBytes,
+        proxyBytes,
       });
       logger.error('task failed', {
         taskId: task.taskId,
@@ -223,6 +228,7 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
           day: new Date().toISOString().slice(0, 10),
           elapsedMs,
           webshareBytes,
+          proxyBytes,
           status: 'failed',
           masked: 0,
           variants: 0,

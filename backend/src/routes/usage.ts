@@ -10,6 +10,7 @@ interface UsageBody {
   readonly day: string;
   readonly elapsedMs: number;
   readonly webshareBytes: number;
+  readonly proxyBytes: number | null;
   readonly status: string;
   readonly masked: number;
   readonly variants: number;
@@ -33,6 +34,7 @@ function parseUsageBody(body: unknown): UsageBody | null {
   ) {
     return null;
   }
+  const proxyBytes = obj['proxyBytes'];
   return {
     taskId: obj['taskId'],
     providerId: obj['providerId'],
@@ -40,6 +42,7 @@ function parseUsageBody(body: unknown): UsageBody | null {
     day: obj['day'],
     elapsedMs: obj['elapsedMs'],
     webshareBytes: obj['webshareBytes'],
+    proxyBytes: typeof proxyBytes === 'number' ? proxyBytes : null,
     status: obj['status'],
     masked: obj['masked'],
     variants: obj['variants'],
@@ -59,7 +62,7 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
       return c.json({ error: 'invalid body' }, 400);
     }
     await c.env.DB.prepare(
-      'INSERT OR REPLACE INTO task_usage (task_id, provider_id, window, day, elapsed_ms, webshare_bytes, status, masked, variants, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT OR REPLACE INTO task_usage (task_id, provider_id, window, day, elapsed_ms, webshare_bytes, proxy_bytes, status, masked, variants, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     )
       .bind(
         body.taskId,
@@ -68,6 +71,7 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
         body.day,
         body.elapsedMs,
         body.webshareBytes,
+        body.proxyBytes,
         body.status,
         body.masked,
         body.variants,
@@ -106,17 +110,22 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
       .bind(window, dayStart, dayEnd)
       .all();
     const usageRows = await db
-      .prepare('SELECT provider_id, webshare_bytes FROM task_usage WHERE window = ? AND day = ?')
+      .prepare('SELECT provider_id, webshare_bytes, proxy_bytes FROM task_usage WHERE window = ? AND day = ?')
       .bind(window, day)
       .all();
     const perProvider = new Map<string, number>();
     let transferBytes = 0;
+    let proxyBytes = 0;
     for (const row of usageRows.results as ReadonlyArray<Record<string, unknown>>) {
       const provider = row['provider_id'];
       const bytes = row['webshare_bytes'];
       if (typeof provider === 'string' && typeof bytes === 'number') {
         perProvider.set(provider, (perProvider.get(provider) ?? 0) + bytes);
         transferBytes += bytes;
+      }
+      const pBytes = row['proxy_bytes'];
+      if (typeof pBytes === 'number') {
+        proxyBytes += pBytes;
       }
     }
     const done = (doneRows.results as ReadonlyArray<Record<string, unknown>>)
@@ -135,8 +144,46 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
       failed,
       pending,
       transferBytes,
+      proxyBytes,
       perProvider: [...perProvider.entries()].map(([providerId, bytes]) => ({ providerId, bytes })),
     });
+  });
+
+  api.post('/backfill/product-url', async (c) => {
+    if (!isAuthorized(c)) {
+      c.get('logger').warn('backfill.unauthorized');
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const body = await c.req.json().catch(() => null);
+    const entries =
+      typeof body === 'object' && body !== null ? (body as Readonly<Record<string, unknown>>)['entries'] : null;
+    if (!Array.isArray(entries)) {
+      return c.json({ error: 'invalid body' }, 400);
+    }
+    const statements: Array<ReturnType<typeof c.env.DB.prepare>> = [];
+    let updated = 0;
+    for (const entry of entries) {
+      if (typeof entry !== 'object' || entry === null) {
+        continue;
+      }
+      const obj = entry as Readonly<Record<string, unknown>>;
+      const shop = obj['shop'];
+      const productId = obj['productId'];
+      const url = obj['url'];
+      if (typeof shop !== 'string' || typeof productId !== 'string' || typeof url !== 'string') {
+        continue;
+      }
+      statements.push(
+        c.env.DB.prepare(
+          'UPDATE snapshots SET product_url = ? WHERE shop = ? AND product_id = ? AND product_url IS NULL'
+        ).bind(url, shop, productId)
+      );
+      updated += 1;
+    }
+    if (statements.length > 0) {
+      await c.env.DB.batch(statements);
+    }
+    return c.json({ ok: true, updated });
   });
 
   return api;

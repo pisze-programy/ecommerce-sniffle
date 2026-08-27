@@ -45,6 +45,7 @@ describe('catalogToSnapshot', () => {
       price: 100,
       regularPrice: null,
       available: true,
+      productUrl: 'https://forcer.pl/products/set-air',
     });
     expect(snapshot.variants[1]?.quantity).toBe(0);
     expect(snapshot.variants[1]?.available).toBe(false);

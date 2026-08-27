@@ -9,14 +9,15 @@ export function currentWindow(at: Date = new Date()): SnapshotWindow {
   return 'evening';
 }
 
-function variantToState(productId: string, variant: Variant): VariantState {
+function variantToState(product: { id: string; url: string }, variant: Variant): VariantState {
   return {
-    productId,
+    productId: product.id,
     variantId: variant.id,
     quantity: variant.quantity,
     price: variant.price.amount,
     regularPrice: variant.regularPrice === null ? null : variant.regularPrice.amount,
     available: variant.available,
+    productUrl: product.url,
   };
 }
 
@@ -24,7 +25,7 @@ export function catalogToSnapshot(catalog: Catalog, window: SnapshotWindow, snap
   const variants: VariantState[] = [];
   for (const product of catalog.products) {
     for (const variant of product.variants) {
-      variants.push(variantToState(product.id, variant));
+      variants.push(variantToState(product, variant));
     }
   }
   return {

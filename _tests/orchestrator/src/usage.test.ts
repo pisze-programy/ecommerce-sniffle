@@ -27,4 +27,16 @@ describe('createUsageTracking', () => {
     logger.info('proxy.request', { providerId: 'wkdzik', responseBytes: 390, requestBytes: 25 });
     expect(tracking.stats.responseBytes).toBe(390);
   });
+
+  it('counts only the via=proxy records as proxy bytes', () => {
+    const tracking = createUsageTracking();
+    const logger = tracking.wrapLogger(createLogger(() => {}));
+    logger.info('proxy.request', { providerId: 'wkdzik', via: 'proxy', responseBytes: 500, requestBytes: 30 });
+    logger.info('proxy.request', { providerId: 'wkdzik', via: 'direct', responseBytes: 4000, requestBytes: 10 });
+    // The direct catalog is counted in the total but not in proxy bytes.
+    expect(tracking.stats.requestBytes).toBe(40);
+    expect(tracking.stats.responseBytes).toBe(4500);
+    expect(tracking.stats.proxyRequestBytes).toBe(30);
+    expect(tracking.stats.proxyResponseBytes).toBe(500);
+  });
 });

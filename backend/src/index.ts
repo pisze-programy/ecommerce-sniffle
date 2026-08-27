@@ -46,7 +46,9 @@ export default {
         events: result.result === null ? null : result.result.events,
       });
     }
-    await sendCfSummary(env, window, day);
+    // The summary sends only from the dedicated summary crons (10:10/22:10).
+    // Sending it here, right after the enqueue, flags the fresh tasks as
+    // pending and sends a red mail.
     ctx.waitUntil(Promise.resolve());
   },
   fetch: app.fetch,
@@ -75,12 +77,15 @@ async function sendCfSummary(env: Env, window: string, day: string): Promise<boo
     .bind(window, dayStart, dayEnd)
     .all();
   const usageRows = await db
-    .prepare('SELECT webshare_bytes FROM task_usage WHERE window = ? AND day = ?')
+    .prepare('SELECT webshare_bytes, proxy_bytes FROM task_usage WHERE window = ? AND day = ?')
     .bind(window, day)
     .all();
   let transferBytes = 0;
   for (const row of usageRows.results as ReadonlyArray<Record<string, unknown>>) {
-    const bytes = row['webshare_bytes'];
+    // The proxy_bytes holds only the traffic that went through the
+    // webshare proxy. The webshare_bytes also counts direct catalogs.
+    const proxy = row['proxy_bytes'];
+    const bytes = typeof proxy === 'number' ? proxy : row['webshare_bytes'];
     if (typeof bytes === 'number') {
       transferBytes += bytes;
     }

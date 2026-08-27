@@ -11,6 +11,7 @@ import {
   revealProduct,
   fetchShoperCatalog,
   extractCookiesFromResponse,
+  isEmptyAddResponse,
   buildBasketRevealProvider,
 } from '../../../../../../packages/providers/src/providers/shoper/basket-reveal.ts';
 import type { Product } from '@ecommerce-sniffle/providers';
@@ -865,5 +866,88 @@ describe('buildBasketRevealProvider exclusion', () => {
     expect(result.products).toHaveLength(1);
     expect(result.products[0]?.id).toBe('2');
     expect(capture.records.some((record) => record.message === 'basketreveal.excluded')).toBe(true);
+  });
+});
+
+describe('isEmptyAddResponse', () => {
+  it('returns true for an empty add response', () => {
+    expect(isEmptyAddResponse('{"added":[],"basket":{"count":0}}')).toBe(true);
+  });
+
+  it('returns false when an item was added', () => {
+    expect(isEmptyAddResponse('{"added":[{"id":1}]}')).toBe(false);
+  });
+
+  it('returns false when a warning is present', () => {
+    expect(isEmptyAddResponse('{"added":[],"_flash_messenger":{"warning":["Current stock is: X - 3 szt."]}}')).toBe(
+      false
+    );
+  });
+
+  it('returns false for a challenge page', () => {
+    expect(isEmptyAddResponse('<title>Verifying your connection...</title>')).toBe(false);
+  });
+});
+
+describe('revealVariant retry', () => {
+  function okResponse(body: string): {
+    ok: boolean;
+    status: number;
+    headers: { get: () => string | null };
+    text: () => Promise<string>;
+  } {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => body,
+    };
+  }
+
+  it('retries an empty add and succeeds on the second attempt', async () => {
+    undiciFetchMock.mockReset();
+    const capture = capturingLogger();
+    undiciFetchMock
+      .mockResolvedValueOnce(okResponse('{"added":[],"basket":{"count":0}}', 'cart=1'))
+      .mockResolvedValueOnce(
+        okResponse('{"added":[{"id":9}],"_flash_messenger":{"warning":["Current stock is: X - 5 szt."]}}', 'cart=1')
+      );
+    const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+    expect(outcome).toEqual({ quantity: 5, hasOptions: false });
+    expect(capture.records.some((record) => record.message === 'basketreveal.add empty retry')).toBe(true);
+    expect(undiciFetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns masked after all retries stay empty', async () => {
+    undiciFetchMock.mockReset();
+    const capture = capturingLogger();
+    undiciFetchMock.mockResolvedValue(okResponse('{"added":[],"basket":{"count":0}}', 'cart=1'));
+    const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+    expect(outcome.quantity).toBeNull();
+    expect(undiciFetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries a network error and succeeds on the next attempt', async () => {
+    undiciFetchMock.mockReset();
+    const capture = capturingLogger();
+    undiciFetchMock
+      .mockRejectedValueOnce(new Error('fetch failed'))
+      .mockResolvedValueOnce(
+        okResponse('{"added":[{"id":7}],"_flash_messenger":{"warning":["Current stock is: X - 9 szt."]}}', 'cart=1')
+      );
+    const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+    expect(outcome).toEqual({ quantity: 9, hasOptions: false });
+    expect(capture.records.some((record) => record.message === 'basketreveal.add network retry')).toBe(true);
+    expect(undiciFetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns masked when the network keeps failing', async () => {
+    undiciFetchMock.mockReset();
+    const capture = capturingLogger();
+    undiciFetchMock.mockRejectedValue(new Error('fetch failed'));
+    const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+    expect(outcome.quantity).toBeNull();
+    expect(undiciFetchMock).toHaveBeenCalledTimes(3);
+    expect(capture.records.some((record) => record.message === 'basketreveal.add network retry')).toBe(true);
   });
 });

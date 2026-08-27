@@ -11,6 +11,9 @@ export const EXCLUDED_STOCK_IDS: Readonly<Record<string, readonly number[]>> = {
   sklepskolim: [5054, 84, 154, 162, 6476, 6925, 6985],
   // Empty variants, the shop does not sell them.
   arustamian: [4439],
+  // Bad custom products (stworz-swoja-zgrzewke, mix-330). The shop
+  // reports a huge round stock for them. Verified manually.
+  wkdzik: [3597, 3878],
   // Dead products. The page id_product is 0, the refresh returns the category listing.
   phlov: [1038, 1041, 1046],
 };

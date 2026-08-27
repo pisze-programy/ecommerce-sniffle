@@ -19,7 +19,11 @@ export interface Storage {
   readDailyStats(shop: string, day: string): Promise<DailyStats | null>;
   writeEvents(shop: string, day: string, snapshotAt: string, events: readonly StockEvent[]): Promise<void>;
   readEvents(shop: string, day: string): Promise<readonly StockEvent[]>;
+  readEventsByWindow(shop: string, day: string, window: 'morning' | 'evening'): Promise<readonly StockEvent[]>;
   readSeries(shop: string, productId: string): Promise<readonly SeriesPoint[]>;
+  readAvailableDays(shop: string): Promise<readonly string[]>;
+  readDayCount(shop: string): Promise<number>;
+  readFirstSeed(shop: string): Promise<string | null>;
 }
 
 export interface SeriesPoint {
@@ -39,6 +43,7 @@ interface SnapshotRow {
   price: number | null;
   regular_price: number | null;
   available: number;
+  product_url: string | null;
 }
 
 interface StatsRow {
@@ -90,6 +95,7 @@ function toRow(snapshot: Snapshot): SnapshotRow[] {
     price: variant.price,
     regular_price: variant.regularPrice,
     available: variant.available ? 1 : 0,
+    product_url: variant.productUrl === undefined ? null : variant.productUrl,
   }));
 }
 
@@ -101,6 +107,7 @@ function fromRow(row: SnapshotRow): VariantState {
     price: row.price,
     regularPrice: row.regular_price,
     available: row.available === 1,
+    productUrl: row.product_url,
   };
 }
 
@@ -169,7 +176,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       const statements = rows.map((row) =>
         db
           .prepare(
-            'INSERT INTO snapshots (shop, snapshot_at, window, product_id, variant_id, quantity, price, regular_price, available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO snapshots (shop, snapshot_at, window, product_id, variant_id, quantity, price, regular_price, available, product_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
           )
           .bind(
             row.shop,
@@ -180,7 +187,8 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
             row.quantity,
             row.price,
             row.regular_price,
-            row.available
+            row.available,
+            row.product_url
           )
       );
       try {
@@ -293,6 +301,17 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       return result.results.map(fromEventRow);
     },
 
+    async readEventsByWindow(shop: string, day: string, window: 'morning' | 'evening'): Promise<readonly StockEvent[]> {
+      const operator = window === 'morning' ? '<' : '>=';
+      const result = (await db
+        .prepare(
+          `SELECT * FROM events WHERE shop = ? AND day = ? AND CAST(substr(snapshot_at, 12, 2) AS INTEGER) ${operator} 12 ORDER BY snapshot_at`
+        )
+        .bind(shop, day)
+        .all()) as { results: EventRow[] };
+      return result.results.map(fromEventRow);
+    },
+
     async readSeries(shop: string, productId: string): Promise<readonly SeriesPoint[]> {
       const result = (await db
         .prepare(
@@ -308,6 +327,36 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
         price: row.price,
         available: row.available === 1,
       }));
+    },
+
+    async readAvailableDays(shop: string): Promise<readonly string[]> {
+      const result = (await db
+        .prepare('SELECT DISTINCT date(snapshot_at) AS day FROM snapshots WHERE shop = ? ORDER BY day DESC')
+        .bind(shop)
+        .all()) as { results: { day: string | null }[] };
+      const days: string[] = [];
+      for (const row of result.results) {
+        if (row.day !== null) {
+          days.push(row.day);
+        }
+      }
+      return days;
+    },
+
+    async readDayCount(shop: string): Promise<number> {
+      const row = (await db
+        .prepare('SELECT COUNT(DISTINCT date(snapshot_at)) AS c FROM snapshots WHERE shop = ?')
+        .bind(shop)
+        .first()) as { c: number } | null;
+      return row === null ? 0 : Number(row.c);
+    },
+
+    async readFirstSeed(shop: string): Promise<string | null> {
+      const row = (await db
+        .prepare('SELECT MIN(date(snapshot_at)) AS day FROM snapshots WHERE shop = ?')
+        .bind(shop)
+        .first()) as { day: string | null } | null;
+      return row === null || row.day === null ? null : row.day;
     },
   };
 }

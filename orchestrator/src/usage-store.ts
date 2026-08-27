@@ -8,6 +8,7 @@ export interface TaskUsage {
   readonly day: string;
   readonly elapsedMs: number;
   readonly webshareBytes: number;
+  readonly proxyBytes: number;
   readonly status: string;
   readonly masked: number;
   readonly variants: number;

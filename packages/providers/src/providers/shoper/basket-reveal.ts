@@ -5,7 +5,7 @@ import { measureFetch } from '../../network/manager.ts';
 import { mapPool } from '../../network/pool.ts';
 import { ConcurrencyLimiter } from '../../network/limiter.ts';
 import { createFreshFetch } from '../../network/fresh-fetch.ts';
-import type { WrappedFetch } from '../../network/manager.ts';
+import type { WrappedFetch, FetchResult } from '../../network/manager.ts';
 import type { DirectFetch } from '../../module.ts';
 import type { Logger } from '../../logger.ts';
 import type {
@@ -28,6 +28,11 @@ const REVEAL_CONCURRENCY = 8;
 const GLOBAL_CONCURRENCY = 12;
 const MAX_COMBOS_PER_PRODUCT = 200;
 const MAX_CONSECUTIVE_ADD_EMPTY = 15;
+// A basket add can answer empty or the proxy can fail for a moment
+// under load. Retry it. The probes go through the rotating proxy, so
+// the VPS IP stays clean.
+const MAX_ADD_RETRIES = 3;
+const ADD_RETRY_MS = 500;
 
 type CatalogFetch = WrappedFetch;
 
@@ -275,6 +280,80 @@ function addedVariantLabel(added: ReadonlyArray<unknown>): string | null {
   return label.length === 0 ? null : label;
 }
 
+export function isEmptyAddResponse(text: string): boolean {
+  try {
+    const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
+    if (Array.isArray(data['added']) && data['added'].length > 0) {
+      return false;
+    }
+    const messenger = data['_flash_messenger'];
+    if (typeof messenger === 'object' && messenger !== null) {
+      const record = messenger as Readonly<Record<string, unknown>>;
+      if (Array.isArray(record['warning']) && record['warning'].length > 0) {
+        return false;
+      }
+      if (Array.isArray(record['error']) && record['error'].length > 0) {
+        return false;
+      }
+      if (Array.isArray(record['info']) && record['info'].length > 0) {
+        return false;
+      }
+    }
+    if (Array.isArray(data['flashMessages']) && data['flashMessages'].length > 0) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchAdd(
+  fetchFn: WrappedFetch,
+  basket: string,
+  headers: Readonly<Record<string, string>>,
+  stockId: number,
+  options: Readonly<Record<string, string>>,
+  logger: Logger
+): Promise<{ response: FetchResult; text: string }> {
+  let lastResponse: FetchResult | null = null;
+  let lastText = '';
+  for (let attempt = 1; attempt <= MAX_ADD_RETRIES; attempt += 1) {
+    let response: FetchResult;
+    try {
+      response = await fetchFn(`${basket}/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ quantity: PROBE_QUANTITY, stock_id: stockId, options }),
+      });
+    } catch (error: unknown) {
+      if (attempt < MAX_ADD_RETRIES) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn('basketreveal.add network retry', { stockId, attempt, error: message });
+        await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+        continue;
+      }
+      throw error;
+    }
+    lastResponse = response;
+    lastText = await response.text();
+    if (isCloudflareChallenge(lastText)) {
+      break;
+    }
+    if (!isEmptyAddResponse(lastText)) {
+      break;
+    }
+    if (attempt < MAX_ADD_RETRIES) {
+      logger.warn('basketreveal.add empty retry', { stockId, attempt });
+      await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+    }
+  }
+  if (lastResponse === null) {
+    return { response: null as unknown as FetchResult, text: lastText };
+  }
+  return { response: lastResponse, text: lastText };
+}
+
 export async function revealVariant(
   domain: string,
   stockId: number,
@@ -292,12 +371,14 @@ export async function revealVariant(
   const basket = `${origin}/webapi/front/pl_PL/basket/PLN`;
   let itemId: number | null = null;
   try {
-    const addResponse = await fetchFn(`${basket}/`, {
-      method: 'POST',
-      headers: baseHeaders,
-      body: JSON.stringify({ quantity: PROBE_QUANTITY, stock_id: stockId, options }),
-    });
-    const addText = await addResponse.text();
+    const { response: addResponse, text: addText } = await fetchAdd(
+      fetchFn,
+      basket,
+      baseHeaders,
+      stockId,
+      options,
+      logger
+    );
     if (isCloudflareChallenge(addText)) {
       logger.warn('basketreveal.challenge blocked', { domain, stockId });
       return { quantity: null, hasOptions: false };
