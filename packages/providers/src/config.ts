@@ -239,6 +239,20 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     endpoint: 'https://wakenbake.pl/products.json',
     enabled: true,
   },
+  {
+    id: 'marionis',
+    domain: 'marionis.pl',
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'mcp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 15,
+    requiresProxy: true,
+    endpoint: 'https://marionis.pl/products.json',
+    enabled: true,
+  },
   // Prestashop - cart-reveal (mutation, proxy). Worked well in the runs.
   {
     id: 'laboratoriumpanidomu',

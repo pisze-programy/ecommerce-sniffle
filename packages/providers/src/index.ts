@@ -21,6 +21,7 @@ import { gymglamourModule } from './providers/shopify/gymglamour.ts';
 import { hdreyModule } from './providers/shopify/hdrey.ts';
 import { iconAmsterdamModule } from './providers/shopify/icon-amsterdam.ts';
 import { wakenbakeModule } from './providers/shopify/wakenbake.ts';
+import { marionisModule } from './providers/shopify/marionis.ts';
 import { arustamianModule } from './providers/shoper/arustamian.ts';
 import { eDaagModule } from './providers/shoper/e-daag.ts';
 import { emereedivineModule } from './providers/shoper/emereedivine.ts';
@@ -73,6 +74,7 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   lexonModule,
   derichgalleryModule,
   monartofficialModule,
+  marionisModule,
 ];
 
 export function createDefaultRegistry() {
