@@ -302,21 +302,11 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
     const eveningEvents = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'evening');
     const latest = await storage.readLatestSnapshot(domain);
 
-    // Product url map for every id in view.
-    const wanted = new Set<string>();
-    for (const event of [...morningEvents, ...eveningEvents]) {
-      wanted.add(event.productId);
-    }
+    // Product url map for every id in view. No live fetch.
+    const urlMap = await storage.readProductUrls(domain);
     if (latest !== null) {
       for (const variant of latest.variants) {
-        wanted.add(variant.productId);
-      }
-    }
-    // Build the id -> url map from the stored product urls. No live fetch.
-    const urlMap = new Map<string, string>();
-    if (latest !== null) {
-      for (const variant of latest.variants) {
-        if (variant.productUrl !== undefined && variant.productUrl !== null) {
+        if (variant.productUrl !== undefined && variant.productUrl !== null && !urlMap.has(variant.productId)) {
           urlMap.set(variant.productId, variant.productUrl);
         }
       }
@@ -350,6 +340,7 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
           continue;
         }
         const rows = byProduct.get(variant.productId) ?? [];
+        const url = urlMap.get(variant.productId) ?? null;
         rows.push({
           productId: variant.productId,
           variantId: variant.variantId,
@@ -357,7 +348,7 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
           quantity: variant.quantity,
           price: variant.price,
           value: variant.quantity * variant.price,
-          url: variant.productUrl === undefined || variant.productUrl === null ? null : variant.productUrl,
+          url,
         });
         byProduct.set(variant.productId, rows);
       }

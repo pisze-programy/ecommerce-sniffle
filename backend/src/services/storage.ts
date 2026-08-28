@@ -15,6 +15,7 @@ export interface D1Like {
 export interface Storage {
   writeSnapshot(snapshot: Snapshot): Promise<void>;
   readLatestSnapshot(shop: string): Promise<Snapshot | null>;
+  readProductUrls(shop: string): Promise<Map<string, string>>;
   writeDailyStats(stats: DailyStats): Promise<void>;
   readDailyStats(shop: string, day: string): Promise<DailyStats | null>;
   writeEvents(shop: string, day: string, snapshotAt: string, events: readonly StockEvent[]): Promise<void>;
@@ -95,8 +96,26 @@ function toRow(snapshot: Snapshot): SnapshotRow[] {
     price: variant.price,
     regular_price: variant.regularPrice,
     available: variant.available ? 1 : 0,
-    product_url: variant.productUrl === undefined ? null : variant.productUrl,
+    product_url: null,
   }));
+}
+
+function toProductRows(snapshot: Snapshot): Array<{ shop: string; productId: string; url: string }> {
+  const seen = new Set<string>();
+  const rows: Array<{ shop: string; productId: string; url: string }> = [];
+  for (const variant of snapshot.variants) {
+    const url = variant.productUrl;
+    if (url === undefined || url === null) {
+      continue;
+    }
+    const key = `${variant.productId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    rows.push({ shop: snapshot.shop, productId: variant.productId, url });
+  }
+  return rows;
 }
 
 function fromRow(row: SnapshotRow): VariantState {
@@ -170,6 +189,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
   return {
     async writeSnapshot(snapshot: Snapshot): Promise<void> {
       const rows = toRow(snapshot);
+      const productRows = toProductRows(snapshot);
       if (rows.length === 0) {
         return;
       }
@@ -191,6 +211,13 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
             row.product_url
           )
       );
+      for (const product of productRows) {
+        statements.push(
+          db
+            .prepare('INSERT OR REPLACE INTO products (shop, product_id, url) VALUES (?, ?, ?)')
+            .bind(product.shop, product.productId, product.url)
+        );
+      }
       try {
         await db.batch(statements);
       } catch (error: unknown) {
@@ -221,6 +248,17 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
         window: result.results[0]?.window === 'evening' ? 'evening' : 'morning',
         variants: result.results.map(fromRow),
       };
+    },
+
+    async readProductUrls(shop: string): Promise<Map<string, string>> {
+      const result = (await db.prepare('SELECT product_id, url FROM products WHERE shop = ?').bind(shop).all()) as {
+        results: Array<{ product_id: string; url: string }>;
+      };
+      const map = new Map<string, string>();
+      for (const row of result.results) {
+        map.set(row.product_id, row.url);
+      }
+      return map;
     },
 
     async writeDailyStats(stats: DailyStats): Promise<void> {

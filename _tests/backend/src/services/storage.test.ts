@@ -123,6 +123,33 @@ describe('createStorage', () => {
     expect(db.batches).toEqual([]);
   });
 
+  it('upserts one product url per product, deduped across variants', async () => {
+    const db = new MockD1(() => ({ results: [] }));
+    const storage = createStorage(db, silentLogger());
+    await storage.writeSnapshot({
+      ...snapshot(),
+      variants: [
+        variant({ productUrl: 'https://forcer.pl/products/set-air' }),
+        variant({ variantId: 'v2', productUrl: 'https://forcer.pl/products/set-air' }),
+      ],
+    });
+    const upsert = db.calls.filter((call) => call.query.startsWith('INSERT OR REPLACE INTO products'));
+    expect(upsert).toHaveLength(1);
+    expect(upsert[0]?.args).toEqual(['forcer.pl', 'p1', 'https://forcer.pl/products/set-air']);
+  });
+
+  it('reads product urls into a map', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT product_id, url FROM products')) {
+        return { results: [{ product_id: 'p1', url: 'https://forcer.pl/products/set-air' }] };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    const map = await storage.readProductUrls('forcer.pl');
+    expect(map.get('p1')).toBe('https://forcer.pl/products/set-air');
+  });
+
   it('reads the latest snapshot', async () => {
     const db = new MockD1((query) => {
       if (query.startsWith('SELECT DISTINCT')) {
