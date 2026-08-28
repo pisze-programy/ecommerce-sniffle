@@ -125,6 +125,11 @@ function productLink(map: Map<string, string>, productId: string): string {
   return `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(productId)}</a>`;
 }
 
+export function shopifyVariantUrl(url: string, variantId: string): string {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}variant=${variantId}`;
+}
+
 function renderKpis(items: Array<{ label: string; value: string; cls?: string }>): string {
   return `<div class="kpis">${items
     .map(
@@ -194,10 +199,11 @@ interface StockRow {
   readonly url: string | null;
 }
 
-function renderStock(groups: readonly (readonly StockRow[])[], domain: string): string {
+function renderStock(groups: readonly (readonly StockRow[])[], domain: string, platform: string): string {
   if (groups.length === 0) {
     return '<p class="note">Brak danych (brak snapshotu).</p>';
   }
+  const shopifyVariant = platform === 'shopify';
   const block = groups
     .map((rows) => {
       const first = rows[0];
@@ -211,10 +217,13 @@ function renderStock(groups: readonly (readonly StockRow[])[], domain: string): 
       const maxPrice = Math.max(...rows.map((row) => row.price));
       const value = rows.reduce((sum, row) => sum + row.value, 0);
       const variantRows = rows
-        .map(
-          (row) =>
-            `<tr><td>${esc(row.title)}</td><td>${row.quantity === null ? '-' : esc(row.quantity)}</td><td>${fmtMoney(row.price)}</td><td>${fmtMoney(row.value)}</td></tr>`
-        )
+        .map((row) => {
+          const variantCell =
+            shopifyVariant && row.url !== null
+              ? `<a href="${esc(shopifyVariantUrl(row.url, row.variantId))}" target="_blank" rel="noopener">${esc(row.variantId)}</a>`
+              : esc(row.title);
+          return `<tr><td>${variantCell}</td><td>${row.quantity === null ? '-' : esc(row.quantity)}</td><td>${fmtMoney(row.price)}</td><td>${fmtMoney(row.value)}</td></tr>`;
+        })
         .join('');
       return `<details class="stock-group" data-price="${esc(maxPrice)}" data-value="${esc(value)}">
         <summary>${link}<span class="subrow">${rows.length} wariantów · max cena ${fmtMoney(maxPrice)} · wartość ${fmtMoney(value)}</span></summary>
@@ -379,7 +388,7 @@ ${renderChanges(morningEvents, urlMap)}
 <h2 class="seed-title">Seed evening (${esc(day)})</h2>
 ${renderChanges(eveningEvents, urlMap)}
 <h2 class="seed-title">Stan magazynowy (ostatni snapshot)</h2>
-${renderStock(stockGroups, domain)}
+${renderStock(stockGroups, domain, config.platform)}
 <p class="note"><a href="/report">&larr; wszystkie sklepy</a></p>`;
     return c.html(pageShell(`ecommerce-sniffle — ${config.id}`, body));
   });

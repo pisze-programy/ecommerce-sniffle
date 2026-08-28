@@ -35,6 +35,30 @@ describe('parseSnapshotBody', () => {
     expect(parseSnapshotBody(validBody({ window: 'midday' }))).toBeNull();
   });
 
+  it('parses productUrl on a variant', () => {
+    const snapshot = parseSnapshotBody(
+      validBody({
+        variants: [
+          {
+            productId: 'p1',
+            variantId: 'v1',
+            quantity: 13,
+            price: 45,
+            regularPrice: null,
+            available: true,
+            productUrl: 'https://sklepskolim.pl/products/p1',
+          },
+        ],
+      })
+    );
+    expect(snapshot?.variants[0]?.productUrl).toBe('https://sklepskolim.pl/products/p1');
+  });
+
+  it('maps missing productUrl to null', () => {
+    const snapshot = parseSnapshotBody(validBody());
+    expect(snapshot?.variants[0]?.productUrl).toBeNull();
+  });
+
   it('rejects a malformed variant', () => {
     expect(
       parseSnapshotBody(validBody({ variants: [{ productId: 'p1', variantId: 'v1', quantity: 'many' }] }))

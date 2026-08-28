@@ -39,6 +39,15 @@ function parseVariantState(data: unknown): VariantState | null {
   if (typeof obj['available'] !== 'boolean') {
     return null;
   }
+  let productUrl: string | null = null;
+  const rawUrl = obj['productUrl'];
+  if (rawUrl === undefined || rawUrl === null) {
+    productUrl = null;
+  } else if (typeof rawUrl === 'string') {
+    productUrl = rawUrl;
+  } else {
+    return null;
+  }
   return {
     productId: obj['productId'],
     variantId: obj['variantId'],
@@ -46,6 +55,7 @@ function parseVariantState(data: unknown): VariantState | null {
     price,
     regularPrice,
     available: obj['available'],
+    productUrl,
   };
 }
 
