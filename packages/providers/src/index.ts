@@ -22,11 +22,21 @@ import { hdreyModule } from './providers/shopify/hdrey.ts';
 import { iconAmsterdamModule } from './providers/shopify/icon-amsterdam.ts';
 import { wakenbakeModule } from './providers/shopify/wakenbake.ts';
 import { marionisModule } from './providers/shopify/marionis.ts';
+import { wojanshopModule } from './providers/shopify/wojanshop.ts';
+import { sanahModule } from './providers/shopify/sanah.ts';
+import { mata33Module } from './providers/shopify/33mata.ts';
+import { mualasklepModule } from './providers/shopify/mualasklep.ts';
+import { papitoenergyModule } from './providers/shopify/papitoenergy.ts';
+import { friendzstoreModule } from './providers/shopify/friendzstore.ts';
+import { berecordsModule } from './providers/shopify/berecords.ts';
+import { islandrecordsModule } from './providers/shopify/islandrecords.ts';
 import { arustamianModule } from './providers/shoper/arustamian.ts';
 import { eDaagModule } from './providers/shoper/e-daag.ts';
 import { emereedivineModule } from './providers/shoper/emereedivine.ts';
 import { sklepskolimModule } from './providers/shoper/sklepskolim.ts';
 import { wkdzikModule } from './providers/shoper/wkdzik.ts';
+import { brokiesModule } from './providers/shoper/brokies.ts';
+import { riskyModule } from './providers/shoper/risky.ts';
 import { osmpowerModule } from './providers/shoper/osmpower.ts';
 import { reverModule } from './providers/web/rever.ts';
 import { dobrerzeczyModule } from './providers/web/dobrerzeczy.ts';
@@ -61,6 +71,8 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   emereedivineModule,
   sklepskolimModule,
   wkdzikModule,
+  brokiesModule,
+  riskyModule,
   osmpowerModule,
   reverModule,
   dobrerzeczyModule,
@@ -75,6 +87,14 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   derichgalleryModule,
   monartofficialModule,
   marionisModule,
+  wojanshopModule,
+  sanahModule,
+  mata33Module,
+  mualasklepModule,
+  papitoenergyModule,
+  friendzstoreModule,
+  berecordsModule,
+  islandrecordsModule,
 ];
 
 export function createDefaultRegistry() {

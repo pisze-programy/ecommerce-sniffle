@@ -131,36 +131,48 @@ describe('isStockRevealer', () => {
 describe('runVpsPass', () => {
   it('processes exactly the vps providers', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
-    expect(result.processed).toBe(18);
+    expect(result.processed).toBe(28);
   });
 
   it('collects all not-implemented providers as failures', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
-    expect(result.failed).toHaveLength(18);
+    expect(result.failed).toHaveLength(28);
   });
 
   it('reports the expected vps provider ids', async () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
-    expect([...result.failed].sort()).toEqual([
-      'booso',
-      'derichgallery',
-      'dobrerzeczy',
-      'e-daag',
-      'emereedivine',
-      'forcer',
-      'godsavequeens',
-      'gymglamour',
-      'hdrey',
-      'icon-amsterdam',
-      'laboratoriumpanidomu',
-      'marionis',
-      'monartofficial',
-      'nago',
-      'sklepskolim',
-      'theodderside',
-      'wakenbake',
-      'wkdzik',
-    ]);
+    expect([...result.failed].sort()).toEqual(
+      [
+        'booso',
+        'derichgallery',
+        'dobrerzeczy',
+        'e-daag',
+        'emereedivine',
+        'forcer',
+        'godsavequeens',
+        'gymglamour',
+        'hdrey',
+        'icon-amsterdam',
+        'laboratoriumpanidomu',
+        'marionis',
+        'monartofficial',
+        'nago',
+        'sklepskolim',
+        'theodderside',
+        'wakenbake',
+        'wkdzik',
+        '33mata',
+        'berecords',
+        'brokies',
+        'friendzstore',
+        'islandrecords',
+        'mualasklep',
+        'papitoenergy',
+        'risky',
+        'sanah',
+        'wojanshop',
+      ].sort()
+    );
   });
 
   it('stops the pass when memory is too low', async () => {
@@ -172,9 +184,9 @@ describe('runVpsPass', () => {
   it('logs a warning for every failed provider', async () => {
     const capture = capturingLogger();
     const result = await runVpsPass(capture.logger, { directFetch: networkDisabledFetch() });
-    expect(result.failed).toHaveLength(18);
+    expect(result.failed).toHaveLength(28);
     const warns = capture.records.filter((record) => record.message === 'run provider failed');
-    expect(warns).toHaveLength(18);
+    expect(warns).toHaveLength(28);
   });
 
   it('sends a snapshot for a successful reveal', async () => {

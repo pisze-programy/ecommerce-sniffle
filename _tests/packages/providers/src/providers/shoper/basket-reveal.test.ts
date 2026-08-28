@@ -563,18 +563,37 @@ describe('revealProduct', () => {
     expect(first[0]?.id).not.toBe(second[0]?.id);
   });
 
-  it('keeps the base variant masked and logs when the detail fetch fails', async () => {
+  it('keeps the base variant masked when every detail fetch attempt fails', async () => {
     const capture = capturingLogger();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(okResponse(addEmpty))
-      .mockRejectedValueOnce(new Error('detail network down'));
+      .mockRejectedValue(new Error('detail network down'));
     vi.stubGlobal('fetch', fetchMock);
     const variants = await revealProduct('sklepskolim.pl', variantProduct, capture.logger);
     expect(variants).toHaveLength(1);
     expect(variants[0]?.id).toBe('39');
     expect(variants[0]?.quantity).toBeNull();
     expect(capture.records.some((record) => record.message === 'basketreveal.product detail error')).toBe(true);
+    const retries = capture.records.filter((record) => record.message === 'basketreveal.product detail retry');
+    expect(retries).toHaveLength(2);
+  });
+
+  it('retries the detail fetch and resolves the options on the second attempt', async () => {
+    const capture = capturingLogger();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okResponse(addEmpty))
+      .mockRejectedValueOnce(new Error('detail network down'))
+      .mockResolvedValueOnce(okResponse(detailJson))
+      .mockResolvedValueOnce(okResponse(addOk))
+      .mockResolvedValueOnce(okResponse(putOk));
+    vi.stubGlobal('fetch', fetchMock);
+    const variants = await revealProduct('sklepskolim.pl', variantProduct, capture.logger);
+    expect(variants).toHaveLength(1);
+    expect(variants[0]?.id).toBe('31-Rozmiar: XL');
+    expect(variants[0]?.quantity).toBe(7);
+    expect(capture.records.some((record) => record.message === 'basketreveal.product detail retry')).toBe(true);
   });
 
   it('returns quantity 0 for a not buyable product without probing', async () => {

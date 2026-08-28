@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./mcp-inventory": {
+      "types": "./dist/providers/shopify/implementations/mcp-inventory.d.ts",
+      "import": "./dist/providers/shopify/implementations/mcp-inventory.js"
     }
   },
   "scripts": {

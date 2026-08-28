@@ -5,9 +5,10 @@
   "type": "module",
   "workspaces": [
     "packages/providers",
+    "packages/analysis",
+    "discovery",
     "backend",
-    "orchestrator",
-    "packages/analysis"
+    "orchestrator"
   ],
   "scripts": {
     "build": "npm run format:check && npm run build -w packages/providers && npm run build -w backend && npm run build -w orchestrator",

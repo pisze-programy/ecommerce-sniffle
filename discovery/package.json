@@ -1,0 +1,30 @@
+{
+  "name": "@ecommerce-sniffle/discovery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "discover": "npm run build && node dist/discover.js",
+    "probe": "npm run build && node dist/probe.js",
+    "deep": "npm run build && node dist/deep.js",
+    "merchradar": "npm run build && node dist/merchradar.js"
+  },
+  "dependencies": {
+    "@ecommerce-sniffle/providers": "0.1.0",
+    "undici": "^6.28.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.0"
+  }
+}

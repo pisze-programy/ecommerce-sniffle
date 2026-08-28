@@ -39,11 +39,21 @@ const EXPECTED_IDS = [
   'wakenbake',
   'westwing',
   'wkdzik',
+  '33mata',
+  'berecords',
+  'brokies',
+  'friendzstore',
+  'islandrecords',
+  'mualasklep',
+  'papitoenergy',
+  'risky',
+  'sanah',
+  'wojanshop',
 ].sort();
 
 describe('PROVIDERS config', () => {
-  it('defines exactly 37 providers', () => {
-    expect(PROVIDERS.length).toBe(37);
+  it('defines exactly 47 providers', () => {
+    expect(PROVIDERS.length).toBe(47);
   });
 
   it('uses unique ids', () => {
@@ -108,8 +118,16 @@ describe('PROVIDERS config', () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === 'vps-mutation');
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
-    expect(mutation.length).toBe(21);
+    expect(mutation.length).toBe(31);
     expect(get.length).toBe(4);
     expect(vpsGet.length).toBe(12);
+  });
+
+  it('paces every shoper provider at 5 requests per second', () => {
+    const shoper = PROVIDERS.filter((provider) => provider.platform === 'shoper');
+    expect(shoper.length).toBeGreaterThan(0);
+    for (const provider of shoper) {
+      expect(provider.ratePerSecond, provider.id).toBe(5);
+    }
   });
 });

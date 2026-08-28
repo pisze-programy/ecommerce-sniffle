@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/providers" },
     { "path": "./packages/analysis" },
+    { "path": "./discovery" },
     { "path": "./backend" },
     { "path": "./orchestrator" }
   ]

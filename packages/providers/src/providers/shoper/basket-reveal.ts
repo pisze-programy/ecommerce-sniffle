@@ -3,7 +3,7 @@ import { truncateMessage } from '../../helpers.ts';
 import { isCloudflareChallenge } from '../../captcha/detect.ts';
 import { measureFetch } from '../../network/manager.ts';
 import { mapPool } from '../../network/pool.ts';
-import { ConcurrencyLimiter } from '../../network/limiter.ts';
+import { ConcurrencyLimiter, RateLimiter } from '../../network/limiter.ts';
 import { createFreshFetch } from '../../network/fresh-fetch.ts';
 import type { WrappedFetch, FetchResult } from '../../network/manager.ts';
 import type { DirectFetch } from '../../module.ts';
@@ -32,7 +32,8 @@ const MAX_CONSECUTIVE_ADD_EMPTY = 15;
 // under load. Retry it. The probes go through the rotating proxy, so
 // the VPS IP stays clean.
 const MAX_ADD_RETRIES = 3;
-const ADD_RETRY_MS = 500;
+const ADD_RETRY_MS = 1500;
+const MAX_DETAIL_RETRIES = 3;
 
 type CatalogFetch = WrappedFetch;
 
@@ -589,25 +590,49 @@ async function fetchOptionConfiguration(
   fetchFn: CatalogFetch = fetch
 ): Promise<unknown> {
   const origin = `https://${domain}`;
-  try {
-    const response = await fetchFn(`${origin}/webapi/front/pl_PL/products/PLN/${productId}`, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-    });
-    if (!response.ok) {
+  for (let attempt = 1; attempt <= MAX_DETAIL_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchFn(`${origin}/webapi/front/pl_PL/products/PLN/${productId}`, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      });
+      if (response.ok) {
+        const data = (await response.json()) as Readonly<Record<string, unknown>>;
+        return data['options_configuration'];
+      }
+      if (attempt < MAX_DETAIL_RETRIES) {
+        logger.warn('basketreveal.product detail retry', {
+          domain,
+          productId,
+          status: response.status,
+          attempt,
+        });
+        await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+        continue;
+      }
       logger.warn('basketreveal.product detail failed', {
         domain,
         productId,
         status: response.status,
       });
       return null;
+    } catch (error: unknown) {
+      if (attempt < MAX_DETAIL_RETRIES) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn('basketreveal.product detail retry', {
+          domain,
+          productId,
+          error: message,
+          attempt,
+        });
+        await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+        continue;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn('basketreveal.product detail error', { domain, productId, error: message });
+      return null;
     }
-    const data = (await response.json()) as Readonly<Record<string, unknown>>;
-    return data['options_configuration'];
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.warn('basketreveal.product detail error', { domain, productId, error: message });
-    return null;
   }
+  return null;
 }
 
 export async function revealProduct(
@@ -713,7 +738,15 @@ export function buildBasketRevealProvider(
   };
   const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, 'direct');
   const proxyUrl = process.env['HTTPS_PROXY'] ?? process.env['WEBSHARE_URL'] ?? null;
-  const probeFetch = measureFetch(createFreshFetch(proxyUrl), logger, config.id, 'proxy');
+  // The shop throttles a basket burst with 429 pages. The config rate
+  // paces the probe requests. The default is 1 request per second.
+  const rateLimiter = new RateLimiter(config.ratePerSecond);
+  const rawProbeFetch = createFreshFetch(proxyUrl);
+  const throttledProbeFetch: WrappedFetch = async (input, init, options) => {
+    await rateLimiter.acquire();
+    return rawProbeFetch(input, init, options);
+  };
+  const probeFetch = measureFetch(throttledProbeFetch, logger, config.id, 'proxy');
   const limiter = new ConcurrencyLimiter(GLOBAL_CONCURRENCY);
   return buildStockRevealer(
     config,

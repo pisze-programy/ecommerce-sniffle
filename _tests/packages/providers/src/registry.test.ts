@@ -49,7 +49,7 @@ describe('createRegistry', () => {
 
   it('registers all 35 modules', () => {
     const registry = createRegistry(ALL_MODULES);
-    expect(registry.modules).toHaveLength(35);
+    expect(registry.modules).toHaveLength(45);
   });
 
   it('rejects duplicate ids', () => {
