@@ -14,6 +14,7 @@ class MemoryStorage implements Storage {
   stats: DailyStats[] = [];
   events: StockEvent[] = [];
   seriesPoints: SeriesPoint[] = [];
+  productUrls: Map<string, string> = new Map();
 
   async writeSnapshot(snapshot: Snapshot): Promise<void> {
     this.snapshots.push(snapshot);
@@ -27,6 +28,85 @@ class MemoryStorage implements Storage {
       }
     }
     return null;
+  }
+
+  async readSnapshots(shop: string, from?: string, to?: string): Promise<readonly Snapshot[]> {
+    return this.snapshots.filter(
+      (snapshot) =>
+        snapshot.shop === shop &&
+        (from === undefined || snapshot.snapshotAt >= from) &&
+        (to === undefined || snapshot.snapshotAt <= to)
+    );
+  }
+
+  async readProductUrls(_shop: string): Promise<Map<string, string>> {
+    return this.productUrls;
+  }
+
+  async readShops(): Promise<string[]> {
+    return [...new Set(this.snapshots.map((snapshot) => snapshot.shop))];
+  }
+
+  async readMaxObservedQuantity(_shop: string): Promise<number> {
+    return 0;
+  }
+
+  async readShopDailyRange(
+    shop: string,
+    fromDay: string,
+    toDay: string
+  ): Promise<import('../../../../backend/src/services/storage.ts').DailyPoint[]> {
+    return this.stats
+      .filter((entry) => entry.shop === shop && entry.day >= fromDay && entry.day <= toDay)
+      .map((entry) => ({
+        day: entry.day,
+        sold: entry.unitsSold,
+        soldValue: entry.revenue,
+        restocked: entry.restocked,
+        restockValue: 0,
+        suspect: entry.suspectCount,
+      }));
+  }
+
+  async readPortfolioDaily(
+    fromDay: string,
+    toDay: string
+  ): Promise<import('../../../../backend/src/services/storage.ts').DailyPoint[]> {
+    return [];
+  }
+
+  async searchProducts(query: string): Promise<Array<{ shop: string; productId: string }>> {
+    if (query.length === 0) {
+      return [];
+    }
+    return [{ shop: 'mock.pl', productId: query }];
+  }
+
+  async readEventsByWindow(
+    _shop: string,
+    _day: string,
+    _window: 'morning' | 'evening'
+  ): Promise<readonly StockEvent[]> {
+    return this.events;
+  }
+
+  async readAvailableDays(shop: string): Promise<readonly string[]> {
+    const days = new Set<string>();
+    for (const snapshot of this.snapshots) {
+      if (snapshot.shop === shop) {
+        days.add(snapshot.snapshotAt.slice(0, 10));
+      }
+    }
+    return [...days].sort((a, b) => (a < b ? 1 : -1));
+  }
+
+  async readDayCount(shop: string): Promise<number> {
+    return (await this.readAvailableDays(shop)).length;
+  }
+
+  async readFirstSeed(shop: string): Promise<string | null> {
+    const days = await this.readAvailableDays(shop);
+    return days.length === 0 ? null : (days[days.length - 1] ?? null);
   }
 
   async writeDailyStats(stats: DailyStats): Promise<void> {
@@ -158,6 +238,7 @@ describe('api', () => {
       soldOutCount: 3,
       promotionCount: 12,
       maskedCount: 20,
+      suspectCount: 0,
     };
     await storage.writeDailyStats(stats);
     const app = buildApp(storage);
@@ -377,5 +458,141 @@ describe('api /ingest', () => {
       testEnv()
     );
     expect(response.status).toBe(400);
+  });
+});
+
+describe('api /dashboard and /shop', () => {
+  it('redirects the legacy report routes', async () => {
+    const app = buildApp(new MemoryStorage());
+    const report = await app.request('/report');
+    expect(report.status).toBe(301);
+    expect(report.headers.get('location')).toBe('/dashboard');
+    const shopReport = await app.request('/report/forcer.pl');
+    expect(shopReport.status).toBe(301);
+    expect(shopReport.headers.get('location')).toBe('/shop/forcer.pl');
+  });
+
+  it('renders a shop card on the dashboard', async () => {
+    const storage = new MemoryStorage();
+    storage.snapshots.push({
+      shop: 'mock.pl',
+      snapshotAt: '2026-08-28T04:00:00.000Z',
+      window: 'morning',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/dashboard');
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('/shop/mock');
+    expect(html).toContain('tabler.min.css');
+    expect(html).toContain('1000,00');
+  });
+
+  it('renders the shop detail page', async () => {
+    const storage = new MemoryStorage();
+    storage.snapshots.push({
+      shop: 'mock.pl',
+      snapshotAt: '2026-08-28T04:00:00.000Z',
+      window: 'morning',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock');
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Podsumowanie sklepu');
+    expect(html).toContain('datagrid');
+    expect(html).toContain('Zmiany');
+    expect(html).toContain('Top sprzedawane');
+    expect(html).toContain('Stan magazynowy');
+  });
+
+  it('renders polish labels, no raw confidence and stock pagination', async () => {
+    const storage = new MemoryStorage();
+    const variants: Snapshot['variants'] = [];
+    for (let i = 1; i <= 60; i += 1) {
+      variants.push({
+        productId: `p${i}`,
+        variantId: `v${i}`,
+        quantity: 10,
+        price: 100,
+        regularPrice: 100,
+        available: true,
+      });
+    }
+    storage.snapshots.push({ shop: 'mock.pl', snapshotAt: '2026-08-28T04:00:00.000Z', window: 'morning', variants });
+    storage.productUrls.set('p1', 'https://mock.pl/p1');
+    storage.events.push({
+      type: 'sold',
+      productId: 'p1',
+      variantId: 'v1',
+      from: { productId: 'p1', variantId: 'v1', quantity: 5, price: 100, regularPrice: null, available: true },
+      to: { productId: 'p1', variantId: 'v1', quantity: 4, price: 100, regularPrice: null, available: true },
+      units: 1,
+      confidence: 'exact',
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock?day=2026-08-28');
+    const html = await response.text();
+    expect(html).toContain('pewna');
+    expect(html).not.toContain('>exact<');
+    expect(html).toContain('ApexCharts');
+    expect(html).toContain('chart-shop-trend');
+    expect(html).toContain('pagination');
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain('Pokazano');
+    expect(html).toContain('<a href="https://mock.pl/p1"');
+    expect(html).toContain('data-bs-target="#window-morning"');
+  });
+
+  it('returns 404 for an unknown shop', async () => {
+    const app = buildApp(new MemoryStorage(), [mockProviderModule()]);
+    const response = await app.request('/shop/nope');
+    expect(response.status).toBe(404);
+    const html = await response.text();
+    expect(html).toContain('Nieznany sklep');
+  });
+
+  it('renders dashboard kpis, charts and deltas', async () => {
+    const storage = new MemoryStorage();
+    storage.snapshots.push({
+      shop: 'mock.pl',
+      snapshotAt: '2026-08-28T04:00:00.000Z',
+      window: 'morning',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    storage.stats.push({
+      shop: 'mock.pl',
+      day: '2026-08-27',
+      unitsSold: 3,
+      revenue: 300,
+      restocked: 0,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+    });
+    storage.stats.push({
+      shop: 'mock.pl',
+      day: '2026-08-28',
+      unitsSold: 5,
+      revenue: 500,
+      restocked: 0,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/dashboard');
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Sprzedane 24h');
+    expect(html).toContain('chart-portfolio-value');
+    expect(html).toContain('chart-portfolio-mix');
+    expect(html).toContain('chart-top-sold');
+    expect(html).toContain('▲ 67%');
+    expect(html).toContain('Alerty');
   });
 });

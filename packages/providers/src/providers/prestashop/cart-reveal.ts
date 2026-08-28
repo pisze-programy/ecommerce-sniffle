@@ -138,6 +138,25 @@ export function parsePrestaCartPrice(text: string): number | null {
   return null;
 }
 
+// The product page exposes the current price in the Open Graph meta, the
+// JSON-LD block, or the current-price-value element. The data-stock
+// response carries the same current-price-value fragment.
+export function parsePrestaPrice(html: string): number | null {
+  const og = /product:price:amount"\s+content="([0-9]+(?:\.[0-9]+)?)"/.exec(html);
+  if (og !== null && og[1] !== undefined) {
+    return Number(og[1]);
+  }
+  const jsonLd = /"price"\s*:\s*"([0-9]+(?:\.[0-9]+)?)"/.exec(html);
+  if (jsonLd !== null && jsonLd[1] !== undefined) {
+    return Number(jsonLd[1]);
+  }
+  const fragment = /current-price-value[^>]*content="([0-9]+(?:\.[0-9]+)?)"/.exec(html);
+  if (fragment !== null && fragment[1] !== undefined) {
+    return Number(fragment[1]);
+  }
+  return null;
+}
+
 export function extractPrestaTitle(url: string): string {
   const match = /\/(?:\d+)-([^/]+)\.html$/.exec(url);
   if (match === null || match[1] === undefined) {
@@ -336,15 +355,33 @@ export function buildPrestaShopCartRevealProvider(
           });
           const text = await response.text();
           const quantity = parsePrestaCartQuantity(text);
-          const price = parsePrestaCartPrice(text);
           if (quantity === null) {
             logger.warn('presta.reveal no quantity', { productId: product.id, error: text.slice(0, 120) });
             revealedProducts.push(product);
             continue;
           }
+          let price = parsePrestaCartPrice(text);
+          if (price === null) {
+            try {
+              const page = await probeFetch(product.url, {
+                headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'pl-PL' },
+              });
+              price = parsePrestaPrice(await page.text());
+            } catch (error: unknown) {
+              const message = error instanceof Error ? error.message : String(error);
+              logger.warn('presta.reveal price failed', { productId: product.id, error: message });
+            }
+          }
           revealedProducts.push({
             ...product,
-            variants: [{ ...baseVariant, quantity, available: quantity > 0, price: money(price ?? 0) }],
+            variants: [
+              {
+                ...baseVariant,
+                quantity,
+                available: quantity > 0,
+                price: price === null ? baseVariant.price : money(price),
+              },
+            ],
           });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);

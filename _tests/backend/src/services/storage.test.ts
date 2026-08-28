@@ -184,10 +184,11 @@ describe('createStorage', () => {
       soldOutCount: 0,
       promotionCount: 0,
       maskedCount: 0,
+      suspectCount: 0,
     };
     await storage.writeDailyStats(stats);
     const insert = db.calls.find((call) => call.query.startsWith('INSERT OR REPLACE INTO daily_stats'));
-    expect(insert?.args).toEqual(['forcer.pl', '2026-08-24', 7, 680, 0, 0, 0, 0]);
+    expect(insert?.args).toEqual(['forcer.pl', '2026-08-24', 7, 680, 0, 0, 0, 0, 0]);
   });
 
   it('reads daily stats', async () => {
@@ -204,6 +205,7 @@ describe('createStorage', () => {
               sold_out_count: 0,
               promotion_count: 0,
               masked_count: 0,
+              suspect_count: 2,
             },
           ],
         };
@@ -214,6 +216,7 @@ describe('createStorage', () => {
     const stats = await storage.readDailyStats('forcer.pl', '2026-08-24');
     expect(stats?.unitsSold).toBe(7);
     expect(stats?.revenue).toBe(680);
+    expect(stats?.suspectCount).toBe(2);
   });
 
   it('writes events as a batch', async () => {
@@ -257,6 +260,8 @@ describe('createStorage', () => {
     const events = await storage.readEvents('forcer.pl', '2026-08-24');
     expect(events).toHaveLength(1);
     expect(events[0]?.type).toBe('sold');
+    expect(events[0]?.to?.price).toBe(100);
+    expect(events[0]?.from?.quantity).toBe(12);
   });
 
   it('reads a series for a product', async () => {
@@ -275,6 +280,144 @@ describe('createStorage', () => {
     const series = await storage.readSeries('forcer.pl', 'p1');
     expect(series).toHaveLength(2);
     expect(series[0]?.quantity).toBe(14);
+  });
+
+  it('lists distinct shops', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT DISTINCT shop')) {
+        return { results: [{ shop: 'forcer.pl' }, { shop: 'wkdzik.pl' }] };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    const shops = await storage.readShops();
+    expect(shops).toEqual(['forcer.pl', 'wkdzik.pl']);
+  });
+
+  it('returns the largest absolute observed quantity', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT MAX(ABS(quantity))')) {
+        return { results: [{ max_q: 100000 }] };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    expect(await storage.readMaxObservedQuantity('wkdzik.pl')).toBe(100000);
+  });
+
+  it('returns zero when a shop has no snapshots', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT MAX(ABS(quantity))')) {
+        return { results: [{ max_q: null }] };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    expect(await storage.readMaxObservedQuantity('forcer.pl')).toBe(0);
+  });
+
+  it('reads a daily range for a shop', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT day, units_sold, revenue, restocked, suspect_count FROM daily_stats')) {
+        return {
+          results: [
+            { day: '2026-08-26', units_sold: 322, revenue: 100, restocked: 0, suspect_count: 0 },
+            { day: '2026-08-27', units_sold: 2487, revenue: 200, restocked: 5, suspect_count: 2 },
+          ],
+        };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    const points = await storage.readShopDailyRange('forcer.pl', '2026-08-26', '2026-08-27');
+    expect(points).toHaveLength(2);
+    expect(points[0]?.sold).toBe(322);
+    expect(points[1]?.soldValue).toBe(200);
+    expect(points[1]?.restocked).toBe(5);
+  });
+
+  it('aggregates the portfolio by day', async () => {
+    const db = new MockD1((query) => {
+      if (query.includes('GROUP BY day')) {
+        return {
+          results: [{ day: '2026-08-27', sold: 100, sold_value: 5000, restocked: 30 }],
+        };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    const points = await storage.readPortfolioDaily('2026-08-27', '2026-08-27');
+    expect(points[0]?.sold).toBe(100);
+    expect(points[0]?.soldValue).toBe(5000);
+  });
+
+  it('searches products by id or url', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT shop, product_id FROM products')) {
+        return { results: [{ shop: 'forcer.pl', product_id: '10828425036107' }] };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    const rows = await storage.searchProducts('10828425');
+    expect(rows).toEqual([{ shop: 'forcer.pl', productId: '10828425036107' }]);
+  });
+
+  it('returns no products for an empty search query', async () => {
+    const storage = createStorage(new MockD1(() => ({ results: [] })), silentLogger());
+    expect(await storage.searchProducts('')).toEqual([]);
+  });
+
+  it('groups snapshot rows into snapshots in time order', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT * FROM snapshots')) {
+        return {
+          results: [
+            {
+              shop: 'forcer.pl',
+              snapshot_at: '2026-08-24T06:00:00.000Z',
+              window: 'morning',
+              product_id: 'p1',
+              variant_id: 'v1',
+              quantity: 12,
+              price: 100,
+              regular_price: 100,
+              available: 1,
+            },
+            {
+              shop: 'forcer.pl',
+              snapshot_at: '2026-08-24T06:00:00.000Z',
+              window: 'morning',
+              product_id: 'p2',
+              variant_id: 'v2',
+              quantity: 3,
+              price: 50,
+              regular_price: 50,
+              available: 1,
+            },
+            {
+              shop: 'forcer.pl',
+              snapshot_at: '2026-08-24T18:00:00.000Z',
+              window: 'evening',
+              product_id: 'p1',
+              variant_id: 'v1',
+              quantity: 7,
+              price: 100,
+              regular_price: 100,
+              available: 1,
+            },
+          ],
+        };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    const snapshots = await storage.readSnapshots('forcer.pl');
+    expect(snapshots).toHaveLength(2);
+    expect(snapshots[0]?.snapshotAt).toBe('2026-08-24T06:00:00.000Z');
+    expect(snapshots[0]?.variants).toHaveLength(2);
+    expect(snapshots[1]?.window).toBe('evening');
+    expect(snapshots[1]?.variants).toHaveLength(1);
   });
 
   it('logs an error and rethrows when the snapshot write fails', async () => {
@@ -303,6 +446,7 @@ describe('createStorage', () => {
       soldOutCount: 0,
       promotionCount: 0,
       maskedCount: 0,
+      suspectCount: 0,
     };
     await expect(storage.writeDailyStats(stats)).rejects.toThrow('db down');
     expect(capture.records[0]?.level).toBe('error');

@@ -1,5 +1,12 @@
 import type { Provider } from '@ecommerce-sniffle/providers';
-import { aggregateDaily, catalogToSnapshot, currentWindow, diffSnapshots } from '@ecommerce-sniffle/analysis';
+import {
+  aggregateDaily,
+  catalogToSnapshot,
+  currentWindow,
+  diffSnapshots,
+  maxAbsQuantity,
+  mergeDailyStats,
+} from '@ecommerce-sniffle/analysis';
 import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
 import type { Logger } from '@ecommerce-sniffle/providers';
 import type { Storage } from '../services/storage.ts';
@@ -22,7 +29,10 @@ export async function storeSnapshot(storage: Storage, snapshot: Snapshot, logger
   const events: readonly StockEvent[] = diffSnapshots(previous, snapshot);
   const day = snapshot.snapshotAt.slice(0, 10);
   await storage.writeEvents(snapshot.shop, day, snapshot.snapshotAt, events);
-  const stats = aggregateDaily({ shop: snapshot.shop, day, events });
+  const maxQuantity = Math.max(maxAbsQuantity(previous.variants), maxAbsQuantity(snapshot.variants));
+  const diffStats = aggregateDaily({ shop: snapshot.shop, day, events }, { maxQuantity });
+  const existing = await storage.readDailyStats(snapshot.shop, day);
+  const stats = mergeDailyStats(existing, diffStats);
   await storage.writeDailyStats(stats);
   logger.info('pipeline.finished', {
     shop: snapshot.shop,

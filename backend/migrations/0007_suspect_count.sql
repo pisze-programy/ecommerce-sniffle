@@ -1,0 +1,1 @@
+ALTER TABLE daily_stats ADD COLUMN suspect_count INTEGER NOT NULL DEFAULT 0;

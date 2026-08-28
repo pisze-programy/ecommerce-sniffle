@@ -1,293 +1,237 @@
 import { Hono } from 'hono';
 import type { ProviderConfig } from '@ecommerce-sniffle/providers';
-import type { DailyStats, StockEvent } from '@ecommerce-sniffle/analysis';
+import {
+  COUNTDOWN_DOMAINS,
+  calculateShopSummary,
+  isCountdownShop,
+  topSellingProducts,
+} from '@ecommerce-sniffle/analysis';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
-import { aggregateProductEvents, eventTypeLabel, seedStats } from '../services/report-util.ts';
+import {
+  alert,
+  badge,
+  breadcrumb,
+  card,
+  datagrid,
+  emptyState,
+  esc,
+  icon,
+  kpiGrid,
+  money,
+  table,
+} from '../services/report-components.ts';
+import type { DataGridItem, KpiCard } from '../services/report-components.ts';
+import { addDays, dayAfter, dayBefore, fmtDate, pctChange } from '../services/report/format.ts';
+import { shopifyVariantUrl } from '../services/report/links.ts';
+import { buildDailyConfig, buildTrendConfig, buildTrendSeries, chartBlock } from '../services/report/charts.ts';
+import { renderStock, stockQs } from '../services/report/stock.ts';
+import type { StockParams } from '../services/report/stock.ts';
+import { renderChangesWindows, renderDayComparison, renderTimeline } from '../services/report/changes.ts';
+import { renderLowStock, renderPriceDrops, renderTopSellers } from '../services/report/overview.ts';
+import { renderShopCard } from '../services/report/dashboard.ts';
+import type { ShopCard } from '../services/report/dashboard.ts';
+import { pageShell } from '../services/report/shell.ts';
+import { variantCell } from '../services/report/links.ts';
 
-function esc(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function pageShell(title: string, body: string): string {
-  return `<!doctype html>
-<html lang="pl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title>
-<style>
-  :root { --border:#d5d5d5; --muted:#6b6b6b; --good:#1a7f37; --bad:#b42318; --bg:#fafafa; }
-  * { box-sizing:border-box; }
-  body { font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; margin:0; background:var(--bg); color:#1a1a1a; font-size:14px; }
-  .wrap { max-width:1100px; margin:0 auto; padding:24px 20px 60px; }
-  header { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:18px; }
-  h1 { font-size:19px; margin:0; } h1 a { color:#1a1a1a; text-decoration:none; }
-  .sub { color:var(--muted); font-size:13px; }
-  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:18px; }
-  th,td { padding:7px 10px; text-align:left; border-bottom:1px solid var(--border); font-size:13px; }
-  th { background:#f1f1f1; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
-  tr:last-child td { border-bottom:none; }
-  .card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:16px; }
-  .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px; }
-  .kpi { border:1px solid var(--border); border-radius:8px; background:#fff; padding:9px 11px; }
-  .kpi .label { font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
-  .kpi .value { font-size:19px; font-weight:600; margin-top:2px; }
-  .good { color:var(--good); } .bad { color:var(--bad); }
-  .note { color:var(--muted); font-size:12px; }
-  select,button { padding:6px 10px; font-size:14px; }
-  details { border:1px solid var(--border); border-radius:8px; background:#fff; margin-bottom:8px; }
-  details summary { padding:10px 12px; cursor:pointer; font-weight:600; }
-  details[open] summary { border-bottom:1px solid var(--border); }
-  details table { margin:0; border:none; }
-  .variant-table th { font-size:10px; }
-  .stock-group summary .subrow { font-weight:400; color:var(--muted); margin-left:10px; font-size:12px; }
-  .sortbar { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
-  .seed-title { font-size:16px; font-weight:600; margin:20px 0 6px; }
-</style>
-</head>
-<body>
-<div class="wrap">
-${body}
-</div>
-<script>
-function sortStock() {
-  const list = document.getElementById('stock-groups');
-  const groups = [...list.querySelectorAll(':scope > details')];
-  const dir = list.dataset.dir === 'asc' ? -1 : 1;
-  list.dataset.dir = dir === 1 ? 'asc' : 'desc';
-  groups.sort((a, b) => dir * (Number(a.dataset.price) - Number(b.dataset.price)));
-  groups.forEach((g) => list.appendChild(g));
-  document.getElementById('sortLabel').textContent = dir === 1 ? 'cena ▲' : 'cena ▼';
-}
-async function loadSeries(summary, shop, productId) {
-  if (summary.dataset.loaded === '1') return;
-  summary.dataset.loaded = '1';
-  const holder = summary.parentElement.querySelector('.series');
-  try {
-    const res = await fetch('/series/' + encodeURIComponent(productId) + '?shop=' + encodeURIComponent(shop));
-    const data = await res.json();
-    if (!data.series || data.series.length === 0) { holder.innerHTML = '<p class="note">brak historii</p>'; return; }
-    const rows = data.series.map((p) => '<tr><td>' + (p.snapshotAt || '').slice(0, 16).replace('T', ' ') + '</td><td>' + (p.quantity === null ? '-' : p.quantity) + '</td><td>' + (p.price === null ? '-' : p.price.toFixed(2)) + '</td></tr>').join('');
-    holder.innerHTML = '<table><thead><tr><th>snapshot</th><th>ilość</th><th>cena</th></tr></thead><tbody>' + rows + '</tbody></table>';
-  } catch (e) {
-    holder.innerHTML = '<p class="note">błąd ładowania historii</p>';
-  }
-}
-</script>
-</body>
-</html>`;
-}
-
-function fmtMoney(amount: number): string {
-  return amount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtDate(value: string | null): string {
-  if (value === null || value.length === 0) {
-    return '-';
-  }
-  return value.slice(0, 16).replace('T', ' ');
-}
-
-function dayBefore(day: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-    return '';
-  }
-  const date = new Date(`${day}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
-}
-
-function isCountdownShop(domain: string): boolean {
-  return domain === 'laboratoriumpanidomu.pl' || domain === 'wkdzik.pl' || domain === 'osmpower.pl';
-}
-
-function productUrl(map: Map<string, string>, productId: string): string | null {
-  const url = map.get(productId);
-  if (url !== undefined) {
-    return url;
-  }
-  if (/^https?:\/\//.test(productId)) {
-    return productId;
-  }
-  return null;
-}
-
-function productLink(map: Map<string, string>, productId: string): string {
-  const url = productUrl(map, productId);
-  if (url === null) {
-    return esc(productId);
-  }
-  return `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(productId)}</a>`;
-}
-
-export function shopifyVariantUrl(url: string, variantId: string): string {
-  const separator = url.includes('?') ? '&' : '?';
-  return `${url}${separator}variant=${variantId}`;
-}
-
-function renderKpis(items: Array<{ label: string; value: string; cls?: string }>): string {
-  return `<div class="kpis">${items
-    .map(
-      (item) =>
-        `<div class="kpi"><div class="label">${esc(item.label)}</div><div class="value ${esc(item.cls ?? '')}">${esc(item.value)}</div></div>`
-    )
-    .join('')}</div>`;
-}
-
-function renderChanges(events: readonly StockEvent[], map: Map<string, string>): string {
-  if (events.length === 0) {
-    return '<p class="note">Brak zmian w tym seedzie.</p>';
-  }
-  const groups = aggregateProductEvents(events);
-  const stats = seedStats(events);
-  const kpi = renderKpis([
-    { label: 'Sprzedane', value: String(stats.sold) },
-    { label: 'Dostawione', value: String(stats.restocked), cls: 'good' },
-    { label: 'Wyprzedane', value: String(stats.soldOut), cls: 'bad' },
-    { label: 'Powrót', value: String(stats.backInStock) },
-    { label: 'Promo', value: String(stats.promo) },
-  ]);
-  const rows = groups
-    .map((group) => {
-      const link = productLink(map, group.productId);
-      const total = group.sold + group.restocked + group.soldOut + group.backInStock;
-      const variantRows = group.variants
-        .map(
-          (event) =>
-            `<tr><td>${esc(event.variantId)}</td><td>${esc(eventTypeLabel(event.type))}</td><td>${esc(event.units)}</td><td>${esc(event.confidence)}</td></tr>`
-        )
-        .join('');
-      const accordion =
-        group.variants.length <= 1
-          ? esc(group.variants[0]?.variantId ?? '')
-          : `<details><summary>${group.variants.length} wariantów</summary>
-              <table class="variant-table">
-                <thead><tr><th>wariant</th><th>typ</th><th>j.</th><th>pewność</th></tr></thead>
-                <tbody>${variantRows}</tbody>
-              </table>
-            </details>`;
-      return `<tr>
-        <td>${link}<br>${accordion}</td>
-        <td>${group.sold}</td>
-        <td>${group.restocked}</td>
-        <td>${group.soldOut}</td>
-        <td>${group.backInStock}</td>
-        <td>${group.promo}</td>
-        <td>${total}</td>
-      </tr>`;
-    })
-    .join('');
-  return `${kpi}
-  <table>
-    <thead><tr><th>produkt</th><th>sprzedane</th><th>dostawione</th><th>wyprzedane</th><th>powrót</th><th>promo</th><th>zmiany</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
-}
-
-interface StockRow {
-  readonly productId: string;
-  readonly variantId: string;
-  readonly title: string;
-  readonly quantity: number | null;
-  readonly price: number;
-  readonly value: number;
-  readonly url: string | null;
-}
-
-function renderStock(groups: readonly (readonly StockRow[])[], domain: string, platform: string): string {
-  if (groups.length === 0) {
-    return '<p class="note">Brak danych (brak snapshotu).</p>';
-  }
-  const shopifyVariant = platform === 'shopify';
-  const block = groups
-    .map((rows) => {
-      const first = rows[0];
-      if (first === undefined) {
-        return '';
-      }
-      const link =
-        first.url === null
-          ? esc(first.productId)
-          : `<a href="${esc(first.url)}" target="_blank" rel="noopener">${esc(first.productId)}</a>`;
-      const maxPrice = Math.max(...rows.map((row) => row.price));
-      const value = rows.reduce((sum, row) => sum + row.value, 0);
-      const variantRows = rows
-        .map((row) => {
-          const variantCell =
-            shopifyVariant && row.url !== null
-              ? `<a href="${esc(shopifyVariantUrl(row.url, row.variantId))}" target="_blank" rel="noopener">${esc(row.variantId)}</a>`
-              : esc(row.title);
-          return `<tr><td>${variantCell}</td><td>${row.quantity === null ? '-' : esc(row.quantity)}</td><td>${fmtMoney(row.price)}</td><td>${fmtMoney(row.value)}</td></tr>`;
-        })
-        .join('');
-      return `<details class="stock-group" data-price="${esc(maxPrice)}" data-value="${esc(value)}">
-        <summary>${link}<span class="subrow">${rows.length} wariantów · max cena ${fmtMoney(maxPrice)} · wartość ${fmtMoney(value)}</span></summary>
-        <table class="variant-table">
-          <thead><tr><th>wariant</th><th>ilość</th><th>cena</th><th>wartość</th></tr></thead>
-          <tbody>${variantRows}</tbody>
-        </table>
-        <div class="series"></div>
-        <div class="note" onclick="loadSeries(this, '${esc(domain)}', '${esc(first.productId)}')">pokaż historię</div>
-      </details>`;
-    })
-    .join('');
-  return `<div class="sortbar"><button onclick="sortStock()" id="sortLabel">cena ▼</button><span class="note">sortowanie grup produktów po max cenie</span></div>
-  <div id="stock-groups">${block}</div>`;
-}
+export { shopifyVariantUrl };
 
 export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-  api.get('/report', async (c) => {
+  api.get('/dashboard', async (c) => {
     const modules = c.get('modules');
     const storage = c.get('storage');
-    const rows: string[] = [];
-    for (const module of modules) {
-      if (!module.config.enabled) {
-        continue;
+    const enabled = modules.filter((module) => module.config.enabled);
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+
+    const cards: ShopCard[] = await Promise.all(
+      enabled.map(async (module) => {
+        const config = module.config;
+        const [latest, dailyRange] = await Promise.all([
+          storage.readLatestSnapshot(config.domain),
+          storage.readShopDailyRange(config.domain, dayBefore(today), today),
+        ]);
+        const summary = calculateShopSummary(latest === null ? [] : [latest]);
+        const latestDay = latest === null ? null : latest.snapshotAt.slice(0, 10);
+        const todayPoint = dailyRange.find((point) => point.day === today) ?? null;
+        const prevPoint = dailyRange.find((point) => point.day === dayBefore(today)) ?? null;
+        const fresh =
+          latest === null ? false : dayBefore(now.toISOString().slice(0, 10)) <= latest.snapshotAt.slice(0, 10);
+        return {
+          id: config.id,
+          domain: config.domain,
+          platform: config.platform,
+          latestDay,
+          fresh,
+          countdown: isCountdownShop(config.domain),
+          sentinel: summary.bias.sentinelVariants,
+          suspect: todayPoint === null ? 0 : todayPoint.suspect,
+          summary,
+          today: todayPoint,
+          prev: prevPoint,
+        };
+      })
+    );
+
+    const normalCards = cards.filter((card) => !card.countdown);
+    const sumValue = normalCards.reduce((acc, card) => acc + card.summary.totalValue, 0);
+    const sumItems = normalCards.reduce((acc, card) => acc + card.summary.totalItems, 0);
+    const sumSoldToday = normalCards.reduce((acc, card) => acc + (card.today === null ? 0 : card.today.sold), 0);
+    const sumSoldPrev = normalCards.reduce((acc, card) => acc + (card.prev === null ? 0 : card.prev.sold), 0);
+    const sumRestockToday = normalCards.reduce(
+      (acc, card) => acc + (card.today === null ? 0 : card.today.restocked),
+      0
+    );
+    const sumRestockPrev = normalCards.reduce((acc, card) => acc + (card.prev === null ? 0 : card.prev.restocked), 0);
+    const countdownCount = cards.filter((card) => card.countdown).length;
+
+    const portfolio = await storage.readPortfolioDaily(addDays(today, -13), today, COUNTDOWN_DOMAINS);
+    const portfolioLabels = portfolio.map((point) => point.day.slice(5));
+    const portfolioValueChart = chartBlock('chart-portfolio-value', {
+      type: 'area',
+      height: 260,
+      series: [{ name: 'wartość sprzedaży (PLN)', data: portfolio.map((point) => point.soldValue) }],
+      xaxis: { categories: portfolioLabels },
+    });
+    const portfolioMixChart = chartBlock('chart-portfolio-mix', {
+      type: 'line',
+      height: 260,
+      series: [
+        { name: 'sprzedane', type: 'bar', data: portfolio.map((point) => point.sold) },
+        { name: 'dostawione', type: 'line', data: portfolio.map((point) => point.restocked) },
+      ],
+      xaxis: { categories: portfolioLabels },
+      plotOptions: { bar: { columnWidth: '55%' } },
+    });
+
+    const alerts: string[] = [];
+    for (const cardEntry of cards) {
+      const link = `<a href="/shop/${esc(cardEntry.id)}">${esc(cardEntry.id)}</a>`;
+      if (cardEntry.summary.snapshotAt === null) {
+        alerts.push(`<tr><td>${link}</td><td>${badge('brak danych', 'gray')}</td><td>${icon('x')}</td></tr>`);
+      } else if (!cardEntry.fresh) {
+        alerts.push(
+          `<tr><td>${link}</td><td>${badge('nieświeże dane', 'yellow')}</td><td>ostatni snapshot: ${esc(fmtDate(cardEntry.summary.snapshotAt))}</td></tr>`
+        );
+      } else if (cardEntry.suspect > 0) {
+        alerts.push(
+          `<tr><td>${link}</td><td>${badge(`${cardEntry.suspect} podejrzane`, 'red')}</td><td>zobacz dzień w sklepie</td></tr>`
+        );
+      } else if (cardEntry.countdown) {
+        alerts.push(
+          `<tr><td>${link}</td><td>${badge('countdown', 'yellow')}</td><td>stan liczy od sentinela w dół</td></tr>`
+        );
       }
-      const config = module.config;
-      const latest = await storage.readLatestSnapshot(config.domain);
-      const days = await storage.readDayCount(config.domain);
-      const first = await storage.readFirstSeed(config.domain);
-      const when = latest === null ? '-' : fmtDate(latest.snapshotAt);
-      rows.push(`<tr>
-        <td><a href="/report/${esc(config.id)}">${esc(config.id)}</a></td>
-        <td>${esc(config.domain)}</td>
-        <td>${esc(config.mode)}</td>
-        <td>${when}</td>
-        <td>${days}</td>
-        <td>${esc(first ?? '-')}</td>
-      </tr>`);
     }
+    const alertsTable =
+      alerts.length === 0
+        ? emptyState('Wszystko w porządku', 'Brak alertów do wyświetlenia.')
+        : table(['sklep', 'status', 'szczegóły'], alerts.join(''), 'table-hover');
+
+    const topSold = [...cards]
+      .filter((card) => !card.countdown && card.today !== null && card.today.sold > 0)
+      .sort((a, b) => (b.today === null ? 0 : b.today.sold) - (a.today === null ? 0 : a.today.sold))
+      .slice(0, 10);
+    const soldChart = chartBlock('chart-top-sold', {
+      type: 'bar',
+      height: 260,
+      series: [{ name: 'sprzedane', data: topSold.map((card) => (card.today === null ? 0 : card.today.sold)) }],
+      xaxis: { categories: topSold.map((card) => card.id) },
+      plotOptions: { bar: { horizontal: true, barHeight: '50%' } },
+    });
+
+    const kpis: KpiCard[] = [
+      { label: 'Wartość stanu', value: money(sumValue), deltaPct: null, icon: 'currency-zloty' },
+      { label: 'Sztuki w magazynie', value: `${sumItems.toLocaleString('pl-PL')} szt`, deltaPct: null, icon: 'box' },
+      {
+        label: 'Sprzedane 24h',
+        value: `${sumSoldToday.toLocaleString('pl-PL')} szt`,
+        deltaPct: pctChange(sumSoldPrev, sumSoldToday),
+        icon: 'shopping-cart',
+      },
+      {
+        label: 'Dostawione 24h',
+        value: `${sumRestockToday.toLocaleString('pl-PL')} szt`,
+        deltaPct: pctChange(sumRestockPrev, sumRestockToday),
+        icon: 'package',
+      },
+    ];
+
+    const countdownNote =
+      countdownCount === 0
+        ? ''
+        : alert(
+            `Wartości zbiorcze pomijają ${countdownCount} sklepy countdown (${COUNTDOWN_DOMAINS.map((domain) => esc(domain)).join(', ')}), bo ich stan liczy od sentinela w dół.`,
+            'yellow',
+            'Uwaga o sentinelach'
+          );
+
+    const shopCards = cards.map(renderShopCard).join('');
+
     const body = `
-<header>
-  <h1><a href="/report">ecommerce-sniffle</a></h1>
-  <span class="sub">raport dzienny — wszystkie sklepy</span>
-</header>
-<table>
-  <thead><tr><th>sklep</th><th>domena</th><th>mode</th><th>ostatni snapshot</th><th>liczba dni</th><th>pierwszy seed</th></tr></thead>
-  <tbody>${rows.join('')}</tbody>
-</table>
-<p class="note">Kliknij sklep, aby zobaczyć zmiany i stan magazynowy.</p>`;
-    return c.html(pageShell('ecommerce-sniffle — raport', body));
+${kpiGrid(kpis)}
+${countdownNote}
+<div class="row row-deck row-cards mt-2">
+  <div class="col-12 col-lg-6">${card({ title: 'Wartość sprzedaży — 14 dni', body: portfolioValueChart })}</div>
+  <div class="col-12 col-lg-6">${card({ title: 'Sprzedane vs dostawione — 14 dni', body: portfolioMixChart })}</div>
+  <div class="col-12 col-lg-6">${card({ title: 'Sprzedane 24h — top 10', body: soldChart })}</div>
+  <div class="col-12 col-lg-6">${card({ title: 'Alerty', body: alertsTable })}</div>
+</div>
+<div class="row row-cards mt-2">${shopCards}</div>`;
+    return c.html(pageShell('ecommerce-sniffle — dashboard', body));
   });
 
-  api.get('/report/:shop', async (c) => {
-    const shop = c.req.param('shop');
+  api.get('/search', async (c) => {
+    const q = c.req.query('q');
+    if (q === undefined || q.trim().length === 0) {
+      return c.redirect('/dashboard', 302);
+    }
+    const query = q.trim();
+    const storage = c.get('storage');
+    const modules = c.get('modules');
+    const matches = await storage.searchProducts(query);
+    const byDomain = new Map<string, string>();
+    for (const module of modules) {
+      if (module.config.enabled) {
+        byDomain.set(module.config.domain, module.config.id);
+      }
+    }
+    const resolved: Array<{ shopId: string; domain: string; productId: string }> = [];
+    for (const match of matches) {
+      const shopId = byDomain.get(match.shop);
+      if (shopId !== undefined) {
+        resolved.push({ shopId, domain: match.shop, productId: match.productId });
+      }
+    }
+    if (resolved.length === 1) {
+      return c.redirect(`/shop/${resolved[0]?.shopId}`, 302);
+    }
+    const rows = resolved
+      .slice(0, 50)
+      .map(
+        (row) =>
+          `<tr><td><a href="/shop/${esc(row.shopId)}">${esc(row.shopId)}</a></td><td>${esc(row.domain)}</td><td>${esc(row.productId)}</td></tr>`
+      )
+      .join('');
+    const body = `
+${breadcrumb([{ label: 'dashboard', href: '/dashboard' }, { label: 'szukaj' }])}
+<h1 class="mb-3">Wyniki dla „${esc(query)}”</h1>
+${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep nie pasuje do zapytania.') : table(['sklep', 'domena', 'produkt'], rows)}`;
+    return c.html(pageShell('ecommerce-sniffle — szukaj', body));
+  });
+
+  api.get('/shop/:id', async (c) => {
+    const id = c.req.param('id');
     const modules = c.get('modules');
     const storage = c.get('storage');
-    const module = modules.find((entry) => entry.config.id === shop);
+    const module = modules.find((entry) => entry.config.id === id);
     if (module === undefined || !module.config.enabled) {
       return c.html(
         pageShell(
           'Nieznany sklep',
-          `<p class="bad">Nieznany sklep: ${esc(shop)}</p><p><a href="/report">&larr; wróć</a></p>`
+          `${alert(`Nieznany sklep: ${esc(id)}`, 'red')}${breadcrumb([{ label: 'dashboard', href: '/dashboard' }])}`
         ),
         404
       );
@@ -295,87 +239,147 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
     const config: ProviderConfig = module.config;
     const domain = config.domain;
     const days = await storage.readAvailableDays(domain);
-    const day = c.req.query('day') ?? days[0] ?? '';
-    const daily: DailyStats | null = await storage.readDailyStats(domain, day);
-    const previous: DailyStats | null = await storage.readDailyStats(domain, dayBefore(day));
+    const dayParam = c.req.query('day');
+    const day = dayParam === undefined ? (days[0] === undefined ? '' : days[0]) : dayParam;
+    const [latest, urlMap, maxQuantity, dailyRange] = await Promise.all([
+      storage.readLatestSnapshot(domain),
+      storage.readProductUrls(domain),
+      storage.readMaxObservedQuantity(domain),
+      day === '' ? Promise.resolve([]) : storage.readShopDailyRange(domain, addDays(day, -13), day),
+    ]);
+    const summary = calculateShopSummary(latest === null ? [] : [latest]);
+    const todayPoint = dailyRange.find((point) => point.day === day) ?? null;
+    const prevPoint = dailyRange.find((point) => point.day === dayBefore(day)) ?? null;
     const morningEvents = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'morning');
     const eveningEvents = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'evening');
-    const latest = await storage.readLatestSnapshot(domain);
+    const from = day === '' ? undefined : addDays(day, -30);
+    const to = day === '' ? undefined : addDays(day, 1);
+    const snapshots = day === '' ? [] : await storage.readSnapshots(domain, from, to);
+    const topRows = topSellingProducts(snapshots, { maxQuantity, limit: 10 });
 
-    // Product url map for every id in view. No live fetch.
-    const urlMap = await storage.readProductUrls(domain);
+    const trendSeries = buildTrendSeries(snapshots);
+    const sortParam = c.req.query('sort');
+    const dirParam = c.req.query('dir');
+    const pageParam = c.req.query('page');
+    const qParam = c.req.query('q');
+    const lowParam = c.req.query('low');
+    const sort = sortParam === undefined ? 'value' : sortParam;
+    const dir = dirParam === undefined ? 'desc' : dirParam;
+    const page = pageParam === undefined ? 1 : Number(pageParam);
+    const stockParams: StockParams = {
+      day,
+      q: qParam === undefined ? '' : qParam,
+      sort,
+      dir,
+      page: Number.isFinite(page) && page > 0 ? page : 1,
+      low: lowParam === undefined ? '' : lowParam,
+    };
 
     const dayOptions = days
       .map((d) => `<option value="${esc(d)}"${d === day ? ' selected' : ''}>${esc(d)}</option>`)
       .join('');
-
-    const dayKpis =
-      daily === null
-        ? '<p class="note">Brak danych dziennych.</p>'
-        : renderKpis([
-            { label: 'Sprzedane', value: String(daily.unitsSold) },
-            { label: 'Dostawione', value: String(daily.restocked), cls: 'good' },
-            { label: 'Przychód', value: fmtMoney(daily.revenue) },
-            { label: 'Sold-out', value: String(daily.soldOutCount), cls: 'bad' },
-            { label: 'Masked', value: String(daily.maskedCount), cls: 'bad' },
-          ]);
-
-    const prevLine =
-      previous === null
+    const prevLink =
+      day === ''
         ? ''
-        : `<p class="note">Poprzedni dzień (${esc(previous.day)}): sprzedane ${previous.unitsSold}, dostawione ${previous.restocked}, przychód ${fmtMoney(previous.revenue)}.</p>`;
+        : `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(dayBefore(day), {}))}" aria-label="Poprzedni dzień">${icon('chevron-left')}</a>`;
+    const nextLink =
+      day === ''
+        ? ''
+        : `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(dayAfter(day), {}))}" aria-label="Następny dzień">${icon('chevron-right')}</a>`;
+    const dayControl = `<div class="d-flex align-items-center gap-2 ms-auto">
+  ${prevLink}
+  <select name="day" id="day" class="form-select w-auto" aria-label="Wybierz dzień" onchange="location.href='${esc(stockQs('', {}))}&day='+encodeURIComponent(this.value)">
+    ${dayOptions}
+  </select>
+  ${nextLink}
+</div>`;
 
-    // Stock value table from the latest snapshot.
-    const byProduct = new Map<string, StockRow[]>();
-    if (latest !== null) {
-      for (const variant of latest.variants) {
-        if (variant.quantity === null || variant.price === null) {
-          continue;
-        }
-        const rows = byProduct.get(variant.productId) ?? [];
-        const url = urlMap.get(variant.productId) ?? null;
-        rows.push({
-          productId: variant.productId,
-          variantId: variant.variantId,
-          title: variant.variantId,
-          quantity: variant.quantity,
-          price: variant.price,
-          value: variant.quantity * variant.price,
-          url,
-        });
-        byProduct.set(variant.productId, rows);
-      }
+    const badges: string[] = [];
+    if (isCountdownShop(domain)) {
+      badges.push(badge('countdown', 'yellow'));
     }
-    const stockGroups = [...byProduct.values()].sort(
-      (a, b) => Math.max(...b.map((row) => row.price)) - Math.max(...a.map((row) => row.price))
-    );
-
-    const note = isCountdownShop(domain)
-      ? '<p class="note">Uwaga: ten sklep liczy stan od dużego sentinela w dół. Analiza zmian działa; wartość bezwzględna może być zawyżona.</p>'
+    if (summary.bias.sentinelVariants > 0) {
+      badges.push(badge(`${summary.bias.sentinelVariants} sentinel`, 'yellow'));
+    }
+    if (todayPoint !== null && todayPoint.suspect > 0) {
+      badges.push(badge(`${todayPoint.suspect} podejrzane`, 'red'));
+    }
+    const countdownNote = isCountdownShop(domain)
+      ? alert(
+          'Ten sklep liczy stan od dużego sentinela w dół. Sprzedaż i wartość są szacunkowe, a nie rzeczywiste.',
+          'yellow',
+          'Countdown'
+        )
       : '';
 
+    const headerData: DataGridItem[] = [
+      { title: 'Stan', content: `${summary.totalItems.toLocaleString('pl-PL')} szt` },
+      { title: 'Wartość', content: money(summary.totalValue) },
+      { title: 'Unikalne produkty', content: `${summary.uniqueProducts}` },
+      { title: 'Średnia cena', content: summary.meanPrice === null ? '--' : money(summary.meanPrice) },
+      { title: 'Mediana ceny', content: summary.medianPrice === null ? '--' : money(summary.medianPrice) },
+      {
+        title: 'Ostatni snapshot',
+        content: latest === null ? '--' : fmtDate(latest.snapshotAt),
+        status: latest === null ? 'gray' : dayBefore(day) <= latest.snapshotAt.slice(0, 10) ? 'green' : 'yellow',
+      },
+    ];
+
+    const headerBody = `${datagrid(headerData)}<div class="mt-2">${badges.join('')}</div>`;
+
+    const lowThresholdParam = c.req.query('lowstock');
+    const lowThreshold = lowThresholdParam === undefined ? 5 : Number(lowThresholdParam);
+
     const body = `
-<header>
-  <h1><a href="/report">ecommerce-sniffle</a> / ${esc(config.id)}</h1>
-  <span class="sub">${esc(domain)} · ${esc(config.mode)} · ${esc(config.platform)}</span>
-</header>
-<form method="get">
-  <label for="day">Dzień:</label>
-  <select name="day" id="day" onchange="this.form.submit()">${dayOptions}</select>
-</form>
-${note}
-<h2 class="seed-title">Dzień (ogółem)</h2>
-${dayKpis}
-${prevLine}
-<h2 class="seed-title">Seed morning (${esc(day)})</h2>
-${renderChanges(morningEvents, urlMap)}
-<h2 class="seed-title">Seed evening (${esc(day)})</h2>
-${renderChanges(eveningEvents, urlMap)}
-<h2 class="seed-title">Stan magazynowy (ostatni snapshot)</h2>
-${renderStock(stockGroups, domain, config.platform)}
-<p class="note"><a href="/report">&larr; wszystkie sklepy</a></p>`;
+<div class="page-header d-flex flex-wrap align-items-center mb-3">
+  ${breadcrumb([{ label: 'dashboard', href: '/dashboard' }, { label: config.id }])}
+  <div class="ms-auto d-flex align-items-center gap-2 mt-2 mt-md-0">
+    ${dayControl}
+  </div>
+</div>
+<h1 class="mb-3">${esc(config.id)} <span class="text-secondary fs-4">${esc(domain)} · ${esc(config.platform)}</span></h1>
+${countdownNote}
+${card({ title: 'Podsumowanie sklepu', body: headerBody })}
+${day === '' ? '' : renderDayComparison(day, todayPoint, prevPoint)}
+${day === '' ? '' : card({ title: 'Trendy', body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildTrendConfig(trendSeries))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(dailyRange))}</div></div>` })}
+${day === '' ? '' : card({ title: 'Zmiany', body: renderChangesWindows(day, morningEvents, eveningEvents, urlMap, config.platform, maxQuantity) })}
+${day === '' ? '' : card({ title: 'Oś czasu zdarzeń', body: renderTimeline(day, morningEvents, eveningEvents, urlMap) })}
+${day === '' ? '' : card({ title: `Niski stan (1–${lowThreshold})`, body: renderLowStock(latest, urlMap, config.platform, lowThreshold) })}
+${day === '' ? '' : card({ title: 'Obniżki cen', body: renderPriceDrops(latest, urlMap, config.platform) })}
+${card({ title: 'Top sprzedawane (ostatnie 30 dni)', body: renderTopSellers(topRows, urlMap) })}
+${card({ title: 'Stan magazynowy (ostatni snapshot)', body: renderStock({ domain, platform: config.platform }, latest, urlMap, stockParams) })}`;
     return c.html(pageShell(`ecommerce-sniffle — ${config.id}`, body));
   });
+
+  api.get('/stock-detail/:productId', async (c) => {
+    const shop = c.req.query('shop');
+    if (shop === undefined) {
+      return c.text('missing shop', 400);
+    }
+    const productId = c.req.param('productId');
+    const modules = c.get('modules');
+    const storage = c.get('storage');
+    const module = modules.find((entry) => entry.config.enabled && entry.config.domain === shop);
+    const platform = module === undefined ? 'custom' : module.config.platform;
+    const [latest, urlMap] = await Promise.all([storage.readLatestSnapshot(shop), storage.readProductUrls(shop)]);
+    if (latest === null) {
+      return c.text('no snapshot', 404);
+    }
+    const variants = latest.variants.filter((variant) => variant.productId === productId);
+    if (variants.length === 0) {
+      return c.text('no variants', 404);
+    }
+    const rows = variants
+      .map((variant) => {
+        const cell = variantCell(urlMap, productId, variant.variantId, platform);
+        return `<tr><td>${cell}</td><td>${variant.quantity === null ? '-' : esc(variant.quantity)}</td><td>${variant.price === null ? '-' : money(variant.price)}</td></tr>`;
+      })
+      .join('');
+    return c.html(table(['wariant', 'ilość', 'cena'], rows));
+  });
+
+  api.get('/report', (c) => c.redirect('/dashboard', 301));
+  api.get('/report/:shop', (c) => c.redirect(`/shop/${c.req.param('shop')}`, 301));
 
   return api;
 }

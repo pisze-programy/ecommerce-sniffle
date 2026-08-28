@@ -121,9 +121,10 @@ describe('extract helpers', () => {
 });
 
 describe('buildPrestaShopCartRevealProvider reveal', () => {
-  it('reveals exact stock through the cart ajax', async () => {
+  it('reveals exact stock and price through the cart ajax', async () => {
     const capture = capturingLogger();
     const productPage =
+      '<meta property="product:price:amount" content="165">' +
       '<form action="https://laboratoriumpanidomu.pl/koszyk">' +
       '<input type="hidden" name="token" value="tok123">' +
       '<input type="hidden" name="id_product" value="1928">' +
@@ -164,6 +165,7 @@ describe('buildPrestaShopCartRevealProvider reveal', () => {
     const product = catalog.products[0];
     expect(product?.variants[0]?.quantity).toBe(958580);
     expect(product?.variants[0]?.available).toBe(true);
+    expect(product?.variants[0]?.price.amount).toBe(165);
     const postCall = calls.find((u) => u.includes('/koszyk'));
     expect(postCall).toBeDefined();
   });

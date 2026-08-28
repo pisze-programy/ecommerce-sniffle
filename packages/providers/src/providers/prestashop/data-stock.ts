@@ -2,7 +2,8 @@ import { buildStockRevealer } from '../../factory.ts';
 import { measureFetch } from '../../network/manager.ts';
 import { createFreshFetch } from '../../network/fresh-fetch.ts';
 import { mapPool } from '../../network/pool.ts';
-import { buildCatalog, extractPrestaToken } from './cart-reveal.ts';
+import { buildCatalog, extractPrestaToken, money, parsePrestaPrice } from './cart-reveal.ts';
+export { parsePrestaPrice } from './cart-reveal.ts';
 import type { CatalogFetch } from './cart-reveal.ts';
 import type { DirectFetch } from '../../module.ts';
 import type { Logger } from '../../logger.ts';
@@ -15,22 +16,25 @@ const REFRESH_CONCURRENCY = 8;
 export interface DataStockOutcome {
   readonly quantity: number | null;
   readonly available: boolean;
+  readonly price: number | null;
 }
 
 export function parseDataStock(text: string): DataStockOutcome {
   try {
     const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
     const details = typeof data['product_details'] === 'string' ? data['product_details'] : '';
+    const pricesHtml = typeof data['product_prices'] === 'string' ? data['product_prices'] : '';
+    const price = pricesHtml.length === 0 ? null : parsePrestaPrice(pricesHtml);
     const match = /data-stock="(\d+)"/.exec(details);
     if (match !== null) {
-      return { quantity: Number(match[1]), available: true };
+      return { quantity: Number(match[1]), available: true, price };
     }
     if (/Obecnie brak na stanie|out of stock|product-out-of-stock/i.test(text)) {
-      return { quantity: 0, available: false };
+      return { quantity: 0, available: false, price };
     }
-    return { quantity: null, available: false };
+    return { quantity: null, available: false, price };
   } catch {
-    return { quantity: null, available: false };
+    return { quantity: null, available: false, price: null };
   }
 }
 
@@ -59,12 +63,12 @@ export async function refreshDataStock(
   return parseDataStock(text);
 }
 
-function applyQuantity(product: Product, quantity: number, available: boolean): Product {
+function applyQuantity(product: Product, quantity: number, available: boolean, price: number | null): Product {
   const base = product.variants[0];
   if (base === undefined) {
     return product;
   }
-  const variants: Variant[] = [{ ...base, quantity, available }];
+  const variants: Variant[] = [{ ...base, quantity, available, price: price === null ? base.price : money(price) }];
   return { ...product, variants };
 }
 
@@ -122,14 +126,14 @@ export function buildPrestaShopDataStockProvider(
           return product;
         }
         if (!base.available) {
-          return applyQuantity(product, 0, false);
+          return applyQuantity(product, 0, false, null);
         }
         const outcome = await refreshDataStock(providerConfig.domain, token, product.id, probeFetch);
         if (outcome.quantity === null) {
           logger.warn('presta.datastock no quantity', { productId: product.id });
           return product;
         }
-        return applyQuantity(product, outcome.quantity, outcome.available);
+        return applyQuantity(product, outcome.quantity, outcome.available, outcome.price);
       });
       return { domain: providerConfig.domain, fetchedAt: new Date().toISOString(), products: revealed };
     }

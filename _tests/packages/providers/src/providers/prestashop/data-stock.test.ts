@@ -3,6 +3,7 @@ import { createLogger } from '../../../../../../packages/providers/src/logger.ts
 import type { LogRecord, Logger } from '../../../../../../packages/providers/src/logger.ts';
 import {
   parseDataStock,
+  parsePrestaPrice,
   refreshDataStock,
   buildPrestaShopDataStockProvider,
 } from '../../../../../../packages/providers/src/providers/prestashop/data-stock.ts';
@@ -51,15 +52,23 @@ function detailsBlock(dataStock: string | null, outOfStock: boolean): string {
   return html;
 }
 
-function refreshJson(dataStock: string | null, outOfStock = false): string {
-  return JSON.stringify({ product_details: detailsBlock(dataStock, outOfStock) });
+function pricesBlock(price: string | null): string {
+  if (price === null) {
+    return '';
+  }
+  return `<div class="current-price-value text-right" content="${price}">${price} zł</div>`;
+}
+
+function refreshJson(dataStock: string | null, outOfStock = false, price: string | null = '119.99'): string {
+  return JSON.stringify({ product_details: detailsBlock(dataStock, outOfStock), product_prices: pricesBlock(price) });
 }
 
 describe('parseDataStock', () => {
-  it('reads the exact stock from the product details', () => {
+  it('reads the exact stock and the price from the product details', () => {
     const outcome = parseDataStock(refreshJson('410'));
     expect(outcome.quantity).toBe(410);
     expect(outcome.available).toBe(true);
+    expect(outcome.price).toBe(119.99);
   });
 
   it('reads a large stock count', () => {
@@ -78,9 +87,38 @@ describe('parseDataStock', () => {
     expect(outcome.quantity).toBeNull();
   });
 
+  it('returns a null price when the response has no price block', () => {
+    const outcome = parseDataStock(refreshJson('410', false, null));
+    expect(outcome.quantity).toBe(410);
+    expect(outcome.price).toBeNull();
+  });
+
   it('returns null when the body is not valid json', () => {
     const outcome = parseDataStock('not-json');
     expect(outcome.quantity).toBeNull();
+    expect(outcome.price).toBeNull();
+  });
+});
+
+describe('parsePrestaPrice', () => {
+  it('reads the price from the open graph meta', () => {
+    expect(
+      parsePrestaPrice(
+        '<meta property="product:price:amount" content="119.99"><meta property="product:price:currency" content="PLN">'
+      )
+    ).toBe(119.99);
+  });
+
+  it('reads the price from the json-ld block', () => {
+    expect(parsePrestaPrice('{"@type":"Product","price":"165","priceCurrency":"PLN"}')).toBe(165);
+  });
+
+  it('reads the price from the current-price-value fragment', () => {
+    expect(parsePrestaPrice('<div class="current-price-value text-right" content="199.00">199,00 zł</div>')).toBe(199);
+  });
+
+  it('returns null when no price marker exists', () => {
+    expect(parsePrestaPrice('<html><body>no price</body></html>')).toBeNull();
   });
 });
 
@@ -168,6 +206,7 @@ describe('buildPrestaShopDataStockProvider reveal', () => {
     expect(catalog.products).toHaveLength(1);
     expect(catalog.products[0]?.variants[0]?.quantity).toBe(410);
     expect(catalog.products[0]?.variants[0]?.available).toBe(true);
+    expect(catalog.products[0]?.variants[0]?.price.amount).toBe(119.99);
   });
 
   it('marks an out-of-stock product as zero', async () => {

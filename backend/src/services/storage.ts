@@ -15,7 +15,13 @@ export interface D1Like {
 export interface Storage {
   writeSnapshot(snapshot: Snapshot): Promise<void>;
   readLatestSnapshot(shop: string): Promise<Snapshot | null>;
+  readSnapshots(shop: string, from?: string, to?: string): Promise<readonly Snapshot[]>;
   readProductUrls(shop: string): Promise<Map<string, string>>;
+  readShops(): Promise<string[]>;
+  readMaxObservedQuantity(shop: string): Promise<number>;
+  readShopDailyRange(shop: string, fromDay: string, toDay: string): Promise<readonly DailyPoint[]>;
+  readPortfolioDaily(fromDay: string, toDay: string, excludeShops?: readonly string[]): Promise<readonly DailyPoint[]>;
+  searchProducts(query: string): Promise<readonly { shop: string; productId: string }[]>;
   writeDailyStats(stats: DailyStats): Promise<void>;
   readDailyStats(shop: string, day: string): Promise<DailyStats | null>;
   writeEvents(shop: string, day: string, snapshotAt: string, events: readonly StockEvent[]): Promise<void>;
@@ -32,6 +38,15 @@ export interface SeriesPoint {
   readonly quantity: number | null;
   readonly price: number | null;
   readonly available: boolean;
+}
+
+export interface DailyPoint {
+  readonly day: string;
+  readonly sold: number;
+  readonly soldValue: number;
+  readonly restocked: number;
+  readonly restockValue: number;
+  readonly suspect: number;
 }
 
 interface SnapshotRow {
@@ -55,6 +70,7 @@ interface StatsRow {
   sold_out_count: number;
   promotion_count: number;
   masked_count: number;
+  suspect_count: number;
 }
 
 interface EventRow {
@@ -137,6 +153,7 @@ function toStatsRow(stats: DailyStats): StatsRow {
     sold_out_count: stats.soldOutCount,
     promotion_count: stats.promotionCount,
     masked_count: stats.maskedCount,
+    suspect_count: stats.suspectCount,
   };
 }
 
@@ -150,6 +167,7 @@ function fromStatsRow(row: StatsRow): DailyStats {
     soldOutCount: row.sold_out_count,
     promotionCount: row.promotion_count,
     maskedCount: row.masked_count,
+    suspectCount: row.suspect_count,
   };
 }
 
@@ -170,13 +188,25 @@ function toEventRow(event: StockEvent, shop: string, day: string, snapshotAt: st
   };
 }
 
+function eventState(row: EventRow, quantity: number | null, price: number | null): VariantState {
+  return {
+    productId: row.product_id,
+    variantId: row.variant_id,
+    quantity,
+    price,
+    regularPrice: null,
+    available: quantity !== null && quantity > 0,
+  };
+}
+
 function fromEventRow(row: EventRow): StockEvent {
   return {
     type: row.type as StockEvent['type'],
     productId: row.product_id,
     variantId: row.variant_id,
-    from: null,
-    to: null,
+    from:
+      row.from_price === null && row.from_quantity === null ? null : eventState(row, row.from_quantity, row.from_price),
+    to: row.to_price === null && row.to_quantity === null ? null : eventState(row, row.to_quantity, row.to_price),
     units: row.units,
     confidence: row.confidence as StockEvent['confidence'],
   };
@@ -257,12 +287,129 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       return map;
     },
 
+    async readSnapshots(shop: string, from?: string, to?: string): Promise<readonly Snapshot[]> {
+      let query = 'SELECT * FROM snapshots WHERE shop = ?';
+      const binds: Array<string | number> = [shop];
+      if (from !== undefined) {
+        query += ' AND snapshot_at >= ?';
+        binds.push(from);
+      }
+      if (to !== undefined) {
+        query += ' AND snapshot_at <= ?';
+        binds.push(to);
+      }
+      query += ' ORDER BY snapshot_at';
+      const result = (await db
+        .prepare(query)
+        .bind(...binds)
+        .all()) as { results: SnapshotRow[] };
+      const snapshots: Snapshot[] = [];
+      let current: {
+        snapshotAt: string;
+        window: 'morning' | 'evening';
+        variants: VariantState[];
+      } | null = null;
+      for (const row of result.results) {
+        if (current === null || current.snapshotAt !== row.snapshot_at) {
+          current = {
+            snapshotAt: row.snapshot_at,
+            window: row.window === 'evening' ? 'evening' : 'morning',
+            variants: [],
+          };
+          snapshots.push({
+            shop,
+            snapshotAt: current.snapshotAt,
+            window: current.window,
+            variants: current.variants,
+          });
+        }
+        current.variants.push(fromRow(row));
+      }
+      return snapshots;
+    },
+
+    async readShops(): Promise<string[]> {
+      const result = (await db.prepare('SELECT DISTINCT shop FROM snapshots ORDER BY shop').all()) as {
+        results: Array<{ shop: string }>;
+      };
+      return result.results.map((row) => row.shop);
+    },
+
+    async readMaxObservedQuantity(shop: string): Promise<number> {
+      const row = (await db
+        .prepare('SELECT MAX(ABS(quantity)) AS max_q FROM snapshots WHERE shop = ?')
+        .bind(shop)
+        .first()) as { max_q: number | null } | null;
+      return row === null || row.max_q === null ? 0 : Number(row.max_q);
+    },
+
+    async readShopDailyRange(shop: string, fromDay: string, toDay: string): Promise<readonly DailyPoint[]> {
+      const result = (await db
+        .prepare(
+          'SELECT day, units_sold, revenue, restocked, suspect_count FROM daily_stats WHERE shop = ? AND day >= ? AND day <= ? ORDER BY day'
+        )
+        .bind(shop, fromDay, toDay)
+        .all()) as {
+        results: Array<{ day: string; units_sold: number; revenue: number; restocked: number; suspect_count: number }>;
+      };
+      return result.results.map((row) => ({
+        day: row.day,
+        sold: Number(row.units_sold),
+        soldValue: Number(row.revenue),
+        restocked: Number(row.restocked),
+        restockValue: 0,
+        suspect: Number(row.suspect_count),
+      }));
+    },
+
+    async readPortfolioDaily(
+      fromDay: string,
+      toDay: string,
+      excludeShops: readonly string[] = []
+    ): Promise<readonly DailyPoint[]> {
+      let query =
+        'SELECT day, SUM(units_sold) AS sold, SUM(revenue) AS sold_value, SUM(restocked) AS restocked FROM daily_stats WHERE day >= ? AND day <= ?';
+      const binds: Array<string> = [fromDay, toDay];
+      if (excludeShops.length > 0) {
+        const placeholders = excludeShops.map(() => '?').join(', ');
+        query += ` AND shop NOT IN (${placeholders})`;
+        binds.push(...excludeShops);
+      }
+      query += ' GROUP BY day ORDER BY day';
+      const result = (await db
+        .prepare(query)
+        .bind(...binds)
+        .all()) as {
+        results: Array<{ day: string; sold: number; sold_value: number; restocked: number }>;
+      };
+      return result.results.map((row) => ({
+        day: row.day,
+        sold: Number(row.sold),
+        soldValue: Number(row.sold_value),
+        restocked: Number(row.restocked),
+        restockValue: 0,
+        suspect: 0,
+      }));
+    },
+
+    async searchProducts(query: string): Promise<readonly { shop: string; productId: string }[]> {
+      if (query.length === 0) {
+        return [];
+      }
+      const pattern = `%${query}%`;
+      const result = (await db
+        .prepare('SELECT shop, product_id FROM products WHERE product_id LIKE ? OR url LIKE ? LIMIT 20')
+        .bind(pattern, pattern)
+        .all()) as { results: Array<{ shop: string; product_id: string }> };
+      return result.results.map((row) => ({ shop: row.shop, productId: row.product_id }));
+    },
+
     async writeDailyStats(stats: DailyStats): Promise<void> {
       const row = toStatsRow(stats);
       try {
         await db
           .prepare(
-            'INSERT OR REPLACE INTO daily_stats (shop, day, units_sold, revenue, restocked, sold_out_count, promotion_count, masked_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT OR REPLACE INTO daily_stats (shop, day, units_sold, revenue, restocked, sold_out_count, promotion_count, masked_count, suspect_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
           )
           .bind(
             row.shop,
@@ -272,7 +419,8 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
             row.restocked,
             row.sold_out_count,
             row.promotion_count,
-            row.masked_count
+            row.masked_count,
+            row.suspect_count
           )
           .all();
       } catch (error: unknown) {

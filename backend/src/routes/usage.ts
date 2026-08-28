@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
 import { isAuthorized } from './auth.ts';
+import { aggregateDaily } from '@ecommerce-sniffle/analysis';
 
 interface UsageBody {
   readonly taskId: string;
@@ -186,6 +187,42 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
       await c.env.DB.batch(statements);
     }
     return c.json({ ok: true, updated });
+  });
+
+  api.post('/admin/recompute-daily-stats', async (c) => {
+    if (!isAuthorized(c)) {
+      c.get('logger').warn('recompute.unauthorized');
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const storage = c.get('storage');
+    const logger = c.get('logger');
+    let shops: string[];
+    const body = await c.req.json().catch(() => null);
+    const raw = typeof body === 'object' && body !== null ? (body as Readonly<Record<string, unknown>>)['shops'] : null;
+    if (Array.isArray(raw) && raw.every((entry) => typeof entry === 'string')) {
+      shops = raw as string[];
+    } else {
+      shops = await storage.readShops();
+    }
+    let days = 0;
+    try {
+      for (const shop of shops) {
+        const maxQuantity = await storage.readMaxObservedQuantity(shop);
+        const availableDays = await storage.readAvailableDays(shop);
+        for (const day of availableDays) {
+          const events = await storage.readEvents(shop, day);
+          const stats = aggregateDaily({ shop, day, events }, { maxQuantity });
+          await storage.writeDailyStats(stats);
+          days += 1;
+        }
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('recompute failed', { error: message });
+      return c.json({ ok: false, error: message }, 500);
+    }
+    logger.info('recompute done', { shops: shops.length, days });
+    return c.json({ ok: true, shops: shops.length, days });
   });
 
   return api;

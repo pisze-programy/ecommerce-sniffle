@@ -41,4 +41,5 @@ export interface DailyStats {
   readonly soldOutCount: number;
   readonly promotionCount: number;
   readonly maskedCount: number;
+  readonly suspectCount: number;
 }

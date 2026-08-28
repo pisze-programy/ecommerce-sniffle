@@ -70,8 +70,9 @@ Two layers use the same providers.
    - does NOT use tailscale
    - runs on a 256 MB VPS with 0 swap, shares RAM with panperyskop
    - must exit gracefully before out-of-memory, never kill another cron
-   - NEVER run npm install on the VPS. It dies of OOM. Copy the
-     built folder and the node_modules from the developer machine.
+   - NEVER run npm install on the VPS. It dies of OOM.
+   - rsync is NOT installed on the VPS. Use scp. Copy only the
+     orchestrator dist folder to the VPS.
 
 The CF worker cannot use a residential proxy. This is why mutations run
 on the VPS. The VPS IP stays clean.
@@ -119,8 +120,12 @@ VPS orchestrator (1:1 mirror, no Docker):
 
 ```
 cd orchestrator
-npx tsup
-# copy the folder and the node_modules to the VPS
+npm run build -w orchestrator
+# rsync is NOT installed on the VPS. Use scp. Copy only the dist folder.
+# The tsup config bundles the workspace packages into dist.
+# node_modules does not need a copy.
+scp orchestrator/dist/*.js orchestrator/dist/*.js.map frog:/home/frog/ecommerce-sniffle/orchestrator/dist/
+# Remove old chunk files from the VPS before a deploy.
+# On the VPS, the cron runs node dist/index.js.
 # NEVER run npm install on the VPS. It dies of OOM.
-# on the VPS: node dist/index.js
 ```
