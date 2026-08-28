@@ -65,7 +65,8 @@ export function createQueueRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
       taskId,
       typeof error === 'string' ? error : 'unknown error',
       Date.now(),
-      QUEUE_RETRY_BACKOFF_MS
+      QUEUE_RETRY_BACKOFF_MS,
+      QUEUE_MAX_ATTEMPTS
     );
     return c.json({ ok: true });
   });

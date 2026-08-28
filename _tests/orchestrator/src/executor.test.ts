@@ -142,6 +142,29 @@ describe('runExecutorPass', () => {
     expect(typeof usage?.context['requests']).toBe('number');
   });
 
+  it('skips a queued task whose provider is disabled', async () => {
+    vi.stubEnv('BACKEND_URL', 'https://backend.example.com');
+    vi.stubEnv('INGEST_SECRET', 's3cret');
+    const capture = capturingLogger();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const queue = fakeQueue([task()]);
+    const disabled = {
+      ...fakeGetModule(emptyCatalog()),
+      config: { ...fakeGetModule(emptyCatalog()).config, enabled: false },
+    };
+    const result = await runExecutorPass(capture.logger, {
+      queueClient: queue,
+      modules: [disabled],
+    });
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(0);
+    expect(queue.calls).toEqual(['claim:morning-forcer-2026-08-24', 'complete:morning-forcer-2026-08-24:0']);
+    const shopCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('fake.pl'));
+    expect(shopCalls).toHaveLength(0);
+    expect(capture.records.some((record) => record.message === 'task skipped disabled provider')).toBe(true);
+  });
+
   it('stores a masked snapshot and logs the bug', async () => {
     vi.stubEnv('BACKEND_URL', 'https://backend.example.com');
     vi.stubEnv('INGEST_SECRET', 's3cret');

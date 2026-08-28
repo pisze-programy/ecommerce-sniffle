@@ -113,6 +113,7 @@ export function parseProductFromPayload(
   const price = typeof rawPrice === 'number' ? rawPrice : 0;
   const rawPreorder = deref(payload, productObject['isPreorder']);
   const isPreorder = rawPreorder === true;
+  const forSale = deref(payload, productObject['isCollection']) === true;
   const rawSizes = deref(payload, productObject['sizes']);
   const variants: Variant[] = [];
   if (Array.isArray(rawSizes)) {
@@ -130,7 +131,9 @@ export function parseProductFromPayload(
       const rawSizeId = deref(payload, entry['_id']);
       const rawStock = deref(payload, entry['stock']);
       const stock = typeof rawStock === 'number' ? rawStock : null;
-      const available = isPreorder ? true : stock !== null && stock > 0;
+      // A product with isCollection false is not offered for sale. The shop
+      // keeps stock on hand but disables the buy button. Treat it as sold out.
+      const available = forSale ? (isPreorder ? true : stock !== null && stock > 0) : false;
       variants.push({
         id: typeof rawSizeId === 'string' ? rawSizeId : `${id}-${String(variants.length)}`,
         title: typeof sizeName === 'string' ? sizeName : 'default',
@@ -138,7 +141,7 @@ export function parseProductFromPayload(
         price: money(price),
         regularPrice: null,
         available,
-        quantity: isPreorder ? 1 : stock,
+        quantity: forSale ? (isPreorder ? 1 : stock) : 0,
       });
     }
   }

@@ -69,6 +69,14 @@ async function executeTask(
   if (module === null) {
     throw new Error(`unknown provider ${task.providerId}`);
   }
+  if (!module.config.enabled) {
+    logger.warn('task skipped disabled provider', { taskId: task.taskId, providerId: task.providerId });
+    const done = await client.complete(task.taskId, 0);
+    if (!done) {
+      throw new Error('queue complete rejected');
+    }
+    return { taskId: task.taskId, providerId: task.providerId, variants: 0, masked: 0, window: task.window };
+  }
   const needsDirect = task.mode === 'vps-mutation' || (task.mode === 'vps-get' && !module.config.requiresProxy);
   const provider = needsDirect ? module.build({ logger, directFetch }) : module.build({ logger });
   const catalog =
@@ -162,6 +170,10 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
         providerId: executed.providerId,
         variants: executed.variants,
       });
+      // Masked > 0 means at least one variant has no quantity.
+      // This is a deliberate decision. Any masked variant must be seen
+      // and explained. It helps find a broken provider or a blocked
+      // product. Do not change this to 'ok'.
       const status: SnitchStatus = executed.masked > 0 ? 'failed' : 'ok';
       await sendReport(
         taskReport(executed.providerId, status, {

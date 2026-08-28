@@ -143,6 +143,7 @@ describe('runVpsPass', () => {
     const result = await runVpsPass(silentLogger(), { directFetch: networkDisabledFetch() });
     expect([...result.failed].sort()).toEqual(
       [
+        'beaumont',
         'booso',
         'derichgallery',
         'dobrerzeczy',
@@ -162,7 +163,6 @@ describe('runVpsPass', () => {
         'wakenbake',
         'wkdzik',
         '33mata',
-        'berecords',
         'brokies',
         'friendzstore',
         'islandrecords',

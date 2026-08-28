@@ -145,15 +145,21 @@ class FakeStatement implements QueueStatement {
       }
       return [];
     }
-    if (q.includes("SET status = 'pending'") && q.includes('error')) {
-      const error = String(this.args[0]);
-      const leaseUntil = this.args[1];
-      const taskId = String(this.args[2]);
+    if (q.includes('SET status = CASE') && q.includes('lease_until = CASE')) {
+      const maxAttempts = this.args[0] as number;
+      const leaseUntil = this.args[2];
+      const error = String(this.args[3]);
+      const taskId = String(this.args[4]);
       const task = this.db.tasks.get(taskId);
       if (task !== undefined) {
-        task['status'] = 'pending';
+        if ((task['attempts'] as number) >= maxAttempts) {
+          task['status'] = 'dlq';
+          task['lease_until'] = null;
+        } else {
+          task['status'] = 'pending';
+          task['lease_until'] = leaseUntil;
+        }
         task['error'] = error;
-        task['lease_until'] = leaseUntil;
         task['worker_id'] = null;
       }
       return [];
@@ -174,12 +180,13 @@ class FakeStatement implements QueueStatement {
     }
     if (q.includes("SET status = 'dlq'")) {
       const maxAttempts = this.args[0] as number;
+      const now = this.args[1] as number;
       let changes = 0;
       for (const task of this.db.tasks.values()) {
         if (
           task['status'] === 'pending' &&
           (task['attempts'] as number) >= maxAttempts &&
-          task['lease_until'] === null
+          (task['lease_until'] === null || (task['lease_until'] as number) < now)
         ) {
           task['status'] = 'dlq';
           changes += 1;
@@ -307,12 +314,61 @@ describe('createTaskStore', () => {
     const store = createTaskStore(db, capture.logger);
     await store.createTask(task());
     await store.claimTask('vps-1', 1800000, NOW, 3, ['vps-get']);
-    await store.failTask('morning-forcer-2026-08-24', 'masked 5', NOW, 1000);
+    await store.failTask('morning-forcer-2026-08-24', 'masked 5', NOW, 1000, 3);
     const duringBackoff = await store.claimTask('vps-2', 1800000, NOW + 10, 3, ['vps-get']);
     expect(duringBackoff).toBeNull();
     const afterBackoff = await store.claimTask('vps-2', 1800000, NOW + 2000, 3, ['vps-get']);
     expect(afterBackoff?.attempts).toBe(2);
     expect(db.tasks.get('morning-forcer-2026-08-24')?.['error']).toBe('masked 5');
+  });
+
+  it('moves a task to dlq when it fails at the max attempt', async () => {
+    const capture = capturingLogger();
+    const db = new FakeQueueDb();
+    const store = createTaskStore(db, capture.logger);
+    await store.createTask(task({ attempts: 2 }));
+    await store.claimTask('vps-1', 1800000, NOW, 3, ['vps-get']);
+    await store.failTask('morning-forcer-2026-08-24', 'final error', NOW, 1000, 3);
+    const counts = await store.statusCounts();
+    expect(counts['dlq']).toBe(1);
+    const row = db.tasks.get('morning-forcer-2026-08-24');
+    expect(row?.['status']).toBe('dlq');
+    expect(row?.['lease_until']).toBeNull();
+    expect(row?.['worker_id']).toBeNull();
+  });
+
+  it('keeps a below-max failed task in pending with a lease', async () => {
+    const capture = capturingLogger();
+    const db = new FakeQueueDb();
+    const store = createTaskStore(db, capture.logger);
+    await store.createTask(task({ attempts: 1 }));
+    await store.claimTask('vps-1', 1800000, NOW, 3, ['vps-get']);
+    await store.failTask('morning-forcer-2026-08-24', 'retry', NOW, 1000, 3);
+    const row = db.tasks.get('morning-forcer-2026-08-24');
+    expect(row?.['status']).toBe('pending');
+    expect(row?.['lease_until']).toBe(NOW + 1000);
+  });
+
+  it('reaps a stuck pending task with an expired lease to dlq', async () => {
+    const capture = capturingLogger();
+    const db = new FakeQueueDb();
+    const store = createTaskStore(db, capture.logger);
+    await store.createTask(task({ attempts: 3, leaseUntil: NOW - 5000, status: 'pending' }));
+    const reaped = await store.reapExpired(NOW, 3);
+    expect(reaped).toBe(1);
+    const counts = await store.statusCounts();
+    expect(counts['dlq']).toBe(1);
+  });
+
+  it('does not reap a task that is still in backoff', async () => {
+    const capture = capturingLogger();
+    const db = new FakeQueueDb();
+    const store = createTaskStore(db, capture.logger);
+    await store.createTask(task({ attempts: 3, leaseUntil: NOW + 10000, status: 'pending' }));
+    const reaped = await store.reapExpired(NOW, 3);
+    expect(reaped).toBe(0);
+    const counts = await store.statusCounts();
+    expect(counts['pending']).toBe(1);
   });
 
   it('reaps an expired lease back to pending', async () => {

@@ -52,7 +52,7 @@ function payload(): unknown[] {
     ['ShallowReactive', 4],
     { shop: 5 },
     { product: 5 },
-    { _id: 6, name: 7, price: 8, sizes: 9, slug: 10, isPreorder: 11 },
+    { _id: 6, name: 7, price: 8, sizes: 9, slug: 10, isPreorder: 11, isCollection: 26 },
     'prod-1',
     'Koszulka classic',
     50,
@@ -73,6 +73,7 @@ function payload(): unknown[] {
     0,
     'size-entry-m',
     'M',
+    true,
   ];
 }
 
@@ -156,6 +157,24 @@ describe('parseProductFromPayload', () => {
     data[11] = true;
     const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, 'dobrerzeczy.pl', silentLogger());
     expect(product?.variants[0]?.quantity).toBe(1);
+    expect(product?.variants[0]?.available).toBe(true);
+  });
+
+  it('treats a product outside the active collection as sold out', () => {
+    const data = payload();
+    data[26] = false;
+    const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, 'dobrerzeczy.pl', silentLogger());
+    expect(product?.variants[0]?.quantity).toBe(0);
+    expect(product?.variants[0]?.available).toBe(false);
+    expect(product?.variants[1]?.quantity).toBe(0);
+    expect(product?.variants[1]?.available).toBe(false);
+  });
+
+  it('keeps the per-size stock when the product is in the active collection', () => {
+    const data = payload();
+    data[26] = true;
+    const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, 'dobrerzeczy.pl', silentLogger());
+    expect(product?.variants[0]?.quantity).toBe(3);
     expect(product?.variants[0]?.available).toBe(true);
   });
 

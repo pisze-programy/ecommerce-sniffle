@@ -8,7 +8,7 @@ export const EXCLUDED_STOCK_IDS: Readonly<Record<string, readonly number[]>> = {
     1124, 1127, 1136, 1175, 1205, 1214, 1240, 1269, 1275, 1301, 1314, 1338, 1344,
   ],
   // Empty variants, the shop does not sell them. The Etui (5054) has 1276 option combos.
-  sklepskolim: [5054, 84, 154, 162, 6476, 6925, 6985],
+  sklepskolim: [5054, 84, 154, 162, 6476, 6925, 6985, 44],
   // Empty variants, the shop does not sell them.
   arustamian: [4439],
   // Bad custom products (stworz-swoja-zgrzewke, mix-330). The shop
@@ -16,4 +16,6 @@ export const EXCLUDED_STOCK_IDS: Readonly<Record<string, readonly number[]>> = {
   wkdzik: [3597, 3878],
   // Dead products. The page id_product is 0, the refresh returns the category listing.
   phlov: [1038, 1041, 1046],
+  // Products that need option combos and fail the add. Verified manually.
+  'e-daag': [3342, 3865],
 };

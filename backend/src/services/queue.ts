@@ -38,7 +38,7 @@ export interface TaskStore {
     modes: readonly string[]
   ): Promise<Task | null>;
   completeTask(taskId: string, maskedCount: number | null, now: number): Promise<void>;
-  failTask(taskId: string, error: string, now: number, backoffMs: number): Promise<void>;
+  failTask(taskId: string, error: string, now: number, backoffMs: number, maxAttempts: number): Promise<void>;
   reapExpired(now: number, maxAttempts: number): Promise<number>;
   statusCounts(): Promise<Record<string, number>>;
 }
@@ -96,14 +96,19 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
     "UPDATE tasks SET status = 'done', masked_count = ?, finished_at = ?, lease_until = NULL, worker_id = NULL WHERE task_id = ?"
   );
   const fail = db.prepare(
-    "UPDATE tasks SET status = 'pending', error = ?, lease_until = ?, worker_id = NULL WHERE task_id = ?"
+    'UPDATE tasks SET ' +
+      "status = CASE WHEN attempts >= ? THEN 'dlq' ELSE 'pending' END, " +
+      'lease_until = CASE WHEN attempts >= ? THEN NULL ELSE ? END, ' +
+      'error = ?, worker_id = NULL ' +
+      'WHERE task_id = ?'
   );
   const reap = db.prepare(
     "UPDATE tasks SET status = CASE WHEN attempts >= ? THEN 'dlq' ELSE 'pending' END, " +
       "lease_until = NULL, worker_id = NULL WHERE status = 'claimed' AND lease_until < ?"
   );
   const reapPending = db.prepare(
-    "UPDATE tasks SET status = 'dlq' WHERE status = 'pending' AND attempts >= ? AND lease_until IS NULL"
+    "UPDATE tasks SET status = 'dlq' WHERE status = 'pending' AND attempts >= ? " +
+      'AND (lease_until IS NULL OR lease_until < ?)'
   );
   const counts = db.prepare('SELECT status, count(*) AS c FROM tasks GROUP BY status');
 
@@ -169,9 +174,9 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
       }
     },
 
-    async failTask(taskId, error, now, backoffMs): Promise<void> {
+    async failTask(taskId, error, now, backoffMs, maxAttempts): Promise<void> {
       try {
-        await fail.bind(error, now + backoffMs, taskId).run();
+        await fail.bind(maxAttempts, maxAttempts, now + backoffMs, error, taskId).run();
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error('queue.failTask failed', { taskId, error: message });
@@ -182,7 +187,7 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
     async reapExpired(now, maxAttempts): Promise<number> {
       try {
         const first = await reap.bind(maxAttempts, now).run();
-        const second = await reapPending.bind(maxAttempts).run();
+        const second = await reapPending.bind(maxAttempts, now).run();
         return first.meta.changes + second.meta.changes;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

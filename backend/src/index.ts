@@ -27,6 +27,8 @@ export default {
     const window = new Date(now).getUTCHours() < 12 ? 'morning' : 'evening';
     if (controller.cron === '10 10 * * *' || controller.cron === '10 22 * * *') {
       logger.info('cf summary cron', { window, day, cron: controller.cron });
+      const store = createTaskStore(env.DB, logger);
+      await store.reapExpired(now, 3);
       const sent = await sendCfSummary(env, window, day);
       logger.info('cf summary sent', { window, day, ok: sent });
       ctx.waitUntil(Promise.resolve());

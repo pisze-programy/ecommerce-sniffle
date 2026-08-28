@@ -29,6 +29,8 @@ import { mualasklepModule } from './providers/shopify/mualasklep.ts';
 import { papitoenergyModule } from './providers/shopify/papitoenergy.ts';
 import { friendzstoreModule } from './providers/shopify/friendzstore.ts';
 import { berecordsModule } from './providers/shopify/berecords.ts';
+import { beaumontModule } from './providers/shopify/beaumont.ts';
+import { fagataModule } from './providers/shopify/fagata.ts';
 import { islandrecordsModule } from './providers/shopify/islandrecords.ts';
 import { arustamianModule } from './providers/shoper/arustamian.ts';
 import { eDaagModule } from './providers/shoper/e-daag.ts';
@@ -94,6 +96,8 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   papitoenergyModule,
   friendzstoreModule,
   berecordsModule,
+  beaumontModule,
+  fagataModule,
   islandrecordsModule,
 ];
 
