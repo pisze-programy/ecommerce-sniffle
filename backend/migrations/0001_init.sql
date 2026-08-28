@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS snapshots (
   price REAL,
   regular_price REAL,
   available INTEGER NOT NULL,
-  product_url TEXT,
   PRIMARY KEY (shop, snapshot_at, variant_id)
 );
 

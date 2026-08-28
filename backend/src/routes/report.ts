@@ -304,13 +304,6 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
 
     // Product url map for every id in view. No live fetch.
     const urlMap = await storage.readProductUrls(domain);
-    if (latest !== null) {
-      for (const variant of latest.variants) {
-        if (variant.productUrl !== undefined && variant.productUrl !== null && !urlMap.has(variant.productId)) {
-          urlMap.set(variant.productId, variant.productUrl);
-        }
-      }
-    }
 
     const dayOptions = days
       .map((d) => `<option value="${esc(d)}"${d === day ? ' selected' : ''}>${esc(d)}</option>`)

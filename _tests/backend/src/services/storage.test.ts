@@ -102,18 +102,7 @@ describe('createStorage', () => {
     expect(db.batches).toEqual([2]);
     const insert = db.calls.filter((call) => call.query.startsWith('INSERT INTO snapshots'));
     expect(insert).toHaveLength(2);
-    expect(insert[0]?.args).toEqual([
-      'forcer.pl',
-      '2026-08-24T06:00:00.000Z',
-      'morning',
-      'p1',
-      'v1',
-      10,
-      100,
-      100,
-      1,
-      null,
-    ]);
+    expect(insert[0]?.args).toEqual(['forcer.pl', '2026-08-24T06:00:00.000Z', 'morning', 'p1', 'v1', 10, 100, 100, 1]);
   });
 
   it('skips writing an empty snapshot', async () => {

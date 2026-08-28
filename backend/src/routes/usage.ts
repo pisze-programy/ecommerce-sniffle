@@ -174,9 +174,11 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
         continue;
       }
       statements.push(
-        c.env.DB.prepare(
-          'UPDATE snapshots SET product_url = ? WHERE shop = ? AND product_id = ? AND product_url IS NULL'
-        ).bind(url, shop, productId)
+        c.env.DB.prepare('INSERT OR REPLACE INTO products (shop, product_id, url) VALUES (?, ?, ?)').bind(
+          shop,
+          productId,
+          url
+        )
       );
       updated += 1;
     }

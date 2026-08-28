@@ -44,7 +44,6 @@ interface SnapshotRow {
   price: number | null;
   regular_price: number | null;
   available: number;
-  product_url: string | null;
 }
 
 interface StatsRow {
@@ -96,7 +95,6 @@ function toRow(snapshot: Snapshot): SnapshotRow[] {
     price: variant.price,
     regular_price: variant.regularPrice,
     available: variant.available ? 1 : 0,
-    product_url: null,
   }));
 }
 
@@ -126,7 +124,6 @@ function fromRow(row: SnapshotRow): VariantState {
     price: row.price,
     regularPrice: row.regular_price,
     available: row.available === 1,
-    productUrl: row.product_url,
   };
 }
 
@@ -196,7 +193,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       const statements = rows.map((row) =>
         db
           .prepare(
-            'INSERT INTO snapshots (shop, snapshot_at, window, product_id, variant_id, quantity, price, regular_price, available, product_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO snapshots (shop, snapshot_at, window, product_id, variant_id, quantity, price, regular_price, available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
           )
           .bind(
             row.shop,
@@ -207,8 +204,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
             row.quantity,
             row.price,
             row.regular_price,
-            row.available,
-            row.product_url
+            row.available
           )
       );
       for (const product of productRows) {
