@@ -1,14 +1,37 @@
-import type { ProviderConfig } from './types.ts';
-import { assertNonEmptyString, assertPositiveInteger } from './helpers.ts';
+import type { AdaptiveRateConfig, ProviderConfig } from './types.ts';
+import { assertNonEmptyString, assertPositiveFinite, assertPositiveInteger } from './helpers.ts';
 import { EXCLUDED_STOCK_IDS } from './providers/shoper/excluded-stock-ids.ts';
 import { LEGACY_PROVIDERS } from './config.legacy.ts';
 
-function validateConfig(config: ProviderConfig): ProviderConfig {
+function validateAdaptiveRate(rate: AdaptiveRateConfig): AdaptiveRateConfig {
+  assertPositiveFinite(rate.minRequestsPerSecond, 'config.adaptiveRate.minRequestsPerSecond');
+  assertPositiveFinite(rate.maxRequestsPerSecond, 'config.adaptiveRate.maxRequestsPerSecond');
+  assertPositiveFinite(rate.startRequestsPerSecond, 'config.adaptiveRate.startRequestsPerSecond');
+  if (
+    rate.minRequestsPerSecond > rate.startRequestsPerSecond ||
+    rate.startRequestsPerSecond > rate.maxRequestsPerSecond
+  ) {
+    throw new Error('config.adaptiveRate must satisfy min <= start <= max');
+  }
+  if (!Number.isFinite(rate.backoffFactor) || rate.backoffFactor <= 0 || rate.backoffFactor >= 1) {
+    throw new Error('config.adaptiveRate.backoffFactor must be in (0, 1)');
+  }
+  assertPositiveFinite(rate.recoveryStep, 'config.adaptiveRate.recoveryStep');
+  if (!Number.isInteger(rate.recoveryCount) || rate.recoveryCount < 1) {
+    throw new Error('config.adaptiveRate.recoveryCount must be a positive integer');
+  }
+  return rate;
+}
+
+export function validateConfig(config: ProviderConfig): ProviderConfig {
   assertNonEmptyString(config.id, 'config.id');
   assertNonEmptyString(config.domain, 'config.domain');
   assertNonEmptyString(config.schedule, 'config.schedule');
   assertNonEmptyString(config.endpoint, 'config.endpoint');
   assertPositiveInteger(config.ratePerSecond, 'config.ratePerSecond');
+  if (config.adaptiveRate !== undefined) {
+    validateAdaptiveRate(config.adaptiveRate);
+  }
   return config;
 }
 
@@ -422,6 +445,18 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://e-daag.com.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    // The shop throttles the basket probe. The adaptive rate listens
+    // to the shop and self-tunes. The rate starts at 2 per second. A
+    // throttle halves it down to 0.5. Clean runs raise it by 0.25 up
+    // to 3. See _internal/docs/ADAPTIVE-RATE.md.
+    adaptiveRate: {
+      minRequestsPerSecond: 0.5,
+      maxRequestsPerSecond: 3,
+      startRequestsPerSecond: 2,
+      backoffFactor: 0.5,
+      recoveryStep: 0.25,
+      recoveryCount: 10,
+    },
   },
   {
     id: 'emereedivine',
@@ -450,6 +485,14 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://sklepskolim.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    adaptiveRate: {
+      minRequestsPerSecond: 0.5,
+      maxRequestsPerSecond: 3,
+      startRequestsPerSecond: 2,
+      backoffFactor: 0.5,
+      recoveryStep: 0.25,
+      recoveryCount: 10,
+    },
   },
   {
     id: 'wkdzik',
@@ -464,6 +507,14 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://wkdzik.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    adaptiveRate: {
+      minRequestsPerSecond: 0.5,
+      maxRequestsPerSecond: 3,
+      startRequestsPerSecond: 2,
+      backoffFactor: 0.5,
+      recoveryStep: 0.25,
+      recoveryCount: 10,
+    },
   },
   {
     id: 'brokies',

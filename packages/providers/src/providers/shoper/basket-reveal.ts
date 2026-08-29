@@ -3,7 +3,9 @@ import { truncateMessage } from '../../helpers.ts';
 import { isCloudflareChallenge } from '../../captcha/detect.ts';
 import { measureFetch } from '../../network/manager.ts';
 import { mapPool } from '../../network/pool.ts';
-import { ConcurrencyLimiter, RateLimiter } from '../../network/limiter.ts';
+import { AdaptiveRateLimiter, ConcurrencyLimiter, RateLimiter } from '../../network/limiter.ts';
+import type { RateOutcome } from '../../network/limiter.ts';
+import { isThrottleResponse, throttleBackoffMs } from '../../network/throttle.ts';
 import { createFreshFetch } from '../../network/fresh-fetch.ts';
 import type { WrappedFetch, FetchResult } from '../../network/manager.ts';
 import type { DirectFetch } from '../../module.ts';
@@ -34,6 +36,26 @@ const MAX_CONSECUTIVE_ADD_EMPTY = 15;
 const MAX_ADD_RETRIES = 3;
 const ADD_RETRY_MS = 1500;
 const MAX_DETAIL_RETRIES = 3;
+
+// A limiter reports the probe outcome. The report steers the adaptive
+// rate. The fixed rate ignores the report.
+export interface RateReporter {
+  report(outcome: RateOutcome): void;
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Sleep never exceeds the deadline. A run must not overshoot its time
+// budget. The budget keeps one shop from starving the others.
+function sleepWithin(ms: number, deadlineMs: number | undefined): Promise<void> {
+  if (deadlineMs === undefined) {
+    return sleepMs(ms);
+  }
+  const remaining = deadlineMs - Date.now();
+  return sleepMs(Math.max(0, Math.min(ms, remaining)));
+}
 
 type CatalogFetch = WrappedFetch;
 
@@ -309,17 +331,34 @@ export function isEmptyAddResponse(text: string): boolean {
   }
 }
 
+export interface FetchAddResult {
+  readonly response: FetchResult | null;
+  readonly text: string;
+  readonly throttled: boolean;
+}
+
 async function fetchAdd(
   fetchFn: WrappedFetch,
   basket: string,
   headers: Readonly<Record<string, string>>,
   stockId: number,
   options: Readonly<Record<string, string>>,
-  logger: Logger
-): Promise<{ response: FetchResult; text: string }> {
+  logger: Logger,
+  rateLimiter?: RateReporter,
+  deadlineMs?: number
+): Promise<FetchAddResult> {
   let lastResponse: FetchResult | null = null;
   let lastText = '';
+  let lastThrottled = false;
+  // One budget covers network, empty, and throttle retries. A combined
+  // budget caps the load on a shop that throttles the probe stream.
   for (let attempt = 1; attempt <= MAX_ADD_RETRIES; attempt += 1) {
+    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+      break;
+    }
+    // The flag reflects only the current attempt. A later success must
+    // clear a throttle from an earlier attempt.
+    lastThrottled = false;
     let response: FetchResult;
     try {
       response = await fetchFn(`${basket}/`, {
@@ -328,10 +367,11 @@ async function fetchAdd(
         body: JSON.stringify({ quantity: PROBE_QUANTITY, stock_id: stockId, options }),
       });
     } catch (error: unknown) {
+      rateLimiter?.report('neutral');
       if (attempt < MAX_ADD_RETRIES) {
         const message = error instanceof Error ? error.message : String(error);
         logger.warn('basketreveal.add network retry', { stockId, attempt, error: message });
-        await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+        await sleepWithin(ADD_RETRY_MS * attempt, deadlineMs);
         continue;
       }
       throw error;
@@ -339,20 +379,41 @@ async function fetchAdd(
     lastResponse = response;
     lastText = await response.text();
     if (isCloudflareChallenge(lastText)) {
+      rateLimiter?.report('throttle');
       break;
     }
-    if (!isEmptyAddResponse(lastText)) {
+    if (isThrottleResponse(response.status, lastText)) {
+      lastThrottled = true;
+      rateLimiter?.report('throttle');
+      if (attempt < MAX_ADD_RETRIES) {
+        logger.warn('basketreveal.throttle retry', { stockId, status: response.status, attempt });
+        const waitMs = throttleBackoffMs(attempt, response.headers, Date.now(), deadlineMs);
+        await sleepWithin(waitMs, deadlineMs);
+        continue;
+      }
       break;
     }
-    if (attempt < MAX_ADD_RETRIES) {
-      logger.warn('basketreveal.add empty retry', { stockId, attempt });
-      await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+    if (isEmptyAddResponse(lastText)) {
+      rateLimiter?.report('neutral');
+      if (attempt < MAX_ADD_RETRIES) {
+        logger.warn('basketreveal.add empty retry', { stockId, attempt });
+        await sleepWithin(ADD_RETRY_MS * attempt, deadlineMs);
+      }
+      continue;
     }
+    let isJson = false;
+    try {
+      JSON.parse(lastText);
+      isJson = true;
+    } catch {
+      isJson = false;
+    }
+    // A valid body raises the rate. A garbage body is a neutral signal.
+    // A shop that degrades into garbage must not raise the rate.
+    rateLimiter?.report(isJson ? 'success' : 'neutral');
+    break;
   }
-  if (lastResponse === null) {
-    return { response: null as unknown as FetchResult, text: lastText };
-  }
-  return { response: lastResponse, text: lastText };
+  return { response: lastResponse, text: lastText, throttled: lastThrottled };
 }
 
 export async function revealVariant(
@@ -360,7 +421,9 @@ export async function revealVariant(
   stockId: number,
   logger: Logger,
   options: Readonly<Record<string, string>> = {},
-  fetchFn: WrappedFetch = fetch
+  fetchFn: WrappedFetch = fetch,
+  rateLimiter?: RateReporter,
+  deadlineMs?: number
 ): Promise<RevealOutcome> {
   const origin = `https://${domain}`;
   const baseHeaders: Readonly<Record<string, string>> = {
@@ -372,14 +435,19 @@ export async function revealVariant(
   const basket = `${origin}/webapi/front/pl_PL/basket/PLN`;
   let itemId: number | null = null;
   try {
-    const { response: addResponse, text: addText } = await fetchAdd(
-      fetchFn,
-      basket,
-      baseHeaders,
-      stockId,
-      options,
-      logger
-    );
+    const {
+      response: addResponse,
+      text: addText,
+      throttled,
+    } = await fetchAdd(fetchFn, basket, baseHeaders, stockId, options, logger, rateLimiter, deadlineMs);
+    if (addResponse === null) {
+      logger.warn('basketreveal.budget', { domain, stockId });
+      return { quantity: null, hasOptions: false };
+    }
+    if (throttled) {
+      logger.warn('basketreveal.throttled', { domain, stockId, status: addResponse.status, attempts: MAX_ADD_RETRIES });
+      return { quantity: null, hasOptions: false };
+    }
     if (isCloudflareChallenge(addText)) {
       logger.warn('basketreveal.challenge blocked', { domain, stockId });
       return { quantity: null, hasOptions: false };
@@ -483,8 +551,12 @@ export async function revealVariant(
     });
     const putText = await putResponse.text();
     if (isCloudflareChallenge(putText)) {
+      rateLimiter?.report('throttle');
       logger.warn('basketreveal.challenge blocked', { domain, stockId });
       return { quantity: null, hasOptions: false };
+    }
+    if (isThrottleResponse(putResponse.status, putText)) {
+      rateLimiter?.report('throttle');
     }
     const warning = extractWarning(putText, logger);
     if (warning !== null) {
@@ -587,18 +659,46 @@ async function fetchOptionConfiguration(
   domain: string,
   productId: string,
   logger: Logger,
-  fetchFn: CatalogFetch = fetch
+  fetchFn: CatalogFetch = fetch,
+  rateLimiter?: RateReporter,
+  deadlineMs?: number
 ): Promise<unknown> {
   const origin = `https://${domain}`;
   for (let attempt = 1; attempt <= MAX_DETAIL_RETRIES; attempt += 1) {
+    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+      logger.warn('basketreveal.budget', { domain, productId });
+      return null;
+    }
     try {
       const response = await fetchFn(`${origin}/webapi/front/pl_PL/products/PLN/${productId}`, {
         headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
       });
+      const text = await response.text();
+      if (isThrottleResponse(response.status, text)) {
+        rateLimiter?.report('throttle');
+        if (attempt < MAX_DETAIL_RETRIES) {
+          logger.warn('basketreveal.product detail retry', {
+            domain,
+            productId,
+            status: response.status,
+            attempt,
+          });
+          await sleepWithin(throttleBackoffMs(attempt, response.headers, Date.now(), deadlineMs), deadlineMs);
+          continue;
+        }
+        logger.warn('basketreveal.product detail failed', {
+          domain,
+          productId,
+          status: response.status,
+        });
+        return null;
+      }
       if (response.ok) {
-        const data = (await response.json()) as Readonly<Record<string, unknown>>;
+        rateLimiter?.report('success');
+        const data = JSON.parse(text) as Readonly<Record<string, unknown>>;
         return data['options_configuration'];
       }
+      rateLimiter?.report('neutral');
       if (attempt < MAX_DETAIL_RETRIES) {
         logger.warn('basketreveal.product detail retry', {
           domain,
@@ -606,7 +706,7 @@ async function fetchOptionConfiguration(
           status: response.status,
           attempt,
         });
-        await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+        await sleepWithin(ADD_RETRY_MS * attempt, deadlineMs);
         continue;
       }
       logger.warn('basketreveal.product detail failed', {
@@ -616,6 +716,7 @@ async function fetchOptionConfiguration(
       });
       return null;
     } catch (error: unknown) {
+      rateLimiter?.report('neutral');
       if (attempt < MAX_DETAIL_RETRIES) {
         const message = error instanceof Error ? error.message : String(error);
         logger.warn('basketreveal.product detail retry', {
@@ -624,7 +725,7 @@ async function fetchOptionConfiguration(
           error: message,
           attempt,
         });
-        await new Promise((resolve) => setTimeout(resolve, ADD_RETRY_MS * attempt));
+        await sleepWithin(ADD_RETRY_MS * attempt, deadlineMs);
         continue;
       }
       const message = error instanceof Error ? error.message : String(error);
@@ -641,7 +742,9 @@ export async function revealProduct(
   logger: Logger,
   fetchFn: CatalogFetch = fetch,
   comboConcurrency: number = REVEAL_CONCURRENCY,
-  limiter?: ConcurrencyLimiter
+  limiter?: ConcurrencyLimiter,
+  rateLimiter?: RateReporter,
+  deadlineMs?: number
 ): Promise<Variant[]> {
   const baseVariant = product.variants[0];
   if (baseVariant === undefined) {
@@ -651,12 +754,16 @@ export async function revealProduct(
   if (!base.available) {
     return [{ ...base, quantity: 0, available: false }];
   }
+  if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+    logger.warn('basketreveal.budget', { domain, productId: product.id });
+    return [{ ...base, quantity: null }];
+  }
   const stockId = Number(base.id);
-  const simple = await revealVariant(domain, stockId, logger, {}, fetchFn);
+  const simple = await revealVariant(domain, stockId, logger, {}, fetchFn, rateLimiter, deadlineMs);
   if (simple.quantity !== null && !simple.hasOptions) {
     return [{ ...base, quantity: simple.quantity, available: simple.quantity > 0 }];
   }
-  const configuration = await fetchOptionConfiguration(domain, product.id, logger, fetchFn);
+  const configuration = await fetchOptionConfiguration(domain, product.id, logger, fetchFn, rateLimiter, deadlineMs);
   const combos = buildOptionCombos(configuration);
   if (combos.length === 0) {
     return [...product.variants];
@@ -686,7 +793,11 @@ export async function revealProduct(
   if (explosion) {
     let consecutiveEmpty = 0;
     for (const combo of probed) {
-      const outcome = await revealVariant(domain, stockId, logger, combo.options, fetchFn);
+      if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+        logger.warn('basketreveal.budget', { domain, productId: product.id });
+        break;
+      }
+      const outcome = await revealVariant(domain, stockId, logger, combo.options, fetchFn, rateLimiter, deadlineMs);
       if (outcome.quantity === null) {
         consecutiveEmpty += 1;
         if (consecutiveEmpty >= MAX_CONSECUTIVE_ADD_EMPTY) {
@@ -707,7 +818,7 @@ export async function revealProduct(
       probed,
       comboConcurrency,
       async (combo) => {
-        const outcome = await revealVariant(domain, stockId, logger, combo.options, fetchFn);
+        const outcome = await revealVariant(domain, stockId, logger, combo.options, fetchFn, rateLimiter, deadlineMs);
         return { combo, outcome };
       },
       limiter
@@ -738,9 +849,13 @@ export function buildBasketRevealProvider(
   };
   const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, 'direct');
   const proxyUrl = process.env['HTTPS_PROXY'] ?? process.env['WEBSHARE_URL'] ?? null;
-  // The shop throttles a basket burst with 429 pages. The config rate
-  // paces the probe requests. The default is 1 request per second.
-  const rateLimiter = new RateLimiter(config.ratePerSecond);
+  // The shop throttles a basket burst with 429 pages. A fixed limiter
+  // paces the probes at the config rate. An adaptive limiter listens to
+  // throttle signals and self-tunes. The presence of the config block
+  // picks the adaptive limiter. Its absence keeps the fixed limiter.
+  const adaptive = config.adaptiveRate;
+  const rateLimiter =
+    adaptive === undefined ? new RateLimiter(config.ratePerSecond) : new AdaptiveRateLimiter(adaptive);
   const rawProbeFetch = createFreshFetch(proxyUrl);
   const throttledProbeFetch: WrappedFetch = async (input, init, options) => {
     await rateLimiter.acquire();
@@ -753,6 +868,12 @@ export function buildBasketRevealProvider(
     logger,
     async (): Promise<Catalog> => fetchShoperCatalog(config.endpoint, config.domain, logger, catalogFetch),
     async (target: StockRevealTarget): Promise<Catalog> => {
+      // The budget bounds one shop run. It must fit a full scan at the
+      // adaptive ceiling. The ceiling is below the old fixed rate, so
+      // the budget must exceed the old run time. A runaway shop must
+      // not starve the other shops. The executor kills a task at 25
+      // minutes, so the budget stays well below that.
+      const deadlineMs = Date.now() + Math.max(config.durationSeconds * 1000 * 5, 10 * 60 * 1000);
       const catalog = await fetchShoperCatalog(config.endpoint, config.domain, logger, catalogFetch);
       const wanted = new Set<string>(target.productIds);
       const excluded = new Set<number>(config.excludedStockIds ?? []);
@@ -777,7 +898,16 @@ export function buildBasketRevealProvider(
         targets,
         REVEAL_CONCURRENCY,
         async (product) => {
-          const variants = await revealProduct(config.domain, product, logger, probeFetch, REVEAL_CONCURRENCY, limiter);
+          const variants = await revealProduct(
+            config.domain,
+            product,
+            logger,
+            probeFetch,
+            REVEAL_CONCURRENCY,
+            limiter,
+            rateLimiter,
+            deadlineMs
+          );
           return { ...product, variants };
         },
         limiter

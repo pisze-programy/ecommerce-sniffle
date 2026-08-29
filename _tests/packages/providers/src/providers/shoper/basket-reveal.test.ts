@@ -970,3 +970,188 @@ describe('revealVariant retry', () => {
     expect(capture.records.some((record) => record.message === 'basketreveal.add network retry')).toBe(true);
   });
 });
+
+describe(
+  'revealVariant throttle handling',
+  () => {
+    // The throttle retries sleep a real backoff. The tests need a timeout
+    // above the total sleep. The all-throttled path sleeps about 6 seconds.
+    // Set the block timeout to 30 seconds.
+    const TIMEOUT = 30000;
+    function htmlResponse(status: number, retryAfter: string | null = null) {
+      return {
+        ok: status < 400,
+        status,
+        headers: { get: (name: string) => (name === 'retry-after' ? retryAfter : null) },
+        text: async () => '<html><h1>Too many requests</h1></html>',
+      };
+    }
+
+    function successResponse(body: string) {
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => body,
+      };
+    }
+
+    it('retries a 429 and succeeds on the second attempt', async () => {
+      undiciFetchMock.mockReset();
+      const capture = capturingLogger();
+      undiciFetchMock
+        .mockResolvedValueOnce(htmlResponse(429))
+        .mockResolvedValueOnce(
+          successResponse('{"added":[{"id":7}],"_flash_messenger":{"warning":["Current stock is: X - 9 szt."]}}')
+        );
+      const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+      expect(outcome).toEqual({ quantity: 9, hasOptions: false });
+      expect(capture.records.some((record) => record.message === 'basketreveal.throttle retry')).toBe(true);
+      expect(undiciFetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns masked and logs throttled when every attempt is throttled', async () => {
+      undiciFetchMock.mockReset();
+      const capture = capturingLogger();
+      undiciFetchMock.mockResolvedValue(htmlResponse(429));
+      const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+      expect(outcome.quantity).toBeNull();
+      expect(undiciFetchMock).toHaveBeenCalledTimes(3);
+      const record = capture.records.find((entry) => entry.message === 'basketreveal.throttled');
+      expect(record).toBeDefined();
+      expect(record?.context?.['status']).toBe(429);
+    });
+
+    it('treats a 200 with an html body as a throttle and retries', async () => {
+      undiciFetchMock.mockReset();
+      const capture = capturingLogger();
+      undiciFetchMock
+        .mockResolvedValueOnce(htmlResponse(200))
+        .mockResolvedValueOnce(
+          successResponse('{"added":[{"id":5}],"_flash_messenger":{"warning":["Current stock is: X - 4 szt."]}}')
+        );
+      const outcome = await revealVariant('e-daag.com.pl', 2618, capture.logger, {}, undiciFetchMock);
+      expect(outcome).toEqual({ quantity: 4, hasOptions: false });
+      expect(capture.records.some((record) => record.message === 'basketreveal.throttle retry')).toBe(true);
+    });
+
+    it('returns masked for a 200 html body when every attempt is throttled', async () => {
+      undiciFetchMock.mockReset();
+      const capture = capturingLogger();
+      undiciFetchMock.mockResolvedValue(htmlResponse(200));
+      const outcome = await revealVariant('e-daag.com.pl', 2618, capture.logger, {}, undiciFetchMock);
+      expect(outcome.quantity).toBeNull();
+      expect(undiciFetchMock).toHaveBeenCalledTimes(3);
+      expect(capture.records.some((record) => record.message === 'basketreveal.throttled')).toBe(true);
+    });
+
+    it('retries a 500 with an html body', async () => {
+      undiciFetchMock.mockReset();
+      const capture = capturingLogger();
+      undiciFetchMock
+        .mockResolvedValueOnce(htmlResponse(500))
+        .mockResolvedValueOnce(
+          successResponse('{"added":[{"id":3}],"_flash_messenger":{"warning":["Current stock is: X - 2 szt."]}}')
+        );
+      const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+      expect(outcome).toEqual({ quantity: 2, hasOptions: false });
+      expect(capture.records.some((record) => record.message === 'basketreveal.throttle retry')).toBe(true);
+    });
+
+    it('masks a 500 with a json body without a throttle retry', async () => {
+      undiciFetchMock.mockReset();
+      const capture = capturingLogger();
+      undiciFetchMock.mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: { get: () => null },
+        text: async () => '{"added":[{"id":1}]}',
+      });
+      const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock);
+      expect(outcome.quantity).toBeNull();
+      expect(undiciFetchMock).toHaveBeenCalledTimes(1);
+      expect(capture.records.some((record) => record.message === 'basketreveal failed')).toBe(true);
+      expect(capture.records.some((record) => record.message === 'basketreveal.throttled')).toBe(false);
+    });
+
+    it('reports the outcomes to the rate limiter', async () => {
+      undiciFetchMock.mockReset();
+      const capture = capturingLogger();
+      const reporter = { report: vi.fn() };
+      undiciFetchMock
+        .mockResolvedValueOnce(htmlResponse(429))
+        .mockResolvedValueOnce(
+          successResponse('{"added":[{"id":1}],"_flash_messenger":{"warning":["Current stock is: X - 8 szt."]}}')
+        );
+      const outcome = await revealVariant('wkdzik.pl', 999, capture.logger, {}, undiciFetchMock, reporter, undefined);
+      expect(outcome.quantity).toBe(8);
+      expect(reporter.report).toHaveBeenCalledWith('throttle');
+      expect(reporter.report).toHaveBeenCalledWith('success');
+    });
+
+    it('reports neutral for an empty add', async () => {
+      undiciFetchMock.mockReset();
+      const reporter = { report: vi.fn() };
+      undiciFetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => '{"added":[],"basket":{"count":0}}',
+      });
+      await revealVariant('wkdzik.pl', 999, capturingLogger().logger, {}, undiciFetchMock, reporter, undefined);
+      expect(reporter.report).toHaveBeenCalledWith('neutral');
+    });
+
+    it('honors a valid retry-after header on a throttled retry', async () => {
+      undiciFetchMock.mockReset();
+      undiciFetchMock
+        .mockResolvedValueOnce(htmlResponse(429, '1'))
+        .mockResolvedValueOnce(
+          successResponse('{"added":[{"id":6}],"_flash_messenger":{"warning":["Current stock is: X - 6 szt."]}}')
+        );
+      const t0 = Date.now();
+      const outcome = await revealVariant('wkdzik.pl', 999, capturingLogger().logger, {}, undiciFetchMock);
+      expect(outcome.quantity).toBe(6);
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(1000);
+    });
+  },
+  { timeout: 30000 }
+);
+
+describe('revealProduct deadline', () => {
+  const buyable: Product = {
+    id: '51',
+    title: 'Bluza',
+    url: 'https://sklepskolim.pl/pl/p/bluza/51',
+    variants: [
+      {
+        id: '59',
+        title: 'default',
+        sku: null,
+        price: { amount: 179, currency: 'PLN' },
+        regularPrice: null,
+        available: true,
+        quantity: null,
+      },
+    ],
+  };
+
+  it('bails as masked when the deadline is spent', async () => {
+    const capture = capturingLogger();
+    const fetchMock = vi.fn();
+    const variants = await revealProduct(
+      'sklepskolim.pl',
+      buyable,
+      capture.logger,
+      fetchMock,
+      8,
+      undefined,
+      undefined,
+      Date.now() - 1
+    );
+    expect(variants).toHaveLength(1);
+    expect(variants[0]?.quantity).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(capture.records.some((record) => record.message === 'basketreveal.budget')).toBe(true);
+  });
+});

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PROVIDERS } from '../../../../packages/providers/src/config.ts';
+import { PROVIDERS, validateConfig } from '../../../../packages/providers/src/config.ts';
+import type { ProviderConfig } from '../../../../packages/providers/src/types.ts';
 
 const EXPECTED_IDS = [
   'arustamian',
@@ -131,5 +132,142 @@ describe('PROVIDERS config', () => {
     for (const provider of shoper) {
       expect(provider.ratePerSecond, provider.id).toBe(5);
     }
+  });
+
+  it('enables the adaptive rate for the heavy shoper shops', () => {
+    const heavy = new Set(['wkdzik', 'e-daag', 'sklepskolim']);
+    for (const provider of PROVIDERS) {
+      if (heavy.has(provider.id)) {
+        expect(provider.adaptiveRate, provider.id).toBeDefined();
+      } else {
+        expect(provider.adaptiveRate, provider.id).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe('validateConfig adaptive rate', () => {
+  const base: ProviderConfig = {
+    id: 'test',
+    domain: 'test.pl',
+    platform: 'shoper',
+    schedule: '* * * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'basket-reveal',
+    ratePerSecond: 5,
+    durationSeconds: 70,
+    requiresProxy: true,
+    endpoint: 'https://test.pl/webapi/front/pl_PL/products/PLN/list',
+    enabled: true,
+  };
+
+  it('accepts a valid adaptive rate block', () => {
+    const config = {
+      ...base,
+      adaptiveRate: {
+        minRequestsPerSecond: 0.5,
+        maxRequestsPerSecond: 3,
+        startRequestsPerSecond: 2,
+        backoffFactor: 0.5,
+        recoveryStep: 0.1,
+        recoveryCount: 20,
+      },
+    };
+    expect(validateConfig(config).adaptiveRate).toBeDefined();
+  });
+
+  it('accepts a config without an adaptive rate block', () => {
+    expect(validateConfig(base).adaptiveRate).toBeUndefined();
+  });
+
+  it('rejects a fractional backoff factor at or above one', () => {
+    const config = {
+      ...base,
+      adaptiveRate: {
+        minRequestsPerSecond: 0.5,
+        maxRequestsPerSecond: 3,
+        startRequestsPerSecond: 2,
+        backoffFactor: 1,
+        recoveryStep: 0.1,
+        recoveryCount: 20,
+      },
+    };
+    expect(() => validateConfig(config)).toThrow();
+  });
+
+  it('rejects a non-positive min rate', () => {
+    const config = {
+      ...base,
+      adaptiveRate: {
+        minRequestsPerSecond: 0,
+        maxRequestsPerSecond: 3,
+        startRequestsPerSecond: 2,
+        backoffFactor: 0.5,
+        recoveryStep: 0.1,
+        recoveryCount: 20,
+      },
+    };
+    expect(() => validateConfig(config)).toThrow();
+  });
+
+  it('rejects an inverted min and max', () => {
+    const config = {
+      ...base,
+      adaptiveRate: {
+        minRequestsPerSecond: 4,
+        maxRequestsPerSecond: 3,
+        startRequestsPerSecond: 2,
+        backoffFactor: 0.5,
+        recoveryStep: 0.1,
+        recoveryCount: 20,
+      },
+    };
+    expect(() => validateConfig(config)).toThrow();
+  });
+
+  it('rejects a start rate above the max', () => {
+    const config = {
+      ...base,
+      adaptiveRate: {
+        minRequestsPerSecond: 0.5,
+        maxRequestsPerSecond: 3,
+        startRequestsPerSecond: 5,
+        backoffFactor: 0.5,
+        recoveryStep: 0.1,
+        recoveryCount: 20,
+      },
+    };
+    expect(() => validateConfig(config)).toThrow();
+  });
+
+  it('rejects a non-positive recovery count', () => {
+    const config = {
+      ...base,
+      adaptiveRate: {
+        minRequestsPerSecond: 0.5,
+        maxRequestsPerSecond: 3,
+        startRequestsPerSecond: 2,
+        backoffFactor: 0.5,
+        recoveryStep: 0.1,
+        recoveryCount: 0,
+      },
+    };
+    expect(() => validateConfig(config)).toThrow();
+  });
+
+  it('rejects a non-finite recovery step', () => {
+    const config = {
+      ...base,
+      adaptiveRate: {
+        minRequestsPerSecond: 0.5,
+        maxRequestsPerSecond: 3,
+        startRequestsPerSecond: 2,
+        backoffFactor: 0.5,
+        recoveryStep: Number.NaN,
+        recoveryCount: 20,
+      },
+    };
+    expect(() => validateConfig(config)).toThrow();
   });
 });

@@ -7,6 +7,18 @@ export type ExecutionMode = 'cf-get' | 'vps-get' | 'vps-mutation';
 
 export type TaskWindow = 'morning' | 'evening' | 'both';
 
+// The shop can throttle the probe stream. The adaptive rate listens to
+// throttle signals and self-tunes. The presence of this block enables
+// the adaptive rate. Its absence keeps the fixed rate limiter.
+export interface AdaptiveRateConfig {
+  readonly minRequestsPerSecond: number;
+  readonly maxRequestsPerSecond: number;
+  readonly startRequestsPerSecond: number;
+  readonly backoffFactor: number;
+  readonly recoveryStep: number;
+  readonly recoveryCount: number;
+}
+
 export interface ProviderConfig {
   readonly id: string;
   readonly domain: string;
@@ -21,6 +33,7 @@ export interface ProviderConfig {
   readonly endpoint: string;
   readonly enabled: boolean;
   readonly excludedStockIds?: readonly number[];
+  readonly adaptiveRate?: AdaptiveRateConfig;
 }
 
 export interface Money {

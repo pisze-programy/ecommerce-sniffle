@@ -16,6 +16,13 @@ export function assertPositiveInteger(value: number, name: string): number {
   return value;
 }
 
+export function assertPositiveFinite(value: number, name: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid positive value for ${name}: ${String(value)}`);
+  }
+  return value;
+}
+
 export function assertNonEmptyString(value: string, name: string): string {
   if (value.length === 0) {
     throw new Error(`Invalid empty string for ${name}`);
