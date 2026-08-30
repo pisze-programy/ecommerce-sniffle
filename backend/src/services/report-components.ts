@@ -11,6 +11,8 @@ export interface CardOptions {
   readonly title?: string;
   readonly titleHref?: string;
   readonly subtitle?: string;
+  // A line under the card title. It stays visible when the body is collapsed.
+  readonly titleNote?: string;
   readonly body: string;
   readonly footer?: string;
   // The body starts collapsed and the header toggles it.
@@ -38,6 +40,10 @@ export function card(options: CardOptions): string {
         : `<h3 class="card-title"><a href="${esc(options.titleHref)}">${esc(options.title)}</a></h3>`;
   const subtitleHtml =
     options.subtitle === undefined ? '' : `<div class="card-subtitle ms-auto">${esc(options.subtitle)}</div>`;
+  const titleNoteHtml =
+    options.titleNote === undefined
+      ? ''
+      : `<div class="card-subtitle mt-1 text-secondary">${esc(options.titleNote)}</div>`;
   const footer = options.footer === undefined ? '' : `<div class="card-footer">${options.footer}</div>`;
   if (options.collapsed === true) {
     const collapseId = `card-${slug(options.title ?? 'card')}`;
@@ -45,7 +51,10 @@ export function card(options: CardOptions): string {
     return `<div class="card${cls}">
   <div class="card-header${open ? '' : ' collapsed'}" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${collapseId}">
     <div class="d-flex align-items-center w-100 gap-2">
-      ${titleHtml}
+      <div class="d-flex flex-column align-items-start">
+        ${titleHtml}
+        ${titleNoteHtml}
+      </div>
       ${subtitleHtml}
       <span class="btn btn-sm btn-outline-secondary ms-auto" aria-hidden="true">${icon('chevron-down')}</span>
     </div>
@@ -57,9 +66,9 @@ export function card(options: CardOptions): string {
 </div>`;
   }
   const header =
-    options.title === undefined && options.subtitle === undefined
+    options.title === undefined && options.subtitle === undefined && options.titleNote === undefined
       ? ''
-      : `<div class="card-header">${titleHtml}${subtitleHtml}</div>`;
+      : `<div class="card-header"><div class="d-flex align-items-center w-100 gap-2"><div class="d-flex flex-column align-items-start">${titleHtml}${titleNoteHtml}</div>${subtitleHtml}</div></div>`;
   return `<div class="card${cls}">${header}<div class="card-body">${options.body}</div>${footer}</div>`;
 }
 
@@ -106,7 +115,8 @@ export function sortableTable(
       const type = header.sortType === undefined ? 'text' : header.sortType;
       const metric = header.metric === undefined ? '' : ` data-metric="${esc(header.metric)}"`;
       const def = header.defaultSort === undefined ? '' : ` data-default-sort="${header.defaultSort}"`;
-      return `<th data-sort-type="${type}"${metric}${def}>${esc(header.label)}<span class="sort-indicators" aria-hidden="true"><span class="sort-asc">▲</span><span class="sort-desc">▼</span></span></th>`;
+      const align = header.sortType === 'number' ? ' class="text-end"' : '';
+      return `<th data-sort-type="${type}"${metric}${def}${align}>${esc(header.label)}<span class="sort-indicators" aria-hidden="true"><span class="sort-asc">▲</span><span class="sort-desc">▼</span></span></th>`;
     })
     .join('');
   const cls = className === undefined ? '' : ` ${className}`;

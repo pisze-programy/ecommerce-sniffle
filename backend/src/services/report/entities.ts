@@ -113,12 +113,12 @@ function personBlock(
       : `<img src="/media/${esc(person.avatarKey)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:50%;" class="me-2">`;
   const other = otherConnections(store, person, entityId, shops);
   const otherRow = other.length === 0 ? '' : `<div class="mt-1 d-flex flex-wrap gap-1">${other.join('')}</div>`;
-  return `<div class="mb-3">
+  return `<div class="col-6 col-lg-3 d-flex"><div class="card card-sm h-100 w-100"><div class="card-body">
   <div class="fw-semibold d-flex align-items-center">${avatar}${esc(person.name)}</div>
   <div class="mt-1 d-flex flex-wrap gap-1">${roleBadges}</div>
   <div class="mt-1 d-flex flex-wrap gap-1">${linkedin}${socialButtons(person.socials)}</div>
   ${otherRow}
-</div>`;
+</div></div></div>`;
 }
 
 function renderFinancials(financials: EntityFinancials): string {
@@ -204,7 +204,7 @@ function renderRelations(
   }
 
   const personsSection =
-    `<div class="subheader mt-3 mb-1">Osoby</div>` +
+    `<div class="subheader mt-3 mb-1">Osoby</div><div class="row row-cards">` +
     persons
       .map((person) =>
         personBlock(
@@ -216,7 +216,8 @@ function renderRelations(
           today
         )
       )
-      .join('');
+      .join('') +
+    `</div>`;
   return card({
     title: 'Powiązania',
     body: personsSection,

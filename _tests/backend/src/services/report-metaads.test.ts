@@ -42,7 +42,6 @@ describe('renderMetaAdsCard', () => {
         creativeHash: 'deadbeef',
         euTotalReach: 1975883,
         startDate: '2026-08-25',
-        linkTitle: ['Czyści kostkę brukową. 33% rabatu'],
       }),
     ];
     const days: MetaAdDay[] = [
@@ -50,13 +49,25 @@ describe('renderMetaAdsCard', () => {
       { day: '2026-08-30', adArchiveId: '635204772540093', pageId: '1527130717525496', euTotalReach: 4174096 },
       { day: '2026-08-30', adArchiveId: '1508266897314177', pageId: '1527130717525496', euTotalReach: 1975883 },
     ];
-    const html = renderMetaAdsCard(ads, days, '2026-08-30');
-    expect(html).toContain('Reklamy Meta');
-    expect(html).toContain('aktywne:');
+    const html = renderMetaAdsCard(ads, days, '2026-08-30', { min: 15, max: 30 });
+    expect(html).toContain('Reklamy');
+    expect(html).toContain('Aktywne');
+    expect(html).toContain('Zasięg (suma)');
+    expect(html).toContain('Est. zasięg/dzień');
+    expect(html).toContain('Est. koszt/dzień');
+    expect(html).toContain('Zasięg grup i kraje');
+    expect(html).toContain('Grupy wiekowe');
+    expect(html).toContain('Kraje');
     expect(html).toContain('Grupy kreatywa');
-    expect(html).toContain('deadbeef');
-    expect(html).toContain('25-34');
-    expect(html).toContain('/ads/archive/render_ad/?id=635204772540093');
+    expect(html).toContain('Czyści kostkę brukową. 33% rabatu');
+    expect(html).toContain('>PL<');
+    expect(html).not.toContain('deadbeef');
+    expect(html).not.toContain('(ten sam tekst)');
+    expect(html).toContain('/ads/library/?id=635204772540093');
+    expect(html).not.toContain('Platformy');
+    expect(html).not.toContain('ti-brand-facebook');
+    expect(html).not.toContain('ti-globe');
+    expect(html).toContain('data-page-size="5"');
     expect(html).not.toContain('CPA');
     expect(html).not.toContain('wydatek');
   });

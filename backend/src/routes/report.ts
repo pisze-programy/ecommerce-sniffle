@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { ProviderConfig } from '@ecommerce-sniffle/providers';
 import { calculateShopSummary, isCountdownShop, topSellingProducts } from '@ecommerce-sniffle/analysis';
+import type { CpmRange } from '../entities.ts';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
 import { toPlnEvents, toPlnPoint, toPlnSnapshot } from '../services/currency.ts';
@@ -29,9 +30,8 @@ import {
   chartBlock,
 } from '../services/report/charts.ts';
 import { renderStock, stockQs } from '../services/report/stock.ts';
-import type { StockParams } from '../services/report/stock.ts';
 import { renderChangesWindows, renderDayComparison } from '../services/report/changes.ts';
-import { renderLowStock, renderPriceDrops, renderTopSellers } from '../services/report/overview.ts';
+import { renderPriceDrops, renderTopSellers } from '../services/report/overview.ts';
 import { renderShopsTable } from '../services/report/dashboard.ts';
 import type { ShopCard } from '../services/report/dashboard.ts';
 import { renderEntityCard } from '../services/report/entities.ts';
@@ -43,10 +43,13 @@ import { variantCell } from '../services/report/links.ts';
 
 export { shopifyVariantUrl };
 
+// The default CPM range for Poland, health and beauty. See docs/ENTITIES.md.
+const DEFAULT_CPM: CpmRange = { min: 15, max: 30 };
+
 export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-  api.get('/dashboard', async (c) => {
+  api.get('/shops', async (c) => {
     const modules = c.get('modules');
     const storage = c.get('storage');
     const enabled = modules.filter((module) => module.config.enabled);
@@ -133,16 +136,6 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       series: [{ name: 'wartość sprzedaży (PLN)', data: portfolio.map((point) => point.soldValue) }],
       xaxis: { categories: portfolioLabels },
     });
-    const portfolioMixChart = chartBlock('chart-portfolio-mix', {
-      type: 'line',
-      height: 260,
-      series: [
-        { name: 'sprzedane', type: 'bar', data: portfolio.map((point) => point.sold) },
-        { name: 'dostawione', type: 'line', data: portfolio.map((point) => point.restocked) },
-      ],
-      xaxis: { categories: portfolioLabels },
-      plotOptions: { bar: { columnWidth: '55%' } },
-    });
 
     const alerts: string[] = [];
     for (const cardEntry of cards) {
@@ -198,21 +191,23 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
     ];
 
     const body = `
+<h1 class="mb-3">Sklepy</h1>
 ${kpiGrid(kpis)}
 <div class="row row-deck row-cards mt-2">
   <div class="col-12">${card({ title: 'Wartość sprzedaży — 14 dni', body: portfolioValueChart, collapsed: true })}</div>
-  <div class="col-12">${card({ title: 'Sprzedane vs dostawione — 14 dni', body: portfolioMixChart, collapsed: true })}</div>
   <div class="col-12">${card({ title: 'Sprzedane 24h — top 10', body: soldChart, collapsed: true })}</div>
   <div class="col-12">${card({ title: 'Alerty', body: alertsTable, collapsed: true })}</div>
 </div>
-${card({ title: 'Sklepy', body: renderShopsTable(cards) })}`;
-    return c.html(pageShell('ecommerce-sniffle — dashboard', body));
+${card({ title: 'Sklepy', body: renderShopsTable(cards), className: 'mt-2' })}`;
+    return c.html(pageShell('ecommerce-sniffle — Sklepy', body));
   });
+
+  api.get('/dashboard', (c) => c.redirect('/shops', 301));
 
   api.get('/search', async (c) => {
     const q = c.req.query('q');
     if (q === undefined || q.trim().length === 0) {
-      return c.redirect('/dashboard', 302);
+      return c.redirect('/shops', 302);
     }
     const query = q.trim();
     const storage = c.get('storage');
@@ -242,7 +237,7 @@ ${card({ title: 'Sklepy', body: renderShopsTable(cards) })}`;
       )
       .join('');
     const body = `
-${breadcrumb([{ label: 'dashboard', href: '/dashboard' }, { label: 'szukaj' }])}
+${breadcrumb([{ label: 'Sklepy', href: '/shops' }, { label: 'szukaj' }])}
 <h1 class="mb-3">Wyniki dla „${esc(query)}”</h1>
 ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep nie pasuje do zapytania.') : table(['sklep', 'domena', 'produkt'], rows)}`;
     return c.html(pageShell('ecommerce-sniffle — szukaj', body));
@@ -257,7 +252,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       return c.html(
         pageShell(
           'Nieznany sklep',
-          `${alert(`Nieznany sklep: ${esc(id)}`, 'red')}${breadcrumb([{ label: 'dashboard', href: '/dashboard' }])}`
+          `${alert(`Nieznany sklep: ${esc(id)}`, 'red')}${breadcrumb([{ label: 'Sklepy', href: '/shops' }])}`
         ),
         404
       );
@@ -297,23 +292,6 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const topRows = topSellingProducts(snapshots, { maxQuantity, limit: 10 });
 
     const trendSeries = buildTrendSeries(snapshots);
-    const sortParam = c.req.query('sort');
-    const dirParam = c.req.query('dir');
-    const pageParam = c.req.query('page');
-    const qParam = c.req.query('q');
-    const lowParam = c.req.query('low');
-    const sort = sortParam === undefined ? 'value' : sortParam;
-    const dir = dirParam === undefined ? 'desc' : dirParam;
-    const page = pageParam === undefined ? 1 : Number(pageParam);
-    const stockParams: StockParams = {
-      day,
-      q: qParam === undefined ? '' : qParam,
-      sort,
-      dir,
-      page: Number.isFinite(page) && page > 0 ? page : 1,
-      low: lowParam === undefined ? '' : lowParam,
-    };
-
     const dayOptions = validDays
       .map((d) => `<option value="${esc(d)}"${d === day ? ' selected' : ''}>${esc(d)}</option>`)
       .join('');
@@ -321,15 +299,15 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const nextDay = day === '' ? '' : dayAfter(day);
     const prevLink =
       day !== '' && prevDay !== '' && validDays.includes(prevDay)
-        ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(prevDay, {}))}" aria-label="Poprzedni dzień">${icon('chevron-left')}</a>`
+        ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(prevDay))}" aria-label="Poprzedni dzień">${icon('chevron-left')}</a>`
         : '';
     const nextLink =
       day !== '' && nextDay !== '' && validDays.includes(nextDay)
-        ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(nextDay, {}))}" aria-label="Następny dzień">${icon('chevron-right')}</a>`
+        ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(nextDay))}" aria-label="Następny dzień">${icon('chevron-right')}</a>`
         : '';
     const dayControl = `<div class="d-flex align-items-center gap-2 ms-auto">
   ${prevLink}
-  <select name="day" id="day" class="form-select w-auto" aria-label="Wybierz dzień" onchange="location.href='${esc(stockQs('', {}))}&day='+encodeURIComponent(this.value)">
+  <select name="day" id="day" class="form-select w-auto" aria-label="Wybierz dzień" onchange="location.href='${esc(stockQs(''))}&day='+encodeURIComponent(this.value)">
     ${dayOptions}
   </select>
   ${nextLink}
@@ -389,10 +367,8 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
         : card({
             title: 'Rozkład cen',
             body: chartBlock('chart-price-dist', buildPriceDistributionConfig(priceDistribution)),
+            collapsed: true,
           });
-
-    const lowThresholdParam = c.req.query('lowstock');
-    const lowThreshold = lowThresholdParam === undefined ? 5 : Number(lowThresholdParam);
 
     const daySections: string[] = [];
     if (day !== '') {
@@ -408,13 +384,6 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
         card({
           title: 'Zmiany',
           body: renderChangesWindows(day, morningEvents, eveningEvents, names, config.platform, maxQuantity),
-          collapsed: true,
-        })
-      );
-      daySections.push(
-        card({
-          title: `Niski stan (1–${lowThreshold})`,
-          body: renderLowStock(latest, names, config.platform, lowThreshold),
           collapsed: true,
         })
       );
@@ -464,13 +433,14 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
         storage.readMetaAdsActive(entity.metaPageId),
         storage.readMetaAdDays(entity.metaPageId, addDays(nowDay, -30)),
       ]);
-      return renderMetaAdsCard(ads, days, nowDay);
+      const cpm = entity.cpmOverride === null ? DEFAULT_CPM : entity.cpmOverride;
+      return renderMetaAdsCard(ads, days, nowDay, cpm);
     })();
     const body = `
 <div class="page-header d-flex flex-row flex-wrap align-items-center justify-content-start mb-3">
-  ${breadcrumb([{ label: 'dashboard', href: '/dashboard' }, { label: config.id }])}
+  ${breadcrumb([{ label: 'Sklepy', href: '/shops' }, { label: config.id }])}
 </div>
-<h1 class="mb-3">${esc(config.id)} <span class="text-secondary fs-4">${esc(domain)} · ${esc(config.platform)}</span></h1>
+<h1 class="mb-3"><a href="https://${esc(domain)}" target="_blank" rel="noopener">${esc(domain)}</a></h1>
 ${countdownNote}
 ${card({ title: 'Podsumowanie sklepu', body: headerBody })}
 ${entityCard}
@@ -480,7 +450,7 @@ ${priceDistributionCard}
 <div class="d-flex justify-content-end py-3">${dayControl}</div>
 ${daySections.join('\n')}
 ${card({ title: 'Top sprzedawane (ostatnie 30 dni)', body: renderTopSellers(topRows, names), collapsed: true })}
-${card({ title: 'Stan magazynowy (ostatni snapshot)', body: renderStock({ domain, platform: config.platform }, latest, names, stockParams), collapsed: true })}`;
+${card({ title: 'Stan magazynowy (aktualny)', body: renderStock({ domain, platform: config.platform }, latest, names), collapsed: true })}`;
     return c.html(pageShell(`ecommerce-sniffle — ${config.id}`, body));
   });
 
@@ -513,7 +483,7 @@ ${card({ title: 'Stan magazynowy (ostatni snapshot)', body: renderStock({ domain
     return c.html(table(['wariant', 'ilość', 'cena'], rows));
   });
 
-  api.get('/report', (c) => c.redirect('/dashboard', 301));
+  api.get('/report', (c) => c.redirect('/shops', 301));
   api.get('/report/:shop', (c) => c.redirect(`/shop/${c.req.param('shop')}`, 301));
 
   return api;

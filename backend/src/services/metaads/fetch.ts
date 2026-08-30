@@ -6,6 +6,7 @@
 
 import type { Logger } from '@ecommerce-sniffle/providers';
 import type { MetaAd, MetaRunFailure, ReachLocation, ReachRow, TargetLocation, BeneficiaryPayer } from './types.ts';
+import { isMetaPlatform } from './types.ts';
 
 const GRAPH_HOST = 'https://graph.facebook.com/v26.0/ads_archive';
 
@@ -197,7 +198,7 @@ function parseAd(row: Json, pageId: string, entityId: string | null): MetaAd | n
     linkTitle: asStringList(row['ad_creative_link_titles']),
     linkCaption: asStringList(row['ad_creative_link_captions']),
     linkDescription: asStringList(row['ad_creative_link_descriptions']),
-    publisherPlatforms: asStringList(row['publisher_platforms']),
+    publisherPlatforms: asStringList(row['publisher_platforms']).filter(isMetaPlatform),
     languages: asStringList(row['languages']),
     euTotalReach: asNumber(row['eu_total_reach']),
     reachByLocation: asReachLocations(row['total_reach_by_location']),

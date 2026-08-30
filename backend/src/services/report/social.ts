@@ -165,7 +165,8 @@ export function renderSocialCard(store: EntityStore, entityId: string, data: Soc
   if (body === '') {
     return card({
       title: 'Social',
-      body: emptyState('Brak danych', 'Uruchom pobieranie przez /admin/fetch-social.'),
+      body: emptyState('Brak danych', 'Nie pobrano jeszcze postów i stories.'),
+      collapsed: true,
     });
   }
   return card({ title: 'Social', body, collapsed: true });

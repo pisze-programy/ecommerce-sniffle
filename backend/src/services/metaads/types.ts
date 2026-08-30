@@ -7,6 +7,33 @@ export interface ReachLocation {
   readonly value: number;
 }
 
+export type MetaPublisherPlatform =
+  | 'FACEBOOK'
+  | 'INSTAGRAM'
+  | 'AUDIENCE_NETWORK'
+  | 'MESSENGER'
+  | 'THREADS'
+  | 'WHATSAPP'
+  | 'OCULUS'
+  | 'STREAMING_SERVICES';
+
+export const META_PLATFORMS: readonly MetaPublisherPlatform[] = [
+  'FACEBOOK',
+  'INSTAGRAM',
+  'AUDIENCE_NETWORK',
+  'MESSENGER',
+  'THREADS',
+  'WHATSAPP',
+  'OCULUS',
+  'STREAMING_SERVICES',
+];
+
+const PLATFORM_SET = new Set<string>(META_PLATFORMS);
+
+export function isMetaPlatform(value: string): value is MetaPublisherPlatform {
+  return PLATFORM_SET.has(value);
+}
+
 export interface ReachRow {
   readonly country: string;
   readonly age_gender_breakdowns: readonly AgeGenderRow[];
@@ -43,7 +70,7 @@ export interface MetaAd {
   readonly linkTitle: readonly string[];
   readonly linkCaption: readonly string[];
   readonly linkDescription: readonly string[];
-  readonly publisherPlatforms: readonly string[];
+  readonly publisherPlatforms: readonly MetaPublisherPlatform[];
   readonly languages: readonly string[];
   readonly euTotalReach: number | null;
   readonly reachByLocation: readonly ReachLocation[];

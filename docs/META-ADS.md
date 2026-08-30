@@ -285,9 +285,11 @@ JSON arrays and objects are stored as JSON text.
 Build the preview link from the ad id.
 Never store `ad_snapshot_url`.
 It contains the token.
+The `render_ad` endpoint is dead. It returns 404.
+The Ads Library viewer link works in a browser:
 
 ```
-https://www.facebook.com/ads/archive/render_ad/?id={id}
+https://www.facebook.com/ads/library/?id={id}
 ```
 
 ## Architecture
@@ -375,7 +377,7 @@ equals the total count. No duplicates.
 | dobrerzeczy          | 109748315469254  |
 | e-daag               | 362425697158919  |
 | emereedivine         | 932290296631176  |
-| forcer               | 1391555270923932 |
+| forcer               | 528691826989201  |
 | godsavequeens        | 158931730924476  |
 | gymglamour           | 1704643286461690 |
 | hdrey-group          | 129962510193438  |
@@ -416,6 +418,19 @@ Do not treat an empty page id as a missing value.
 - mushi
 - sklepskolim
 - wakenbake
+
+## Page ids to confirm
+
+The page names need a hand check.
+
+- beaumont: the page is named `Elie Beaumont`.
+  It sells bags. Confirm it is the beaumont.eu shop.
+- mualasklep: no archived EU ads.
+- wojanshop: no archived EU ads.
+- derichgallery: no archived EU ads. It runs ads in the US.
+
+The collector returns no ads for a page with no active ads.
+That is correct, not an error.
 
 ## Status
 

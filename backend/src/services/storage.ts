@@ -11,6 +11,7 @@ import type {
 } from '../entities.ts';
 import type { SocialPost, SocialProfile, SocialStory } from './social/types.ts';
 import type { MetaAd, MetaAdDay } from './metaads/types.ts';
+import { isMetaPlatform } from './metaads/types.ts';
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement;
@@ -210,7 +211,7 @@ function fromMetaAdRow(row: MetaAdRow): MetaAd {
     linkTitle: jsonArray(row.link_title),
     linkCaption: jsonArray(row.link_caption),
     linkDescription: jsonArray(row.link_description),
-    publisherPlatforms: jsonArray(row.publisher_platforms),
+    publisherPlatforms: jsonArray(row.publisher_platforms).filter(isMetaPlatform),
     languages: jsonArray(row.languages),
     euTotalReach: row.eu_total_reach,
     reachByLocation: jsonParse(row.reach_by_location) ?? [],

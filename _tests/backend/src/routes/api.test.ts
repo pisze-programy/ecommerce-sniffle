@@ -483,7 +483,7 @@ describe('api /dashboard and /shop', () => {
     const app = buildApp(new MemoryStorage());
     const report = await app.request('/report');
     expect(report.status).toBe(301);
-    expect(report.headers.get('location')).toBe('/dashboard');
+    expect(report.headers.get('location')).toBe('/shops');
     const shopReport = await app.request('/report/forcer.pl');
     expect(shopReport.status).toBe(301);
     expect(shopReport.headers.get('location')).toBe('/shop/forcer.pl');
@@ -498,10 +498,10 @@ describe('api /dashboard and /shop', () => {
       variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
     });
     const app = buildApp(storage, [mockProviderModule()]);
-    const response = await app.request('/dashboard');
+    const response = await app.request('/shops');
     expect(response.status).toBe(200);
     const html = await response.text();
-    expect(html).toContain('/shop/mock');
+    expect(html).toContain('https://mock.pl');
     expect(html).toContain('tabler.min.css');
     expect(html).toContain('1000,00 zł');
   });
@@ -541,7 +541,8 @@ describe('api /dashboard and /shop', () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain('FORGET ME NOT BUSTIER');
-    expect(html).toContain('65 / A');
+    expect(html).toContain('Stan magazynowy (aktualny)');
+    expect(html).toContain('/stock-detail/p1');
   });
 
   it('blocks a future day in the shop day selector', async () => {
@@ -591,7 +592,7 @@ describe('api /dashboard and /shop', () => {
     expect(html).toContain('ApexCharts');
     expect(html).toContain('chart-shop-trend');
     expect(html).toContain('data-sortable');
-    expect(html).toContain('data-page-size="25"');
+    expect(html).toContain('data-page-size="5"');
     expect(html).toContain('Morning 06:00');
     expect(html).toContain('<a href="https://mock.pl/p1"');
   });
@@ -637,12 +638,11 @@ describe('api /dashboard and /shop', () => {
       suspectCount: 0,
     });
     const app = buildApp(storage, [mockProviderModule()]);
-    const response = await app.request('/dashboard');
+    const response = await app.request('/shops');
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain('Sprzedane 24h');
     expect(html).toContain('chart-portfolio-value');
-    expect(html).toContain('chart-portfolio-mix');
     expect(html).toContain('chart-top-sold');
     expect(html).toContain('▲ 67%');
     expect(html).toContain('Alerty');

@@ -63,21 +63,21 @@ function changedWindowTable(
   const inner =
     rows.length === 0
       ? emptyState('Brak zmian', 'W tym oknie nic się nie zmieniło.')
-      : `<div class="text-secondary fs-6 mb-1">${summaryLine}</div>
-${sortableTable(
-  [
-    { label: 'Produkt' },
-    { label: 'Wariant' },
-    { label: 'Typ' },
-    { label: 'Ilość', sortType: 'number' },
-    { label: 'Cena', sortType: 'number' },
-    { label: 'Pewność' },
-  ],
-  rows.join(''),
-  'table-hover'
-)}`;
+      : sortableTable(
+          [
+            { label: 'Produkt' },
+            { label: 'Wariant' },
+            { label: 'Typ' },
+            { label: 'Ilość', sortType: 'number' },
+            { label: 'Cena', sortType: 'number' },
+            { label: 'Pewność' },
+          ],
+          rows.join(''),
+          'table-hover'
+        );
   return card({
     title: label,
+    titleNote: summaryLine,
     body: `<div data-table-wrap data-type-filter="">${inner}</div>`,
     collapsed: true,
   });
@@ -143,13 +143,6 @@ export function renderDayComparison(day: string, today: DailyPoint | null, prev:
       value: countOrDash(today.restocked, 'szt'),
       deltaPct: prev === null ? null : pctChange(prev.restocked, today.restocked),
       icon: 'package',
-    },
-    {
-      label: 'Podejrzane',
-      value: `${today.suspect}`,
-      deltaPct: null,
-      tone: today.suspect > 0 ? 'text-red' : '',
-      icon: 'alert-triangle',
     },
   ];
   return card({ title: 'Porównanie z poprzednim dniem', body: kpiGrid(kpis), collapsed: true, open: true });
