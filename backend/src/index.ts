@@ -7,6 +7,7 @@ import { createStorage } from './services/storage.ts';
 import { runGetPipeline } from './services/run.ts';
 import { sendSnitchReport } from './services/snitch.ts';
 import { createTaskStore, enqueueProviders } from './services/queue.ts';
+import { runMetaAdsFetch } from './services/metaads/run.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 app.use('*', async (c, next) => {
@@ -48,6 +49,75 @@ export default {
     const now = Date.now();
     const day = new Date(now).toISOString().slice(0, 10);
     const window = new Date(now).getUTCHours() < 12 ? 'morning' : 'evening';
+    if (controller.cron === '0 18 * * *' || controller.cron === '0 19 * * *') {
+      const offset = warsawUtcOffsetHours(new Date(now));
+      // The collection runs at 20:00 Warsaw time. Warsaw uses UTC+2 in
+      // summer and UTC+1 in winter. Only the matching cron runs the job.
+      const isEod =
+        (controller.cron === '0 18 * * *' && offset === 2) || (controller.cron === '0 19 * * *' && offset === 1);
+      if (!isEod) {
+        logger.info('meta ads cron skipped for dst', { cron: controller.cron, offset });
+        ctx.waitUntil(Promise.resolve());
+        return;
+      }
+      logger.info('meta ads cron', { day, cron: controller.cron, offset });
+      const token = env.META_AD_TOKEN;
+      if (token === undefined || token.length === 0) {
+        logger.warn('meta ads skipped: no token');
+        await sendMetaAdsReport(env, day, 'failed', 'META_AD_TOKEN not set', {
+          day,
+          shops: 0,
+          ads: 0,
+          daysWritten: 0,
+          ended: 0,
+          failedPages: [],
+        });
+        ctx.waitUntil(Promise.resolve());
+        return;
+      }
+      const storage = createStorage(env.DB, logger);
+      try {
+        const result = await runMetaAdsFetch(storage, logger, token);
+        logger.info('meta ads done', {
+          shops: result.shops,
+          ads: result.ads,
+          daysWritten: result.daysWritten,
+          ended: result.ended,
+          errors: result.failures.length,
+        });
+        const messages: string[] = [`shops ${result.shops}`, `ads ${result.ads}`, `days ${result.daysWritten}`];
+        if (result.ended > 0) {
+          messages.push(`ended ${result.ended}`);
+        }
+        for (const failure of result.failures) {
+          messages.push(`FAILED ${failure.pageId}: ${failure.reason}`);
+        }
+        if (messages.length === 0) {
+          messages.push('no pages configured');
+        }
+        await sendMetaAdsReport(env, day, result.failures.length > 0 ? 'failed' : 'ok', messages.join(' | '), {
+          day,
+          shops: result.shops,
+          ads: result.ads,
+          daysWritten: result.daysWritten,
+          ended: result.ended,
+          failedPages: result.failures.map((failure) => failure.pageId),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('meta ads cron failed', { error: message });
+        await sendMetaAdsReport(env, day, 'failed', `cron error: ${message}`, {
+          day,
+          shops: 0,
+          ads: 0,
+          daysWritten: 0,
+          ended: 0,
+          failedPages: [],
+        });
+      }
+      ctx.waitUntil(Promise.resolve());
+      return;
+    }
     if (controller.cron === '10 10 * * *' || controller.cron === '10 22 * * *') {
       logger.info('cf summary cron', { window, day, cron: controller.cron });
       const store = createTaskStore(env.DB, logger);
@@ -151,4 +221,47 @@ async function sendCfSummary(env: Env, window: string, day: string): Promise<boo
     message: messages.join(' | '),
   });
   return true;
+}
+
+function warsawUtcOffsetHours(now: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Warsaw',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(now);
+  const get = (type: string): number => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const warsawMs = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+  return Math.round((warsawMs - now.getTime()) / 3600000);
+}
+
+async function sendMetaAdsReport(
+  env: Env,
+  day: string,
+  status: 'ok' | 'failed',
+  message: string,
+  data: Readonly<Record<string, unknown>>
+): Promise<void> {
+  try {
+    await sendSnitchReport(env, {
+      source: 'ecommerce-pulse/meta-ads',
+      status,
+      notify: 'always',
+      data,
+      message,
+    });
+  } catch (error: unknown) {
+    const reportError = error instanceof Error ? error.message : String(error);
+    // The logger is the only reporter. A snitch failure must not crash the cron.
+    consoleSink({
+      level: 'error',
+      message: 'meta ads snitch failed',
+      context: { error: reportError, day },
+      timestamp: new Date().toISOString(),
+    });
+  }
 }

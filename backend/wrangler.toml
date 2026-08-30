@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-08-23"
 
 [triggers]
-crons = ["0 4 * * *", "0 16 * * *", "10 10 * * *", "10 22 * * *"]
+crons = ["0 4 * * *", "0 16 * * *", "10 10 * * *", "10 22 * * *", "0 18 * * *", "0 19 * * *"]
 
 # Create the resources, then fill in the real ids:
 #   npx wrangler d1 create ecommerce-sniffle

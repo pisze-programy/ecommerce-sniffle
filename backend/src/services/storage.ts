@@ -10,6 +10,7 @@ import type {
   SocialPlatform,
 } from '../entities.ts';
 import type { SocialPost, SocialProfile, SocialStory } from './social/types.ts';
+import type { MetaAd, MetaAdDay } from './metaads/types.ts';
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement;
@@ -62,6 +63,14 @@ export interface Storage {
   readSocialStories(userIds: readonly string[], limit: number): Promise<readonly SocialStory[]>;
   upsertEntityFinancials(entry: EntityFinancials): Promise<void>;
   readEntityFinancials(entityId: string): Promise<EntityFinancials | null>;
+  setEntityLogo(entityId: string, logoKey: string): Promise<void>;
+  setEntityBg(entityId: string, bgKey: string): Promise<void>;
+  setPersonAvatar(personId: string, avatarKey: string): Promise<void>;
+  upsertMetaAds(ads: readonly MetaAd[]): Promise<void>;
+  writeMetaAdDays(rows: readonly MetaAdDay[]): Promise<void>;
+  readMetaAdsActive(pageId: string): Promise<readonly MetaAd[]>;
+  readMetaAdDays(pageId: string, dayFrom: string): Promise<readonly MetaAdDay[]>;
+  endMetaAds(pageId: string, stopDate: string, activeIds: readonly string[]): Promise<number>;
 }
 
 export interface SeriesPoint {
@@ -162,6 +171,56 @@ interface SocialStoryRow {
   mentions: string;
   r2_key: string | null;
   fetched_at: string;
+}
+
+interface MetaAdRow {
+  ad_archive_id: string;
+  page_id: string;
+  entity_id: string | null;
+  ad_creation_time: string | null;
+  start_date: string | null;
+  stop_date: string | null;
+  creative_body: string | null;
+  link_title: string | null;
+  link_caption: string | null;
+  link_description: string | null;
+  publisher_platforms: string | null;
+  languages: string | null;
+  eu_total_reach: number | null;
+  reach_by_location: string | null;
+  reach_breakdown: string | null;
+  target_ages: string | null;
+  target_gender: string | null;
+  target_locations: string | null;
+  beneficiary_payers: string | null;
+  creative_hash: string | null;
+  first_seen: string;
+  last_seen: string;
+}
+
+function fromMetaAdRow(row: MetaAdRow): MetaAd {
+  return {
+    adArchiveId: row.ad_archive_id,
+    pageId: row.page_id,
+    entityId: row.entity_id,
+    adCreationTime: row.ad_creation_time,
+    startDate: row.start_date,
+    stopDate: row.stop_date,
+    creativeBody: jsonArray(row.creative_body),
+    linkTitle: jsonArray(row.link_title),
+    linkCaption: jsonArray(row.link_caption),
+    linkDescription: jsonArray(row.link_description),
+    publisherPlatforms: jsonArray(row.publisher_platforms),
+    languages: jsonArray(row.languages),
+    euTotalReach: row.eu_total_reach,
+    reachByLocation: jsonParse(row.reach_by_location) ?? [],
+    reachBreakdown: jsonParse(row.reach_breakdown) ?? [],
+    targetAges: jsonArray(row.target_ages),
+    targetGender: row.target_gender,
+    targetLocations: jsonParse(row.target_locations) ?? [],
+    beneficiaryPayers: jsonParse(row.beneficiary_payers) ?? [],
+    creativeHash: row.creative_hash ?? '',
+  };
 }
 
 function fromSocialPostRow(row: SocialPostRow): SocialPost {
@@ -374,6 +433,21 @@ function jsonArray(value: string | null): readonly string[] {
   } catch {
     return [];
   }
+}
+
+function jsonParse<T>(value: string | null): T | null {
+  if (value === null) {
+    return null;
+  }
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function jsonObjectString(value: unknown): string | null {
+  return JSON.stringify(value);
 }
 
 export function createStorage(db: D1Like, logger: Logger): Storage {
@@ -743,7 +817,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
     async readEntityStore(): Promise<EntityStore> {
       const entityRows = (await db
         .prepare(
-          'SELECT id, name, kind, krs, regon, nip, bizraport_url, meta_page_id, cpm_min, cpm_max FROM entities ORDER BY id'
+          'SELECT id, name, kind, krs, regon, nip, bizraport_url, meta_page_id, cpm_min, cpm_max, logo_key, bg_key FROM entities ORDER BY id'
         )
         .all()) as {
         results: Array<{
@@ -757,10 +831,14 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
           meta_page_id: string | null;
           cpm_min: number | null;
           cpm_max: number | null;
+          logo_key: string | null;
+          bg_key: string | null;
         }>;
       };
-      const personRows = (await db.prepare('SELECT id, name, linkedin_url FROM persons ORDER BY id').all()) as {
-        results: Array<{ id: string; name: string; linkedin_url: string | null }>;
+      const personRows = (await db
+        .prepare('SELECT id, name, linkedin_url, avatar_key FROM persons ORDER BY id')
+        .all()) as {
+        results: Array<{ id: string; name: string; linkedin_url: string | null; avatar_key: string | null }>;
       };
       const socialRows = (await db
         .prepare('SELECT owner_kind, owner_id, platform, handle, url FROM socials')
@@ -808,12 +886,15 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
         bizraportUrl: row.bizraport_url,
         metaPageId: row.meta_page_id,
         cpmOverride: row.cpm_min === null || row.cpm_max === null ? null : { min: row.cpm_min, max: row.cpm_max },
+        logoKey: row.logo_key,
+        bgKey: row.bg_key,
         socials: socialsByOwner.get(`entity:${row.id}`) ?? [],
       }));
       const persons = personRows.results.map((row) => ({
         id: row.id,
         name: row.name,
         linkedinUrl: row.linkedin_url,
+        avatarKey: row.avatar_key,
         socials: socialsByOwner.get(`person:${row.id}`) ?? [],
       }));
       const personRelations = relationRows.results.map((row) => ({
@@ -1008,6 +1089,148 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
         valuation: row.valuation,
         fetchedAt: row.fetched_at,
       };
+    },
+
+    async setEntityLogo(entityId: string, logoKey: string): Promise<void> {
+      await db.prepare('UPDATE entities SET logo_key = ? WHERE id = ?').bind(logoKey, entityId).run();
+    },
+
+    async setEntityBg(entityId: string, bgKey: string): Promise<void> {
+      await db.prepare('UPDATE entities SET bg_key = ? WHERE id = ?').bind(bgKey, entityId).run();
+    },
+
+    async setPersonAvatar(personId: string, avatarKey: string): Promise<void> {
+      await db.prepare('UPDATE persons SET avatar_key = ? WHERE id = ?').bind(avatarKey, personId).run();
+    },
+
+    async upsertMetaAds(ads: readonly MetaAd[]): Promise<void> {
+      if (ads.length === 0) {
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      try {
+        await db.batch(
+          ads.map((ad) =>
+            db
+              .prepare(
+                'INSERT INTO meta_ads (ad_archive_id, page_id, entity_id, ad_creation_time, start_date, stop_date, creative_body, link_title, link_caption, link_description, publisher_platforms, languages, eu_total_reach, reach_by_location, reach_breakdown, target_ages, target_gender, target_locations, beneficiary_payers, creative_hash, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT first_seen FROM meta_ads WHERE ad_archive_id = ?), ?), ?) ON CONFLICT(ad_archive_id) DO UPDATE SET page_id = excluded.page_id, entity_id = excluded.entity_id, ad_creation_time = excluded.ad_creation_time, start_date = excluded.start_date, stop_date = excluded.stop_date, creative_body = excluded.creative_body, link_title = excluded.link_title, link_caption = excluded.link_caption, link_description = excluded.link_description, publisher_platforms = excluded.publisher_platforms, languages = excluded.languages, eu_total_reach = excluded.eu_total_reach, reach_by_location = excluded.reach_by_location, reach_breakdown = excluded.reach_breakdown, target_ages = excluded.target_ages, target_gender = excluded.target_gender, target_locations = excluded.target_locations, beneficiary_payers = excluded.beneficiary_payers, creative_hash = excluded.creative_hash, last_seen = excluded.last_seen'
+              )
+              .bind(
+                ad.adArchiveId,
+                ad.pageId,
+                ad.entityId,
+                ad.adCreationTime,
+                ad.startDate,
+                ad.stopDate,
+                jsonObjectString(ad.creativeBody),
+                jsonObjectString(ad.linkTitle),
+                jsonObjectString(ad.linkCaption),
+                jsonObjectString(ad.linkDescription),
+                jsonObjectString(ad.publisherPlatforms),
+                jsonObjectString(ad.languages),
+                ad.euTotalReach,
+                jsonObjectString(ad.reachByLocation),
+                jsonObjectString(ad.reachBreakdown),
+                jsonObjectString(ad.targetAges),
+                ad.targetGender,
+                jsonObjectString(ad.targetLocations),
+                jsonObjectString(ad.beneficiaryPayers),
+                ad.creativeHash,
+                ad.adArchiveId,
+                today,
+                today
+              )
+          )
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.upsertMetaAds failed', { count: ads.length, error: message });
+        throw error;
+      }
+    },
+
+    async writeMetaAdDays(rows: readonly MetaAdDay[]): Promise<void> {
+      if (rows.length === 0) {
+        return;
+      }
+      try {
+        await db.batch(
+          rows.map((row) =>
+            db
+              .prepare(
+                'INSERT OR REPLACE INTO meta_ad_days (day, ad_archive_id, page_id, eu_total_reach) VALUES (?, ?, ?, ?)'
+              )
+              .bind(row.day, row.adArchiveId, row.pageId, row.euTotalReach)
+          )
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.writeMetaAdDays failed', { count: rows.length, error: message });
+        throw error;
+      }
+    },
+
+    async readMetaAdsActive(pageId: string): Promise<readonly MetaAd[]> {
+      try {
+        const result = (await db
+          .prepare(
+            'SELECT ad_archive_id, page_id, entity_id, ad_creation_time, start_date, stop_date, creative_body, link_title, link_caption, link_description, publisher_platforms, languages, eu_total_reach, reach_by_location, reach_breakdown, target_ages, target_gender, target_locations, beneficiary_payers, creative_hash, first_seen, last_seen FROM meta_ads WHERE page_id = ? AND stop_date IS NULL ORDER BY eu_total_reach DESC'
+          )
+          .bind(pageId)
+          .all()) as { results: MetaAdRow[] };
+        return result.results.map(fromMetaAdRow);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.readMetaAdsActive failed', { pageId, error: message });
+        throw error;
+      }
+    },
+
+    async readMetaAdDays(pageId: string, dayFrom: string): Promise<readonly MetaAdDay[]> {
+      try {
+        const result = (await db
+          .prepare(
+            'SELECT day, ad_archive_id, page_id, eu_total_reach FROM meta_ad_days WHERE page_id = ? AND day >= ? ORDER BY day'
+          )
+          .bind(pageId, dayFrom)
+          .all()) as {
+          results: Array<{ day: string; ad_archive_id: string; page_id: string; eu_total_reach: number }>;
+        };
+        return result.results.map((row) => ({
+          day: row.day,
+          adArchiveId: row.ad_archive_id,
+          pageId: row.page_id,
+          euTotalReach: row.eu_total_reach,
+        }));
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.readMetaAdDays failed', { pageId, error: message });
+        throw error;
+      }
+    },
+
+    async endMetaAds(pageId: string, stopDate: string, activeIds: readonly string[]): Promise<number> {
+      try {
+        const placeholders = activeIds.map(() => '?').join(',');
+        let statement: D1Statement;
+        if (activeIds.length === 0) {
+          statement = db
+            .prepare('UPDATE meta_ads SET stop_date = ? WHERE page_id = ? AND stop_date IS NULL')
+            .bind(stopDate, pageId);
+        } else {
+          statement = db
+            .prepare(
+              `UPDATE meta_ads SET stop_date = ? WHERE page_id = ? AND stop_date IS NULL AND ad_archive_id NOT IN (${placeholders})`
+            )
+            .bind(stopDate, pageId, ...activeIds);
+        }
+        const result = (await statement.run()) as { meta?: { changes?: number } };
+        return result.meta?.changes ?? 0;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.endMetaAds failed', { pageId, error: message });
+        throw error;
+      }
     },
   };
 }

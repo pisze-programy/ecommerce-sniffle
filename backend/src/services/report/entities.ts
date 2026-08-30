@@ -107,10 +107,14 @@ function personBlock(
     person.linkedinUrl === null
       ? ''
       : `<a class="btn btn-sm btn-outline-secondary" href="${esc(person.linkedinUrl)}" target="_blank" rel="noopener">${icon('brand-linkedin')} LinkedIn</a>`;
+  const avatar =
+    person.avatarKey === null
+      ? ''
+      : `<img src="/media/${esc(person.avatarKey)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:50%;" class="me-2">`;
   const other = otherConnections(store, person, entityId, shops);
   const otherRow = other.length === 0 ? '' : `<div class="mt-1 d-flex flex-wrap gap-1">${other.join('')}</div>`;
   return `<div class="mb-3">
-  <div class="fw-semibold">${esc(person.name)}</div>
+  <div class="fw-semibold d-flex align-items-center">${avatar}${esc(person.name)}</div>
   <div class="mt-1 d-flex flex-wrap gap-1">${roleBadges}</div>
   <div class="mt-1 d-flex flex-wrap gap-1">${linkedin}${socialButtons(person.socials)}</div>
   ${otherRow}
@@ -133,6 +137,20 @@ function renderFinancials(financials: EntityFinancials): string {
 <div class="text-end text-secondary fs-6 mt-1">Dane z Bizraport</div>`;
 }
 
+function entityImageHeader(entity: Entity): string {
+  const logo =
+    entity.logoKey === null
+      ? ''
+      : `<img src="/media/${esc(entity.logoKey)}" alt="logo" style="width:56px;height:56px;object-fit:cover;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.25);">`;
+  if (entity.bgKey !== null) {
+    return `<div style="position:relative;height:140px;background-image:url('/media/${esc(entity.bgKey)}');background-size:cover;background-position:center;border-radius:12px;" class="mb-2"><div class="position-absolute bottom-0 start-0 m-2">${logo}</div></div>`;
+  }
+  if (entity.logoKey !== null) {
+    return `<div class="mb-2">${logo}</div>`;
+  }
+  return '';
+}
+
 function renderPodmiot(entity: Entity, financials: EntityFinancials | null): string {
   const items: { title: string; content: string }[] = [
     { title: 'Podmiot', content: entity.name },
@@ -150,7 +168,7 @@ function renderPodmiot(entity: Entity, financials: EntityFinancials | null): str
   links.push(socialButtons(entity.socials));
   return card({
     title: 'Podmiot',
-    body: `${datagrid(items)}<div class="mt-2 d-flex flex-wrap gap-1">${links.join('')}</div>${
+    body: `${entityImageHeader(entity)}${datagrid(items)}<div class="mt-2 d-flex flex-wrap gap-1">${links.join('')}</div>${
       financials === null ? '' : renderFinancials(financials)
     }`,
     collapsed: true,

@@ -40,12 +40,15 @@ export interface Entity {
   readonly socials: readonly SocialLink[];
   readonly metaPageId: string | null;
   readonly cpmOverride: CpmRange | null;
+  readonly logoKey: string | null;
+  readonly bgKey: string | null;
 }
 
 export interface Person {
   readonly id: string;
   readonly name: string;
   readonly linkedinUrl: string | null;
+  readonly avatarKey: string | null;
   readonly socials: readonly SocialLink[];
 }
 

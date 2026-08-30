@@ -68,7 +68,7 @@ Legend:
 | ------------------------------------ | ---------- | -------------------- | ------------------ | ----------------------- | -------- |
 | Rafał Afanasjef                      | Właściciel | -                    | -                  | -                       | yes      |
 | Karolina Pisarek                     | Właściciel | karolina_pisarek     | 100044181591844    | -                       | -        |
-| Mikołaj (Konopskyy)                  | Właściciel | konopskyy_           | -                  | @Konopskyy              | -        |
+| Mikołaj Tylko                        | Właściciel | konopskyy_           | -                  | @Konopskyy              | -        |
 | Daniel Walendziak                    | Właściciel | -                    | -                  | -                       | -        |
 | Krzysztof Sawicki                    | Właściciel | -                    | -                  | -                       | -        |
 | Weronika Broś                        | Właściciel | weronikabros         | -                  | -                       | yes      |
@@ -127,3 +127,35 @@ It is a loose brand and stays an empty node.
 4. Person profiles for Daniel Walendziak, Krzysztof Sawicki,
    Wojciech Maciej Gola, Sabina Hajdo-Piórek, Paweł Piórek.
 5. Confirm risky owners isamupt and d3tailer.
+
+## Images (migration 0027)
+
+Each shop entity has a logo and a background image from R2.
+Each person has an avatar from R2. Images upload once by hand.
+The upload writes the R2 key to D1 and serves it on the shop page.
+
+Upload a shop logo:
+
+```
+curl -u <auth> -X POST 'https://ecommerce-sniffle-backend.dev-4cb.workers.dev/admin/upload-image?kind=entity&id=hdrey-group&role=logo' \
+  -H 'Content-Type: image/png' --data-binary @logo.png
+```
+
+Upload a shop background:
+
+```
+curl -u <auth> -X POST 'https://ecommerce-sniffle-backend.dev-4cb.workers.dev/admin/upload-image?kind=entity&id=hdrey-group&role=bg' \
+  -H 'Content-Type: image/jpeg' --data-binary @bg.jpg
+```
+
+Upload a person avatar:
+
+```
+curl -u <auth> -X POST 'https://ecommerce-sniffle-backend.dev-4cb.workers.dev/admin/upload-image?kind=person&id=rafal&role=avatar' \
+  -H 'Content-Type: image/webp' --data-binary @avatar.webp
+```
+
+`id` is the entity id or the person id from the store.
+The endpoint accepts png, webp, gif and jpeg. R2 keys live under
+`entities/{id}/` and `persons/{id}/`. The shop page reads them from
+the `logo_key`, `bg_key` and `avatar_key` columns.

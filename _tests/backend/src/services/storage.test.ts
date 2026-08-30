@@ -741,3 +741,160 @@ describe('entity financials', () => {
     expect(entry?.year).toBe(2025);
   });
 });
+
+describe('entity images', () => {
+  it('writes the entity logo key', async () => {
+    const { logger } = capturingLogger();
+    const queries: string[] = [];
+    const db = new MockD1((query) => {
+      queries.push(query);
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.setEntityLogo('hdrey-group', 'entities/hdrey-group/logo.png');
+    expect(queries.some((query) => query.includes('UPDATE entities SET logo_key'))).toBe(true);
+  });
+
+  it('writes the entity background key', async () => {
+    const { logger } = capturingLogger();
+    const queries: string[] = [];
+    const db = new MockD1((query) => {
+      queries.push(query);
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.setEntityBg('hdrey-group', 'entities/hdrey-group/bg.png');
+    expect(queries.some((query) => query.includes('UPDATE entities SET bg_key'))).toBe(true);
+  });
+
+  it('writes the person avatar key', async () => {
+    const { logger } = capturingLogger();
+    const queries: string[] = [];
+    const db = new MockD1((query) => {
+      queries.push(query);
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.setPersonAvatar('rafal', 'persons/rafal/avatar.png');
+    expect(queries.some((query) => query.includes('UPDATE persons SET avatar_key'))).toBe(true);
+  });
+});
+
+describe('meta ads storage', () => {
+  it('writes and reads active ads', async () => {
+    const { logger } = capturingLogger();
+    const rows: Record<string, unknown>[] = [];
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT INTO meta_ads')) {
+        return { results: [] };
+      }
+      if (query.startsWith('SELECT ad_archive_id, page_id, entity_id')) {
+        return { results: rows };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.upsertMetaAds([
+      {
+        adArchiveId: '635204772540093',
+        pageId: '1527130717525496',
+        entityId: 'laboratoriumpanidomu',
+        adCreationTime: '2025-03-10',
+        startDate: '2025-03-10',
+        stopDate: null,
+        creativeBody: ['Czyści kostkę brukową.'],
+        linkTitle: ['Czyści kostkę brukową. 33% rabatu'],
+        linkCaption: ['laboratoriumpanidomu.pl'],
+        linkDescription: [],
+        publisherPlatforms: ['FACEBOOK'],
+        languages: ['pl'],
+        euTotalReach: 4174096,
+        reachByLocation: [{ key: 'EU', value: 4174096 }],
+        reachBreakdown: [
+          {
+            country: 'PL',
+            age_gender_breakdowns: [{ age_range: '25-34', female: 526027, male: 321382, unknown: 0 }],
+          },
+        ],
+        targetAges: ['18', '65'],
+        targetGender: 'All',
+        targetLocations: [{ name: 'Poland', type: 'countries', excluded: false, num_obfuscated: 0 }],
+        beneficiaryPayers: [{ payer: 'Laboratorium Pani Domu', beneficiary: 'Laboratorium Pani Domu', current: true }],
+        creativeHash: 'deadbeef',
+      },
+    ]);
+    rows.push({
+      ad_archive_id: '635204772540093',
+      page_id: '1527130717525496',
+      entity_id: 'laboratoriumpanidomu',
+      ad_creation_time: '2025-03-10',
+      start_date: '2025-03-10',
+      stop_date: null,
+      creative_body: '["Czyści kostkę brukową."]',
+      link_title: '["Czyści kostkę brukową. 33% rabatu"]',
+      link_caption: '["laboratoriumpanidomu.pl"]',
+      link_description: '[]',
+      publisher_platforms: '["FACEBOOK"]',
+      languages: '["pl"]',
+      eu_total_reach: 4174096,
+      reach_by_location: '[{"key":"EU","value":4174096}]',
+      reach_breakdown:
+        '[{"country":"PL","age_gender_breakdowns":[{"age_range":"25-34","female":526027,"male":321382,"unknown":0}]}]',
+      target_ages: '["18","65"]',
+      target_gender: 'All',
+      target_locations: '[{"name":"Poland","type":"countries","excluded":false,"num_obfuscated":0}]',
+      beneficiary_payers: '[{"payer":"Laboratorium Pani Domu","beneficiary":"Laboratorium Pani Domu","current":true}]',
+      creative_hash: 'deadbeef',
+      first_seen: '2026-08-30',
+      last_seen: '2026-08-30',
+    });
+    const ads = await storage.readMetaAdsActive('1527130717525496');
+    expect(ads).toHaveLength(1);
+    expect(ads[0].euTotalReach).toBe(4174096);
+    expect(ads[0].reachBreakdown[0].age_gender_breakdowns[0].female).toBe(526027);
+    expect(ads[0].beneficiaryPayers[0].payer).toBe('Laboratorium Pani Domu');
+  });
+
+  it('writes and reads daily reach snapshots', async () => {
+    const { logger } = capturingLogger();
+    const rows: Record<string, unknown>[] = [];
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT OR REPLACE INTO meta_ad_days')) {
+        return { results: [] };
+      }
+      if (query.startsWith('SELECT day, ad_archive_id, page_id')) {
+        return { results: rows };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.writeMetaAdDays([
+      { day: '2026-08-30', adArchiveId: '635204772540093', pageId: '1527130717525496', euTotalReach: 4174096 },
+    ]);
+    rows.push({
+      day: '2026-08-30',
+      ad_archive_id: '635204772540093',
+      page_id: '1527130717525496',
+      eu_total_reach: 4174096,
+    });
+    const days = await storage.readMetaAdDays('1527130717525496', '2026-08-01');
+    expect(days).toHaveLength(1);
+    expect(days[0].euTotalReach).toBe(4174096);
+  });
+
+  it('ends ads that are not in the active set', async () => {
+    const { logger } = capturingLogger();
+    let changes = 0;
+    const db = new MockD1((query) => {
+      if (query.startsWith('UPDATE meta_ads SET stop_date')) {
+        changes = 2;
+        return { results: [], meta: { changes: 2 } };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    const ended = await storage.endMetaAds('1527130717525496', '2026-08-29', ['active-1']);
+    expect(ended).toBe(2);
+    expect(changes).toBe(2);
+  });
+});

@@ -7,4 +7,5 @@ export interface Env {
   readonly SNITCH?: { fetch(input: string | URL | Request, init?: RequestInit): Promise<Response> };
   readonly MEDIA?: R2Bucket;
   readonly RAPIDAPI_KEY?: string;
+  readonly META_AD_TOKEN?: string;
 }

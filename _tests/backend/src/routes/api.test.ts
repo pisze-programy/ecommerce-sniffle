@@ -8,6 +8,7 @@ import type { AppVariables } from '../../../../backend/src/routes/api.ts';
 import type { Env } from '../../../../backend/src/env/types.ts';
 import type { D1Like, D1Statement, Storage, SeriesPoint } from '../../../../backend/src/services/storage.ts';
 import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
+import { dayBefore } from '../../../../backend/src/services/report/format.ts';
 
 class MemoryStorage implements Storage {
   snapshots: Snapshot[] = [];
@@ -604,16 +605,18 @@ describe('api /dashboard and /shop', () => {
   });
 
   it('renders dashboard kpis, charts and deltas', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const prev = dayBefore(today);
     const storage = new MemoryStorage();
     storage.snapshots.push({
       shop: 'mock.pl',
-      snapshotAt: '2026-08-28T04:00:00.000Z',
+      snapshotAt: `${today}T04:00:00.000Z`,
       window: 'morning',
       variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
     });
     storage.stats.push({
       shop: 'mock.pl',
-      day: '2026-08-27',
+      day: prev,
       unitsSold: 3,
       revenue: 300,
       restocked: 0,
@@ -624,7 +627,7 @@ describe('api /dashboard and /shop', () => {
     });
     storage.stats.push({
       shop: 'mock.pl',
-      day: '2026-08-28',
+      day: today,
       unitsSold: 5,
       revenue: 500,
       restocked: 0,

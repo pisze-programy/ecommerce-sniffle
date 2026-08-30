@@ -4,6 +4,21 @@ import type { AppVariables } from './types.ts';
 import { isAuthorized } from './auth.ts';
 import { aggregateDaily } from '@ecommerce-sniffle/analysis';
 import { runSocialFetch } from '../services/social/run.ts';
+import { runMetaAdsFetch } from '../services/metaads/run.ts';
+
+function extForContentType(contentType: string): string {
+  const type = contentType.toLowerCase();
+  if (type.includes('png')) {
+    return 'png';
+  }
+  if (type.includes('webp')) {
+    return 'webp';
+  }
+  if (type.includes('gif')) {
+    return 'gif';
+  }
+  return 'jpg';
+}
 
 interface UsageBody {
   readonly taskId: string;
@@ -311,6 +326,84 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('fetch-social failed', { error: message });
+      return c.json({ ok: false, error: message }, 500);
+    }
+  });
+
+  api.post('/admin/upload-image', async (c) => {
+    if (!isAuthorized(c)) {
+      c.get('logger').warn('upload-image.unauthorized');
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const bucket = c.env.MEDIA;
+    if (bucket === undefined) {
+      c.get('logger').error('upload-image.noBucket');
+      return c.json({ error: 'MEDIA bucket not set' }, 500);
+    }
+    const kind = c.req.query('kind');
+    const id = c.req.query('id');
+    const role = c.req.query('role');
+    if ((kind !== 'entity' && kind !== 'person') || id === undefined || id.length === 0 || role === undefined) {
+      return c.json({ error: 'invalid params' }, 400);
+    }
+    const validRole = kind === 'entity' ? role === 'logo' || role === 'bg' : role === 'avatar';
+    if (!validRole) {
+      return c.json({ error: 'invalid role' }, 400);
+    }
+    const contentType = c.req.header('content-type') ?? 'image/jpeg';
+    const bytes = await c.req.arrayBuffer();
+    if (bytes.byteLength === 0) {
+      return c.json({ error: 'empty body' }, 400);
+    }
+    const key =
+      kind === 'entity'
+        ? `entities/${id}/${role}.${extForContentType(contentType)}`
+        : `persons/${id}/avatar.${extForContentType(contentType)}`;
+    const storage = c.get('storage');
+    const logger = c.get('logger');
+    try {
+      await bucket.put(key, bytes, { httpMetadata: { contentType } });
+      if (kind === 'entity' && role === 'logo') {
+        await storage.setEntityLogo(id, key);
+      } else if (kind === 'entity' && role === 'bg') {
+        await storage.setEntityBg(id, key);
+      } else {
+        await storage.setPersonAvatar(id, key);
+      }
+      logger.info('upload-image done', { kind, id, role, key });
+      return c.json({ ok: true, key });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('upload-image failed', { kind, id, role, error: message });
+      return c.json({ ok: false, error: message }, 500);
+    }
+  });
+
+  api.post('/admin/fetch-meta-ads', async (c) => {
+    if (!isAuthorized(c)) {
+      c.get('logger').warn('fetch-meta-ads.unauthorized');
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const token = c.env.META_AD_TOKEN;
+    if (token === undefined || token.length === 0) {
+      c.get('logger').error('fetch-meta-ads.noToken');
+      return c.json({ ok: false, error: 'META_AD_TOKEN not set' }, 500);
+    }
+    const storage = c.get('storage');
+    const logger = c.get('logger');
+    try {
+      const result = await runMetaAdsFetch(storage, logger, token);
+      logger.info('fetch-meta-ads done', {
+        shops: result.shops,
+        ads: result.ads,
+        daysWritten: result.daysWritten,
+        ended: result.ended,
+        errors: result.failures.length,
+      });
+      return c.json({ ok: true, ...result });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('fetch-meta-ads failed', { error: message });
       return c.json({ ok: false, error: message }, 500);
     }
   });

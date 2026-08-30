@@ -37,6 +37,7 @@ import type { ShopCard } from '../services/report/dashboard.ts';
 import { renderEntityCard } from '../services/report/entities.ts';
 import type { EntityShopLink } from '../services/report/entities.ts';
 import { renderSocialCard, socialUserIds } from '../services/report/social.ts';
+import { renderMetaAdsCard } from '../services/report/metaads.ts';
 import { pageShell } from '../services/report/shell.ts';
 import { variantCell } from '../services/report/links.ts';
 
@@ -407,6 +408,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
         card({
           title: 'Zmiany',
           body: renderChangesWindows(day, morningEvents, eveningEvents, names, config.platform, maxQuantity),
+          collapsed: true,
         })
       );
       daySections.push(
@@ -449,6 +451,21 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       ]);
       return renderSocialCard(store, config.entityId, { profiles, posts, stories });
     })();
+    const metaAdsCard = await (async () => {
+      if (config.entityId === undefined) {
+        return '';
+      }
+      const store = await storage.readEntityStore();
+      const entity = store.entities.find((entry) => entry.id === config.entityId);
+      if (entity === undefined || entity.metaPageId === null) {
+        return '';
+      }
+      const [ads, days] = await Promise.all([
+        storage.readMetaAdsActive(entity.metaPageId),
+        storage.readMetaAdDays(entity.metaPageId, addDays(nowDay, -30)),
+      ]);
+      return renderMetaAdsCard(ads, days, nowDay);
+    })();
     const body = `
 <div class="page-header d-flex flex-row flex-wrap align-items-center justify-content-start mb-3">
   ${breadcrumb([{ label: 'dashboard', href: '/dashboard' }, { label: config.id }])}
@@ -458,6 +475,7 @@ ${countdownNote}
 ${card({ title: 'Podsumowanie sklepu', body: headerBody })}
 ${entityCard}
 ${socialCard}
+${metaAdsCard}
 ${priceDistributionCard}
 <div class="d-flex justify-content-end py-3">${dayControl}</div>
 ${daySections.join('\n')}

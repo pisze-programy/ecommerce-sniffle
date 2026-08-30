@@ -17,6 +17,10 @@ function store(): EntityStore {
         socials: [{ platform: 'instagram', handle: 'hdrey_pl', url: 'https://ig/hdrey_pl' }],
         metaPageId: null,
         cpmOverride: null,
+
+        logoKey: null,
+
+        bgKey: null,
       },
       {
         id: 'dives-med',
@@ -29,6 +33,10 @@ function store(): EntityStore {
         socials: [],
         metaPageId: null,
         cpmOverride: null,
+
+        logoKey: null,
+
+        bgKey: null,
       },
       {
         id: 'forcer',
@@ -41,6 +49,10 @@ function store(): EntityStore {
         socials: [],
         metaPageId: null,
         cpmOverride: null,
+
+        logoKey: null,
+
+        bgKey: null,
       },
       {
         id: 'infini',
@@ -53,14 +65,19 @@ function store(): EntityStore {
         socials: [],
         metaPageId: null,
         cpmOverride: null,
+
+        logoKey: null,
+
+        bgKey: null,
       },
     ],
     persons: [
-      { id: 'rafal', name: 'Rafał Afanasjef', linkedinUrl: 'https://linkedin/rafal', socials: [] },
+      { id: 'rafal', name: 'Rafał Afanasjef', linkedinUrl: 'https://linkedin/rafal', avatarKey: null, socials: [] },
       {
         id: 'karolina',
         name: 'Karolina Pisarek',
         linkedinUrl: null,
+        avatarKey: null,
         socials: [{ platform: 'instagram', handle: 'karolina_pisarek', url: 'https://ig/karolina' }],
       },
     ],
@@ -128,5 +145,21 @@ describe('renderEntityCard', () => {
     expect(html).toContain('16,9 mln zł');
     expect(html).toContain('-3,0 mln zł');
     expect(html).toContain('Dane z Bizraport');
+  });
+
+  it('renders the logo, the background and the avatars from media', () => {
+    const data = store();
+    const entities = data.entities.map((entity) =>
+      entity.id === 'hdrey-group'
+        ? { ...entity, logoKey: 'entities/hdrey-group/logo.png', bgKey: 'entities/hdrey-group/bg.png' }
+        : entity
+    );
+    const persons = data.persons.map((person) =>
+      person.id === 'rafal' ? { ...person, avatarKey: 'persons/rafal/avatar.png' } : person
+    );
+    const html = renderEntityCard({ ...data, entities, persons }, 'hdrey-group', shops(), '2026-08-30', null);
+    expect(html).toContain('/media/entities/hdrey-group/logo.png');
+    expect(html).toContain('/media/entities/hdrey-group/bg.png');
+    expect(html).toContain('/media/persons/rafal/avatar.png');
   });
 });

@@ -286,4 +286,107 @@ describe('usage routes', () => {
     const response = await app.request('/admin/upsert-names', { method: 'POST', body: '{}' }, env);
     expect(response.status).toBe(401);
   });
+
+  it('uploads an entity logo and stores its key', async () => {
+    let putKey = '';
+    const bucket = {
+      put: async (key: string) => {
+        putKey = key;
+      },
+    };
+    const env = { ...mockEnv([]), MEDIA: bucket as never };
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/upload-image?kind=entity&id=hdrey-group&role=logo',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-secret', 'Content-Type': 'image/png' },
+        body: new Uint8Array([1, 2, 3]),
+      },
+      env
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; key: string };
+    expect(body.ok).toBe(true);
+    expect(body.key).toBe('entities/hdrey-group/logo.png');
+    expect(putKey).toBe('entities/hdrey-group/logo.png');
+  });
+
+  it('uploads a person avatar and stores its key', async () => {
+    const bucket = {
+      put: async () => undefined,
+    };
+    const env = { ...mockEnv([]), MEDIA: bucket as never };
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/upload-image?kind=person&id=rafal&role=avatar',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-secret', 'Content-Type': 'image/webp' },
+        body: new Uint8Array([1]),
+      },
+      env
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; key: string };
+    expect(body.key).toBe('persons/rafal/avatar.webp');
+  });
+
+  it('rejects an invalid role', async () => {
+    const env = { ...mockEnv([]), MEDIA: { put: async () => undefined } as never };
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/upload-image?kind=entity&id=hdrey-group&role=poster',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-secret', 'Content-Type': 'image/png' },
+        body: new Uint8Array([1]),
+      },
+      env
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an unauthorized upload', async () => {
+    const env = { ...mockEnv([]), MEDIA: { put: async () => undefined } as never };
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/upload-image?kind=entity&id=hdrey-group&role=logo',
+      { method: 'POST', body: new Uint8Array([1]) },
+      env
+    );
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects an unauthorized meta ads fetch', async () => {
+    const env = mockEnv([]);
+    const app = makeApp();
+    const response = await app.request('/admin/fetch-meta-ads', { method: 'POST' }, env);
+    expect(response.status).toBe(401);
+  });
+
+  it('fails when the meta token is missing', async () => {
+    const env = mockEnv([]);
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/fetch-meta-ads',
+      { method: 'POST', headers: { Authorization: 'Bearer test-secret' } },
+      env
+    );
+    expect(response.status).toBe(500);
+  });
+
+  it('runs the meta ads fetch with a token', async () => {
+    const env = { ...mockEnv([]), META_AD_TOKEN: 'tok' };
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/fetch-meta-ads',
+      { method: 'POST', headers: { Authorization: 'Bearer test-secret' } },
+      env
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; shops: number };
+    expect(body.ok).toBe(true);
+    expect(body.shops).toBe(0);
+  });
 });
