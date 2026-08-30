@@ -13,21 +13,54 @@ export interface CardOptions {
   readonly subtitle?: string;
   readonly body: string;
   readonly footer?: string;
+  // The body starts collapsed and the header toggles it.
+  readonly collapsed?: boolean;
+  // A collapsed card that starts expanded.
+  readonly open?: boolean;
+  // Extra classes for the outer card element.
+  readonly className?: string;
+}
+
+function slug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 export function card(options: CardOptions): string {
+  const cls = options.className === undefined ? '' : ` ${options.className}`;
   const titleHtml =
     options.title === undefined
       ? ''
       : options.titleHref === undefined
         ? `<h3 class="card-title">${esc(options.title)}</h3>`
         : `<h3 class="card-title"><a href="${esc(options.titleHref)}">${esc(options.title)}</a></h3>`;
+  const subtitleHtml =
+    options.subtitle === undefined ? '' : `<div class="card-subtitle ms-auto">${esc(options.subtitle)}</div>`;
+  const footer = options.footer === undefined ? '' : `<div class="card-footer">${options.footer}</div>`;
+  if (options.collapsed === true) {
+    const collapseId = `card-${slug(options.title ?? 'card')}`;
+    const open = options.open === true;
+    return `<div class="card${cls}">
+  <div class="card-header${open ? '' : ' collapsed'}" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${collapseId}">
+    <div class="d-flex align-items-center w-100 gap-2">
+      ${titleHtml}
+      ${subtitleHtml}
+      <span class="btn btn-sm btn-outline-secondary ms-auto" aria-hidden="true">${icon('chevron-down')}</span>
+    </div>
+  </div>
+  <div id="${collapseId}" class="collapse${open ? ' show' : ''}">
+    <div class="card-body">${options.body}</div>
+  </div>
+  ${footer}
+</div>`;
+  }
   const header =
     options.title === undefined && options.subtitle === undefined
       ? ''
-      : `<div class="card-header">${titleHtml}${options.subtitle === undefined ? '' : `<div class="card-subtitle ms-auto">${esc(options.subtitle)}</div>`}</div>`;
-  const footer = options.footer === undefined ? '' : `<div class="card-footer">${options.footer}</div>`;
-  return `<div class="card">${header}<div class="card-body">${options.body}</div>${footer}</div>`;
+      : `<div class="card-header">${titleHtml}${subtitleHtml}</div>`;
+  return `<div class="card${cls}">${header}<div class="card-body">${options.body}</div>${footer}</div>`;
 }
 
 export interface StatCard {
@@ -40,7 +73,7 @@ export function statGrid(items: readonly StatCard[]): string {
   const cards = items
     .map((item) => {
       const cls = item.cls === undefined ? '' : item.cls;
-      return `<div class="col-6 col-sm-4 col-lg"><div class="card card-sm"><div class="card-body"><div class="text-secondary text-uppercase fs-6">${esc(item.label)}</div><div class="h3 mb-0 ${esc(cls)}">${esc(item.value)}</div></div></div></div>`;
+      return `<div class="col-6 col-sm-4 col-lg d-flex"><div class="card card-sm h-100 w-100"><div class="card-body"><div class="text-secondary text-uppercase fs-6">${esc(item.label)}</div><div class="h3 mb-0 ${esc(cls)}">${esc(item.value)}</div></div></div></div>`;
     })
     .join('');
   return `<div class="row row-cards">${cards}</div>`;
@@ -50,6 +83,36 @@ export function table(headers: readonly string[], rowsHtml: string, className?: 
   const thead = headers.map((header) => `<th>${esc(header)}</th>`).join('');
   const cls = className === undefined ? '' : ` ${className}`;
   return `<div class="table-responsive"><table class="table table-vcenter card-table${cls}"><thead><tr>${thead}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+}
+
+export interface SortHeader {
+  readonly label: string;
+  readonly sortType?: 'number';
+  readonly metric?: string;
+  readonly defaultSort?: 'asc' | 'desc';
+}
+
+// A client-sortable table. The inline script in the shell sorts the rows
+// on header click and highlights the active column.
+export function sortableTable(
+  headers: readonly SortHeader[],
+  rowsHtml: string,
+  className?: string,
+  pageSize?: number,
+  id?: string
+): string {
+  const ths = headers
+    .map((header) => {
+      const type = header.sortType === undefined ? 'text' : header.sortType;
+      const metric = header.metric === undefined ? '' : ` data-metric="${esc(header.metric)}"`;
+      const def = header.defaultSort === undefined ? '' : ` data-default-sort="${header.defaultSort}"`;
+      return `<th data-sort-type="${type}"${metric}${def}>${esc(header.label)}<span class="sort-indicators" aria-hidden="true"><span class="sort-asc">▲</span><span class="sort-desc">▼</span></span></th>`;
+    })
+    .join('');
+  const cls = className === undefined ? '' : ` ${className}`;
+  const page = pageSize === undefined ? '' : ` data-page-size="${pageSize}"`;
+  const tableId = id === undefined ? '' : ` id="${esc(id)}"`;
+  return `<div class="table-responsive"><table class="table table-vcenter card-table${cls}"${tableId} data-sortable${page}><thead><tr>${ths}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
 }
 
 const TONE_ALERT: Record<Tone, string> = {
@@ -132,14 +195,6 @@ export function icon(name: string): string {
   return `<span class="ti ti-${name}"></span>`;
 }
 
-const TONE_BG: Record<Tone, string> = {
-  green: 'bg-green',
-  red: 'bg-red',
-  yellow: 'bg-yellow',
-  blue: 'bg-blue',
-  gray: 'bg-secondary',
-};
-
 export function trendBadge(deltaPct: number | null): string {
   if (deltaPct === null) {
     return '';
@@ -160,12 +215,21 @@ export interface KpiCard {
   readonly tone?: string;
 }
 
-const TONE_STATUS: Record<Tone, string> = {
-  green: 'green',
-  red: 'red',
-  yellow: 'yellow',
-  blue: 'blue',
-  gray: 'secondary',
+// A status renders as a check, cross or warning instead of a live dot.
+const STATUS_ICON: Record<Tone, string> = {
+  green: 'text-green',
+  red: 'text-red',
+  yellow: 'text-yellow',
+  blue: 'text-blue',
+  gray: 'text-secondary',
+};
+
+const STATUS_ICON_NAME: Record<Tone, string> = {
+  green: 'check',
+  red: 'x',
+  yellow: 'alert-triangle',
+  blue: 'info-circle',
+  gray: 'minus',
 };
 
 export function kpiGrid(items: readonly KpiCard[]): string {
@@ -194,7 +258,7 @@ export function datagrid(items: readonly DataGridItem[]): string {
       const status =
         item.status === undefined
           ? ''
-          : ` <span class="status status-${TONE_STATUS[item.status]}"><span class="status-dot"></span></span>`;
+          : ` <span class="${STATUS_ICON[item.status]}">${icon(STATUS_ICON_NAME[item.status])}</span>`;
       return `<div class="datagrid-item"><div class="datagrid-title">${esc(item.title)}</div><div class="datagrid-content">${esc(item.content)}${status}</div></div>`;
     })
     .join('');
@@ -202,23 +266,49 @@ export function datagrid(items: readonly DataGridItem[]): string {
 }
 
 export interface TimelineItem {
-  readonly time: string;
+  // One of '+', '-' or '~'. It colors the change direction next to the
+  // product.
+  readonly sign: string;
   readonly text: string;
   readonly tone: Tone;
+  // A spacer separates two item sections (for example sold from added).
+  readonly spacer?: boolean;
 }
 
-export function timeline(items: readonly TimelineItem[]): string {
-  if (items.length === 0) {
+export interface TimelineGroup {
+  readonly label: string;
+  readonly items: readonly TimelineItem[];
+}
+
+const TONE_TEXT: Record<Tone, string> = {
+  green: 'text-green',
+  red: 'text-red',
+  yellow: 'text-yellow',
+  blue: 'text-blue',
+  gray: 'text-secondary',
+};
+
+// The seed label renders once per group, not once per item. Each item
+// shows its sign with a color and its text.
+export function timeline(groups: readonly TimelineGroup[]): string {
+  if (groups.length === 0) {
     return '';
   }
-  const blocks = items
+  const blocks = groups
     .map(
-      (item) => `<div class="timeline-item">
-  <div class="timeline-icon ${TONE_BG[item.tone]}">${icon('point')}</div>
+      (group) => `<div class="timeline-group">
+  <div class="timeline-group-label">${esc(group.label)}</div>
+  ${group.items
+    .map((item) =>
+      item.spacer === true
+        ? '<div class="timeline-spacer"></div>'
+        : `<div class="timeline-item">
   <div class="timeline-content">
-    <div class="timeline-time">${esc(item.time)}</div>
-    <div>${item.text}</div>
+    <div><span class="fw-bold ${TONE_TEXT[item.tone]}">${esc(item.sign)}</span> ${item.text}</div>
   </div>
+</div>`
+    )
+    .join('')}
 </div>`
     )
     .join('');
@@ -249,5 +339,5 @@ export function tabs(containerId: string, items: readonly TabItem[]): string {
 }
 
 export function money(amount: number): string {
-  return amount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${amount.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`;
 }

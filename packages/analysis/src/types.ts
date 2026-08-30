@@ -13,6 +13,8 @@ export interface VariantState {
   readonly regularPrice: number | null;
   readonly available: boolean;
   readonly productUrl?: string | null;
+  readonly productTitle?: string | null;
+  readonly variantTitle?: string | null;
 }
 
 export interface Snapshot {

@@ -15,6 +15,8 @@ class MemoryStorage implements Storage {
   events: StockEvent[] = [];
   seriesPoints: SeriesPoint[] = [];
   productUrls: Map<string, string> = new Map();
+  productTitles: Map<string, string> = new Map();
+  variantTitles: Map<string, string> = new Map();
 
   async writeSnapshot(snapshot: Snapshot): Promise<void> {
     this.snapshots.push(snapshot);
@@ -39,8 +41,22 @@ class MemoryStorage implements Storage {
     );
   }
 
-  async readProductUrls(_shop: string): Promise<Map<string, string>> {
-    return this.productUrls;
+  async readShopNames(_shop: string): Promise<import('../../../../backend/src/services/storage.ts').ShopNames> {
+    return { productUrls: this.productUrls, productTitles: this.productTitles, variantTitles: this.variantTitles };
+  }
+
+  async upsertNames(
+    _shop: string,
+    products: readonly { productId: string; url: string; title: string }[],
+    variants: readonly { productId: string; variantId: string; title: string }[]
+  ): Promise<void> {
+    for (const product of products) {
+      this.productUrls.set(product.productId, product.url);
+      this.productTitles.set(product.productId, product.title);
+    }
+    for (const variant of variants) {
+      this.variantTitles.set(variant.variantId, variant.title);
+    }
   }
 
   async readShops(): Promise<string[]> {
@@ -486,7 +502,7 @@ describe('api /dashboard and /shop', () => {
     const html = await response.text();
     expect(html).toContain('/shop/mock');
     expect(html).toContain('tabler.min.css');
-    expect(html).toContain('1000,00');
+    expect(html).toContain('1000,00 zł');
   });
 
   it('renders the shop detail page', async () => {
@@ -508,7 +524,41 @@ describe('api /dashboard and /shop', () => {
     expect(html).toContain('Stan magazynowy');
   });
 
-  it('renders polish labels, no raw confidence and stock pagination', async () => {
+  it('renders product and variant titles when names are known', async () => {
+    const storage = new MemoryStorage();
+    storage.productUrls.set('p1', 'https://mock.pl/p1');
+    storage.productTitles.set('p1', 'FORGET ME NOT BUSTIER');
+    storage.variantTitles.set('v1', '65 / A');
+    storage.snapshots.push({
+      shop: 'mock.pl',
+      snapshotAt: '2026-08-28T04:00:00.000Z',
+      window: 'morning',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 1, price: 100, regularPrice: 100, available: true }],
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock?day=2026-08-28');
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('FORGET ME NOT BUSTIER');
+    expect(html).toContain('65 / A');
+  });
+
+  it('blocks a future day in the shop day selector', async () => {
+    const storage = new MemoryStorage();
+    storage.snapshots.push({
+      shop: 'mock.pl',
+      snapshotAt: '2026-08-28T04:00:00.000Z',
+      window: 'morning',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock?day=2099-01-01');
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).not.toContain('value="2099-01-01"');
+  });
+
+  it('renders polish labels, no raw confidence and sortable stock tables', async () => {
     const storage = new MemoryStorage();
     const variants: Snapshot['variants'] = [];
     for (let i = 1; i <= 60; i += 1) {
@@ -539,11 +589,10 @@ describe('api /dashboard and /shop', () => {
     expect(html).not.toContain('>exact<');
     expect(html).toContain('ApexCharts');
     expect(html).toContain('chart-shop-trend');
-    expect(html).toContain('pagination');
-    expect(html).toContain('aria-current="page"');
-    expect(html).toContain('Pokazano');
+    expect(html).toContain('data-sortable');
+    expect(html).toContain('data-page-size="25"');
+    expect(html).toContain('Morning 06:00');
     expect(html).toContain('<a href="https://mock.pl/p1"');
-    expect(html).toContain('data-bs-target="#window-morning"');
   });
 
   it('returns 404 for an unknown shop', async () => {

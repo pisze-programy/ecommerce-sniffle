@@ -1,13 +1,9 @@
 import { Hono } from 'hono';
 import type { ProviderConfig } from '@ecommerce-sniffle/providers';
-import {
-  COUNTDOWN_DOMAINS,
-  calculateShopSummary,
-  isCountdownShop,
-  topSellingProducts,
-} from '@ecommerce-sniffle/analysis';
+import { calculateShopSummary, isCountdownShop, topSellingProducts } from '@ecommerce-sniffle/analysis';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
+import { toPlnEvents, toPlnPoint, toPlnSnapshot } from '../services/currency.ts';
 import {
   alert,
   badge,
@@ -24,12 +20,19 @@ import {
 import type { DataGridItem, KpiCard } from '../services/report-components.ts';
 import { addDays, dayAfter, dayBefore, fmtDate, pctChange } from '../services/report/format.ts';
 import { shopifyVariantUrl } from '../services/report/links.ts';
-import { buildDailyConfig, buildTrendConfig, buildTrendSeries, chartBlock } from '../services/report/charts.ts';
+import {
+  buildDailyConfig,
+  buildPriceDistribution,
+  buildPriceDistributionConfig,
+  buildTrendConfig,
+  buildTrendSeries,
+  chartBlock,
+} from '../services/report/charts.ts';
 import { renderStock, stockQs } from '../services/report/stock.ts';
 import type { StockParams } from '../services/report/stock.ts';
-import { renderChangesWindows, renderDayComparison, renderTimeline } from '../services/report/changes.ts';
+import { renderChangesWindows, renderDayComparison } from '../services/report/changes.ts';
 import { renderLowStock, renderPriceDrops, renderTopSellers } from '../services/report/overview.ts';
-import { renderShopCard } from '../services/report/dashboard.ts';
+import { renderShopsTable } from '../services/report/dashboard.ts';
 import type { ShopCard } from '../services/report/dashboard.ts';
 import { pageShell } from '../services/report/shell.ts';
 import { variantCell } from '../services/report/links.ts';
@@ -46,34 +49,67 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
 
-    const cards: ShopCard[] = await Promise.all(
+    const cardRows = await Promise.all(
       enabled.map(async (module) => {
         const config = module.config;
-        const [latest, dailyRange] = await Promise.all([
+        const currency = config.currency;
+        const [latestRaw, dailyRangeRaw] = await Promise.all([
           storage.readLatestSnapshot(config.domain),
-          storage.readShopDailyRange(config.domain, dayBefore(today), today),
+          storage.readShopDailyRange(config.domain, addDays(today, -13), today),
         ]);
+        const latest = latestRaw === null ? null : toPlnSnapshot(latestRaw, currency);
+        const dailyRange = dailyRangeRaw.map((point) => toPlnPoint(point, currency));
         const summary = calculateShopSummary(latest === null ? [] : [latest]);
         const latestDay = latest === null ? null : latest.snapshotAt.slice(0, 10);
         const todayPoint = dailyRange.find((point) => point.day === today) ?? null;
         const prevPoint = dailyRange.find((point) => point.day === dayBefore(today)) ?? null;
         const fresh =
           latest === null ? false : dayBefore(now.toISOString().slice(0, 10)) <= latest.snapshotAt.slice(0, 10);
-        return {
+        const countdown = isCountdownShop(config.domain);
+        const card: ShopCard = {
           id: config.id,
           domain: config.domain,
           platform: config.platform,
           latestDay,
           fresh,
-          countdown: isCountdownShop(config.domain),
+          countdown,
           sentinel: summary.bias.sentinelVariants,
           suspect: todayPoint === null ? 0 : todayPoint.suspect,
           summary,
           today: todayPoint,
           prev: prevPoint,
         };
+        return { card, countdown, dailyRange };
       })
     );
+    const cards = cardRows.map((row) => row.card);
+
+    const portfolioMap = new Map<string, { sold: number; soldValue: number; restocked: number }>();
+    for (const row of cardRows) {
+      if (row.countdown) {
+        continue;
+      }
+      for (const point of row.dailyRange) {
+        let entry = portfolioMap.get(point.day);
+        if (entry === undefined) {
+          entry = { sold: 0, soldValue: 0, restocked: 0 };
+          portfolioMap.set(point.day, entry);
+        }
+        entry.sold += point.sold;
+        entry.soldValue += point.soldValue;
+        entry.restocked += point.restocked;
+      }
+    }
+    const portfolio = [...portfolioMap.entries()]
+      .map(([day, entry]) => ({
+        day,
+        sold: entry.sold,
+        soldValue: Math.round(entry.soldValue * 100) / 100,
+        restocked: entry.restocked,
+        restockValue: 0,
+        suspect: 0,
+      }))
+      .sort((a, b) => (a.day < b.day ? -1 : 1));
 
     const normalCards = cards.filter((card) => !card.countdown);
     const sumValue = normalCards.reduce((acc, card) => acc + card.summary.totalValue, 0);
@@ -85,9 +121,7 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       0
     );
     const sumRestockPrev = normalCards.reduce((acc, card) => acc + (card.prev === null ? 0 : card.prev.restocked), 0);
-    const countdownCount = cards.filter((card) => card.countdown).length;
 
-    const portfolio = await storage.readPortfolioDaily(addDays(today, -13), today, COUNTDOWN_DOMAINS);
     const portfolioLabels = portfolio.map((point) => point.day.slice(5));
     const portfolioValueChart = chartBlock('chart-portfolio-value', {
       type: 'area',
@@ -159,27 +193,15 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       },
     ];
 
-    const countdownNote =
-      countdownCount === 0
-        ? ''
-        : alert(
-            `Wartości zbiorcze pomijają ${countdownCount} sklepy countdown (${COUNTDOWN_DOMAINS.map((domain) => esc(domain)).join(', ')}), bo ich stan liczy od sentinela w dół.`,
-            'yellow',
-            'Uwaga o sentinelach'
-          );
-
-    const shopCards = cards.map(renderShopCard).join('');
-
     const body = `
 ${kpiGrid(kpis)}
-${countdownNote}
 <div class="row row-deck row-cards mt-2">
-  <div class="col-12 col-lg-6">${card({ title: 'Wartość sprzedaży — 14 dni', body: portfolioValueChart })}</div>
-  <div class="col-12 col-lg-6">${card({ title: 'Sprzedane vs dostawione — 14 dni', body: portfolioMixChart })}</div>
-  <div class="col-12 col-lg-6">${card({ title: 'Sprzedane 24h — top 10', body: soldChart })}</div>
-  <div class="col-12 col-lg-6">${card({ title: 'Alerty', body: alertsTable })}</div>
+  <div class="col-12">${card({ title: 'Wartość sprzedaży — 14 dni', body: portfolioValueChart, collapsed: true })}</div>
+  <div class="col-12">${card({ title: 'Sprzedane vs dostawione — 14 dni', body: portfolioMixChart, collapsed: true })}</div>
+  <div class="col-12">${card({ title: 'Sprzedane 24h — top 10', body: soldChart, collapsed: true })}</div>
+  <div class="col-12">${card({ title: 'Alerty', body: alertsTable, collapsed: true })}</div>
 </div>
-<div class="row row-cards mt-2">${shopCards}</div>`;
+${card({ title: 'Sklepy', body: renderShopsTable(cards) })}`;
     return c.html(pageShell('ecommerce-sniffle — dashboard', body));
   });
 
@@ -238,23 +260,36 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     }
     const config: ProviderConfig = module.config;
     const domain = config.domain;
+    const nowDay = new Date().toISOString().slice(0, 10);
     const days = await storage.readAvailableDays(domain);
+    const validDays = days.filter((d) => d < nowDay);
     const dayParam = c.req.query('day');
-    const day = dayParam === undefined ? (days[0] === undefined ? '' : days[0]) : dayParam;
-    const [latest, urlMap, maxQuantity, dailyRange] = await Promise.all([
+    const day =
+      dayParam === undefined || dayParam >= nowDay || !validDays.includes(dayParam)
+        ? validDays[0] === undefined
+          ? ''
+          : validDays[0]
+        : dayParam;
+    const [latestRaw, names, maxQuantity, dailyRangeRaw] = await Promise.all([
       storage.readLatestSnapshot(domain),
-      storage.readProductUrls(domain),
+      storage.readShopNames(domain),
       storage.readMaxObservedQuantity(domain),
       day === '' ? Promise.resolve([]) : storage.readShopDailyRange(domain, addDays(day, -13), day),
     ]);
+    const currency = config.currency;
+    const latest = latestRaw === null ? null : toPlnSnapshot(latestRaw, currency);
+    const dailyRange = dailyRangeRaw.map((point) => toPlnPoint(point, currency));
     const summary = calculateShopSummary(latest === null ? [] : [latest]);
     const todayPoint = dailyRange.find((point) => point.day === day) ?? null;
     const prevPoint = dailyRange.find((point) => point.day === dayBefore(day)) ?? null;
-    const morningEvents = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'morning');
-    const eveningEvents = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'evening');
+    const morningRaw = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'morning');
+    const eveningRaw = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'evening');
+    const morningEvents = toPlnEvents(morningRaw, currency);
+    const eveningEvents = toPlnEvents(eveningRaw, currency);
     const from = day === '' ? undefined : addDays(day, -30);
     const to = day === '' ? undefined : addDays(day, 1);
-    const snapshots = day === '' ? [] : await storage.readSnapshots(domain, from, to);
+    const snapshotsRaw = day === '' ? [] : await storage.readSnapshots(domain, from, to);
+    const snapshots = snapshotsRaw.map((snapshot) => toPlnSnapshot(snapshot, currency));
     const topRows = topSellingProducts(snapshots, { maxQuantity, limit: 10 });
 
     const trendSeries = buildTrendSeries(snapshots);
@@ -275,17 +310,19 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       low: lowParam === undefined ? '' : lowParam,
     };
 
-    const dayOptions = days
+    const dayOptions = validDays
       .map((d) => `<option value="${esc(d)}"${d === day ? ' selected' : ''}>${esc(d)}</option>`)
       .join('');
+    const prevDay = day === '' ? '' : dayBefore(day);
+    const nextDay = day === '' ? '' : dayAfter(day);
     const prevLink =
-      day === ''
-        ? ''
-        : `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(dayBefore(day), {}))}" aria-label="Poprzedni dzień">${icon('chevron-left')}</a>`;
+      day !== '' && prevDay !== '' && validDays.includes(prevDay)
+        ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(prevDay, {}))}" aria-label="Poprzedni dzień">${icon('chevron-left')}</a>`
+        : '';
     const nextLink =
-      day === ''
-        ? ''
-        : `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(dayAfter(day), {}))}" aria-label="Następny dzień">${icon('chevron-right')}</a>`;
+      day !== '' && nextDay !== '' && validDays.includes(nextDay)
+        ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(nextDay, {}))}" aria-label="Następny dzień">${icon('chevron-right')}</a>`
+        : '';
     const dayControl = `<div class="d-flex align-items-center gap-2 ms-auto">
   ${prevLink}
   <select name="day" id="day" class="form-select w-auto" aria-label="Wybierz dzień" onchange="location.href='${esc(stockQs('', {}))}&day='+encodeURIComponent(this.value)">
@@ -316,6 +353,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       { title: 'Stan', content: `${summary.totalItems.toLocaleString('pl-PL')} szt` },
       { title: 'Wartość', content: money(summary.totalValue) },
       { title: 'Unikalne produkty', content: `${summary.uniqueProducts}` },
+      { title: 'Warianty', content: `${summary.variantCount}` },
       { title: 'Średnia cena', content: summary.meanPrice === null ? '--' : money(summary.meanPrice) },
       { title: 'Mediana ceny', content: summary.medianPrice === null ? '--' : money(summary.medianPrice) },
       {
@@ -327,27 +365,70 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
 
     const headerBody = `${datagrid(headerData)}<div class="mt-2">${badges.join('')}</div>`;
 
+    const pricesByProduct = new Map<string, number>();
+    if (latest !== null) {
+      for (const variant of latest.variants) {
+        if (variant.price === null) {
+          continue;
+        }
+        const current = pricesByProduct.get(variant.productId);
+        if (current === undefined || variant.price < current) {
+          pricesByProduct.set(variant.productId, variant.price);
+        }
+      }
+    }
+    const prices = [...pricesByProduct.values()];
+    const priceDistribution = buildPriceDistribution(prices);
+    const priceDistributionCard =
+      priceDistribution.length === 0
+        ? ''
+        : card({
+            title: 'Rozkład cen',
+            body: chartBlock('chart-price-dist', buildPriceDistributionConfig(priceDistribution)),
+          });
+
     const lowThresholdParam = c.req.query('lowstock');
     const lowThreshold = lowThresholdParam === undefined ? 5 : Number(lowThresholdParam);
 
+    const daySections: string[] = [];
+    if (day !== '') {
+      daySections.push(renderDayComparison(day, todayPoint, prevPoint));
+      daySections.push(
+        card({
+          title: 'Trendy',
+          body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildTrendConfig(trendSeries))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(dailyRange))}</div></div>`,
+          collapsed: true,
+        })
+      );
+      daySections.push(
+        card({
+          title: 'Zmiany',
+          body: renderChangesWindows(day, morningEvents, eveningEvents, names, config.platform, maxQuantity),
+        })
+      );
+      daySections.push(
+        card({
+          title: `Niski stan (1–${lowThreshold})`,
+          body: renderLowStock(latest, names, config.platform, lowThreshold),
+          collapsed: true,
+        })
+      );
+      daySections.push(
+        card({ title: 'Obniżki cen', body: renderPriceDrops(latest, names, config.platform), collapsed: true })
+      );
+    }
     const body = `
-<div class="page-header d-flex flex-wrap align-items-center mb-3">
+<div class="page-header d-flex flex-row flex-wrap align-items-center justify-content-start mb-3">
   ${breadcrumb([{ label: 'dashboard', href: '/dashboard' }, { label: config.id }])}
-  <div class="ms-auto d-flex align-items-center gap-2 mt-2 mt-md-0">
-    ${dayControl}
-  </div>
 </div>
 <h1 class="mb-3">${esc(config.id)} <span class="text-secondary fs-4">${esc(domain)} · ${esc(config.platform)}</span></h1>
 ${countdownNote}
 ${card({ title: 'Podsumowanie sklepu', body: headerBody })}
-${day === '' ? '' : renderDayComparison(day, todayPoint, prevPoint)}
-${day === '' ? '' : card({ title: 'Trendy', body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildTrendConfig(trendSeries))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(dailyRange))}</div></div>` })}
-${day === '' ? '' : card({ title: 'Zmiany', body: renderChangesWindows(day, morningEvents, eveningEvents, urlMap, config.platform, maxQuantity) })}
-${day === '' ? '' : card({ title: 'Oś czasu zdarzeń', body: renderTimeline(day, morningEvents, eveningEvents, urlMap) })}
-${day === '' ? '' : card({ title: `Niski stan (1–${lowThreshold})`, body: renderLowStock(latest, urlMap, config.platform, lowThreshold) })}
-${day === '' ? '' : card({ title: 'Obniżki cen', body: renderPriceDrops(latest, urlMap, config.platform) })}
-${card({ title: 'Top sprzedawane (ostatnie 30 dni)', body: renderTopSellers(topRows, urlMap) })}
-${card({ title: 'Stan magazynowy (ostatni snapshot)', body: renderStock({ domain, platform: config.platform }, latest, urlMap, stockParams) })}`;
+${priceDistributionCard}
+<div class="d-flex justify-content-end py-3">${dayControl}</div>
+${daySections.join('\n')}
+${card({ title: 'Top sprzedawane (ostatnie 30 dni)', body: renderTopSellers(topRows, names), collapsed: true })}
+${card({ title: 'Stan magazynowy (ostatni snapshot)', body: renderStock({ domain, platform: config.platform }, latest, names, stockParams), collapsed: true })}`;
     return c.html(pageShell(`ecommerce-sniffle — ${config.id}`, body));
   });
 
@@ -361,17 +442,19 @@ ${card({ title: 'Stan magazynowy (ostatni snapshot)', body: renderStock({ domain
     const storage = c.get('storage');
     const module = modules.find((entry) => entry.config.enabled && entry.config.domain === shop);
     const platform = module === undefined ? 'custom' : module.config.platform;
-    const [latest, urlMap] = await Promise.all([storage.readLatestSnapshot(shop), storage.readProductUrls(shop)]);
-    if (latest === null) {
+    const currency = module === undefined ? undefined : module.config.currency;
+    const [latestRaw, names] = await Promise.all([storage.readLatestSnapshot(shop), storage.readShopNames(shop)]);
+    if (latestRaw === null) {
       return c.text('no snapshot', 404);
     }
+    const latest = toPlnSnapshot(latestRaw, currency);
     const variants = latest.variants.filter((variant) => variant.productId === productId);
     if (variants.length === 0) {
       return c.text('no variants', 404);
     }
     const rows = variants
       .map((variant) => {
-        const cell = variantCell(urlMap, productId, variant.variantId, platform);
+        const cell = variantCell(names, productId, variant.variantId, platform);
         return `<tr><td>${cell}</td><td>${variant.quantity === null ? '-' : esc(variant.quantity)}</td><td>${variant.price === null ? '-' : money(variant.price)}</td></tr>`;
       })
       .join('');

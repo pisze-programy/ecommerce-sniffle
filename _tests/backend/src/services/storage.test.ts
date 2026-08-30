@@ -118,25 +118,66 @@ describe('createStorage', () => {
     await storage.writeSnapshot({
       ...snapshot(),
       variants: [
-        variant({ productUrl: 'https://forcer.pl/products/set-air' }),
+        variant({ productUrl: 'https://forcer.pl/products/set-air', productTitle: 'SET AIR' }),
         variant({ variantId: 'v2', productUrl: 'https://forcer.pl/products/set-air' }),
       ],
     });
-    const upsert = db.calls.filter((call) => call.query.startsWith('INSERT OR REPLACE INTO products'));
+    const upsert = db.calls.filter((call) => call.query.startsWith('INSERT INTO products'));
     expect(upsert).toHaveLength(1);
-    expect(upsert[0]?.args).toEqual(['forcer.pl', 'p1', 'https://forcer.pl/products/set-air']);
+    expect(upsert[0]?.args).toEqual(['forcer.pl', 'p1', 'https://forcer.pl/products/set-air', 'SET AIR']);
   });
 
-  it('reads product urls into a map', async () => {
+  it('upserts variant titles per variant', async () => {
+    const db = new MockD1(() => ({ results: [] }));
+    const storage = createStorage(db, silentLogger());
+    await storage.writeSnapshot({
+      ...snapshot(),
+      variants: [variant({ productUrl: 'https://forcer.pl/products/set-air', variantTitle: 'Black / S' })],
+    });
+    const upsert = db.calls.filter((call) => call.query.startsWith('INSERT INTO variants'));
+    expect(upsert).toHaveLength(1);
+    expect(upsert[0]?.args).toEqual(['forcer.pl', 'p1', 'v1', 'Black / S']);
+  });
+
+  it('skips variant rows without a title', async () => {
+    const db = new MockD1(() => ({ results: [] }));
+    const storage = createStorage(db, silentLogger());
+    await storage.writeSnapshot(snapshot());
+    const upsert = db.calls.filter((call) => call.query.startsWith('INSERT INTO variants'));
+    expect(upsert).toHaveLength(0);
+  });
+
+  it('reads shop names into maps', async () => {
     const db = new MockD1((query) => {
-      if (query.startsWith('SELECT product_id, url FROM products')) {
-        return { results: [{ product_id: 'p1', url: 'https://forcer.pl/products/set-air' }] };
+      if (query.startsWith('SELECT product_id, url, title FROM products')) {
+        return { results: [{ product_id: 'p1', url: 'https://forcer.pl/products/set-air', title: 'SET AIR' }] };
+      }
+      if (query.startsWith('SELECT variant_id, title FROM variants')) {
+        return { results: [{ variant_id: 'v1', title: 'Black / S' }] };
       }
       return { results: [] };
     });
     const storage = createStorage(db, silentLogger());
-    const map = await storage.readProductUrls('forcer.pl');
-    expect(map.get('p1')).toBe('https://forcer.pl/products/set-air');
+    const names = await storage.readShopNames('forcer.pl');
+    expect(names.productUrls.get('p1')).toBe('https://forcer.pl/products/set-air');
+    expect(names.productTitles.get('p1')).toBe('SET AIR');
+    expect(names.variantTitles.get('v1')).toBe('Black / S');
+  });
+
+  it('upserts names without writing a snapshot', async () => {
+    const db = new MockD1(() => ({ results: [] }));
+    const storage = createStorage(db, silentLogger());
+    await storage.upsertNames(
+      'forcer.pl',
+      [{ productId: 'p1', url: 'https://forcer.pl/products/set-air', title: 'SET AIR' }],
+      [{ productId: 'p1', variantId: 'v1', title: 'Black / S' }]
+    );
+    const productUpsert = db.calls.filter((call) => call.query.startsWith('INSERT INTO products'));
+    const variantUpsert = db.calls.filter((call) => call.query.startsWith('INSERT INTO variants'));
+    expect(productUpsert).toHaveLength(1);
+    expect(productUpsert[0]?.args).toEqual(['forcer.pl', 'p1', 'https://forcer.pl/products/set-air', 'SET AIR']);
+    expect(variantUpsert).toHaveLength(1);
+    expect(variantUpsert[0]?.args).toEqual(['forcer.pl', 'p1', 'v1', 'Black / S']);
   });
 
   it('reads the latest snapshot', async () => {

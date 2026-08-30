@@ -225,5 +225,65 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     return c.json({ ok: true, shops: shops.length, days });
   });
 
+  api.post('/admin/upsert-names', async (c) => {
+    if (!isAuthorized(c)) {
+      c.get('logger').warn('upsert-names.unauthorized');
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const storage = c.get('storage');
+    const logger = c.get('logger');
+    const body = await c.req.json().catch(() => null);
+    const record = typeof body === 'object' && body !== null ? (body as Readonly<Record<string, unknown>>) : null;
+    const shop = record === null ? null : record['shop'];
+    const rawProducts = record === null ? null : record['products'];
+    const rawVariants = record === null ? null : record['variants'];
+    if (typeof shop !== 'string' || shop.length === 0 || !Array.isArray(rawProducts) || !Array.isArray(rawVariants)) {
+      return c.json({ error: 'invalid body' }, 400);
+    }
+    const products: Array<{ productId: string; url: string; title: string }> = [];
+    for (const raw of rawProducts) {
+      if (typeof raw !== 'object' || raw === null) {
+        continue;
+      }
+      const entry = raw as Readonly<Record<string, unknown>>;
+      if (typeof entry['productId'] !== 'string' || typeof entry['url'] !== 'string') {
+        continue;
+      }
+      const title = typeof entry['title'] === 'string' ? entry['title'] : '';
+      if (title.length === 0) {
+        continue;
+      }
+      products.push({ productId: entry['productId'], url: entry['url'], title });
+    }
+    const variants: Array<{ productId: string; variantId: string; title: string }> = [];
+    for (const raw of rawVariants) {
+      if (typeof raw !== 'object' || raw === null) {
+        continue;
+      }
+      const entry = raw as Readonly<Record<string, unknown>>;
+      if (
+        typeof entry['productId'] !== 'string' ||
+        typeof entry['variantId'] !== 'string' ||
+        typeof entry['title'] !== 'string'
+      ) {
+        continue;
+      }
+      const title = entry['title'];
+      if (title.length === 0 || title === 'default' || title === 'Default Title') {
+        continue;
+      }
+      variants.push({ productId: entry['productId'], variantId: entry['variantId'], title });
+    }
+    try {
+      await storage.upsertNames(shop, products, variants);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('upsert-names failed', { shop, error: message });
+      return c.json({ ok: false, error: message }, 500);
+    }
+    logger.info('upsert-names done', { shop, products: products.length, variants: variants.length });
+    return c.json({ ok: true, products: products.length, variants: variants.length });
+  });
+
   return api;
 }

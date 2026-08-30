@@ -48,6 +48,8 @@ function parseVariantState(data: unknown): VariantState | null {
   } else {
     return null;
   }
+  const productTitle = typeof obj['productTitle'] === 'string' ? obj['productTitle'] : null;
+  const variantTitle = typeof obj['variantTitle'] === 'string' ? obj['variantTitle'] : null;
   return {
     productId: obj['productId'],
     variantId: obj['variantId'],
@@ -56,6 +58,8 @@ function parseVariantState(data: unknown): VariantState | null {
     regularPrice,
     available: obj['available'],
     productUrl,
+    productTitle,
+    variantTitle,
   };
 }
 

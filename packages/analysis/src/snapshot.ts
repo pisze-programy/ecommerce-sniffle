@@ -9,7 +9,7 @@ export function currentWindow(at: Date = new Date()): SnapshotWindow {
   return 'evening';
 }
 
-function variantToState(product: { id: string; url: string }, variant: Variant): VariantState {
+function variantToState(product: { id: string; url: string; title: string }, variant: Variant): VariantState {
   return {
     productId: product.id,
     variantId: variant.id,
@@ -18,6 +18,8 @@ function variantToState(product: { id: string; url: string }, variant: Variant):
     regularPrice: variant.regularPrice === null ? null : variant.regularPrice.amount,
     available: variant.available,
     productUrl: product.url,
+    productTitle: product.title,
+    variantTitle: variant.title,
   };
 }
 

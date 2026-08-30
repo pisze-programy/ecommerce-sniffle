@@ -47,6 +47,19 @@ describe('card', () => {
     expect(html).not.toContain('card-header');
     expect(html).toContain('card-body');
   });
+
+  it('starts the body collapsed when requested', () => {
+    const html = card({ title: 'Oś czasu zdarzeń', body: '<p>b</p>', collapsed: true });
+    expect(html).toContain('data-bs-toggle="collapse"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('card-o-czasu-zdarze');
+    expect(html).not.toContain('class="collapse show"');
+  });
+
+  it('keeps the body visible by default', () => {
+    const html = card({ title: 'Zmiany', body: '<p>b</p>' });
+    expect(html).not.toContain('data-bs-toggle="collapse"');
+  });
 });
 
 describe('statGrid', () => {
@@ -127,9 +140,10 @@ describe('tabs', () => {
 });
 
 describe('money', () => {
-  it('formats with two decimals and the pl locale', () => {
-    expect(money(3031)).toContain('3031,00');
-    expect(money(0)).toBe('0,00');
+  it('formats with two decimals, the pl locale and the currency', () => {
+    expect(money(3031)).toContain('031,00');
+    expect(money(3031)).toContain('zł');
+    expect(money(0)).toBe('0,00 zł');
   });
 });
 
@@ -177,19 +191,38 @@ describe('datagrid', () => {
   it('renders items with an optional status dot', () => {
     const html = datagrid([{ title: 'Stan', content: '1 000', status: 'green' }]);
     expect(html).toContain('datagrid-item');
-    expect(html).toContain('status-dot');
+    expect(html).toContain('ti-check');
   });
 });
 
 describe('timeline', () => {
-  it('renders timeline items', () => {
-    const html = timeline([{ time: '18:00', text: 'Dostawiono 10 szt', tone: 'green' }]);
+  it('renders the group label once and the signed items', () => {
+    const html = timeline([{ label: 'Morning', items: [{ sign: '+', text: 'Dostawiono 10 szt', tone: 'green' }] }]);
+    expect(html).toContain('timeline-group');
+    expect(html).toContain('timeline-group-label');
+    expect(html).toContain('Morning');
     expect(html).toContain('timeline-item');
-    expect(html).toContain('timeline-time');
-    expect(html).toContain('bg-green');
+    expect(html).toContain('text-green');
+    expect(html).toContain('+');
+    expect(html).not.toContain('timeline-time');
+    expect(html).not.toContain('timeline-icon');
   });
 
-  it('renders nothing for no items', () => {
+  it('renders a spacer item between sections', () => {
+    const html = timeline([
+      {
+        label: 'Morning',
+        items: [
+          { sign: '-', text: 'Sprzedano 2 szt', tone: 'red' },
+          { sign: '', text: '', tone: 'gray', spacer: true },
+          { sign: '+', text: 'Dostawiono 1 szt', tone: 'green' },
+        ],
+      },
+    ]);
+    expect(html).toContain('timeline-spacer');
+  });
+
+  it('renders nothing for no groups', () => {
     expect(timeline([])).toBe('');
   });
 });

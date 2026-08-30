@@ -1,13 +1,9 @@
-import { badge, emptyState, esc, money, table } from '../report-components.ts';
+import { badge, emptyState, esc, money, sortableTable } from '../report-components.ts';
 import { productLink, variantCell } from './links.ts';
 import type { Snapshot } from '@ecommerce-sniffle/analysis';
+import type { ShopNames } from '../storage.ts';
 
-export function renderLowStock(
-  latest: Snapshot | null,
-  urlMap: Map<string, string>,
-  platform: string,
-  threshold: number
-): string {
+export function renderLowStock(latest: Snapshot | null, names: ShopNames, platform: string, threshold: number): string {
   if (latest === null) {
     return emptyState('Brak danych', 'Brak snapshotu.');
   }
@@ -18,16 +14,26 @@ export function renderLowStock(
     }
     const price = variant.price === null ? '-' : money(variant.price);
     rows.push(
-      `<tr><td>${productLink(urlMap, variant.productId)}</td><td>${variantCell(urlMap, variant.productId, variant.variantId, platform)}</td><td>${esc(variant.quantity)}</td><td>${esc(price)}</td></tr>`
+      `<tr><td>${productLink(names, variant.productId)}</td><td>${variantCell(names, variant.productId, variant.variantId, platform)}</td><td>${esc(variant.quantity)}</td><td>${esc(price)}</td></tr>`
     );
   }
   if (rows.length === 0) {
     return emptyState('Brak niskich stanów', `Żaden produkt nie ma ilości 1–${threshold}.`);
   }
-  return capTable(['produkt', 'wariant', 'ilość', 'cena'], rows, 'table-hover');
+  return sortableTable(
+    [
+      { label: 'Produkt' },
+      { label: 'Wariant' },
+      { label: 'Ilość', sortType: 'number' },
+      { label: 'Cena', sortType: 'number' },
+    ],
+    rows.join(''),
+    'table-hover',
+    50
+  );
 }
 
-export function renderPriceDrops(latest: Snapshot | null, urlMap: Map<string, string>, platform: string): string {
+export function renderPriceDrops(latest: Snapshot | null, names: ShopNames, platform: string): string {
   if (latest === null) {
     return emptyState('Brak danych', 'Brak snapshotu.');
   }
@@ -41,41 +47,64 @@ export function renderPriceDrops(latest: Snapshot | null, urlMap: Map<string, st
         ? 0
         : Math.round(((variant.regularPrice - variant.price) / variant.regularPrice) * 100);
     rows.push(
-      `<tr><td>${productLink(urlMap, variant.productId)}</td><td>${variantCell(urlMap, variant.productId, variant.variantId, platform)}</td><td>${money(variant.price)}</td><td>${money(variant.regularPrice)}</td><td>${badge(`-${dropPct}%`, 'red')}</td></tr>`
+      `<tr><td>${productLink(names, variant.productId)}</td><td>${variantCell(names, variant.productId, variant.variantId, platform)}</td><td>${money(variant.price)}</td><td>${money(variant.regularPrice)}</td><td>${badge(`-${dropPct}%`, 'red')}</td></tr>`
     );
   }
   if (rows.length === 0) {
     return emptyState('Brak obniżek', 'Żaden produkt nie ma ceny niższej od regularnej.');
   }
-  return capTable(['produkt', 'wariant', 'cena', 'cena regularna', 'rabat'], rows, 'table-hover');
-}
-
-function capTable(headers: readonly string[], rows: readonly string[], className: string): string {
-  const visible = rows.slice(0, 50);
-  const note =
-    rows.length <= 50 ? '' : `<p class="text-secondary fs-6 mt-1 mb-0">Pokazano 50 z ${rows.length} pozycji.</p>`;
-  return `${table(headers, visible.join(''), className)}${note}`;
+  return sortableTable(
+    [
+      { label: 'Produkt' },
+      { label: 'Wariant' },
+      { label: 'Cena', sortType: 'number' },
+      { label: 'Cena regularna', sortType: 'number' },
+      { label: 'Rabat', sortType: 'number' },
+    ],
+    rows.join(''),
+    'table-hover',
+    50
+  );
 }
 
 export function renderTopSellers(
   rows: readonly { productId: string; itemsSold: number; salesValue: number; countdown: boolean }[],
-  urlMap: Map<string, string>
+  names: ShopNames
 ): string {
   if (rows.length === 0) {
     return emptyState('Brak sprzedaży', 'W tym zakresie nie było żadnych zmian stanu.');
   }
-  const maxValue = rows.length === 0 ? 0 : rows[0]?.salesValue === undefined ? 0 : rows[0].salesValue;
+  const maxValue = rows[0]?.salesValue === undefined ? 0 : rows[0].salesValue;
   const bodyRows = rows
     .map((row, rank) => {
       const pct = maxValue === 0 ? 0 : Math.round((row.salesValue / maxValue) * 100);
       return `<tr>
   <td>${esc(rank + 1)}</td>
-  <td class="text-nowrap">${productLink(urlMap, row.productId)}${row.countdown ? ' ' + badge('countdown', 'yellow') : ''}</td>
+  <td class="text-nowrap">${productLink(names, row.productId)}${row.countdown ? ' ' + badge('countdown', 'yellow') : ''}</td>
   <td>${esc(row.itemsSold)}</td>
   <td>${money(row.salesValue)}</td>
-  <td><div class="progress progress-sm"><div class="progress-bar" style="width:${pct}%"></div></div></td>
+  <td><div class="progress progress-sm"><div class="progress-bar" style="width:${pct}%" data-sort-value="${pct}"></div></div></td>
 </tr>`;
     })
     .join('');
-  return table(['#', 'Produkt', 'Sprzedane (szt)', 'Wartość', 'Udział'], bodyRows, 'table-hover');
+  const toggle = `<div class="d-flex align-items-center gap-2 mb-2">
+  <span class="text-secondary fs-6">sortuj wg:</span>
+  <div class="btn-group btn-group-sm" data-top-metric-group>
+    <button class="btn btn-outline-secondary active" type="button" data-top-metric="value" data-table-target="#top-sellers-table">Wartość</button>
+    <button class="btn btn-outline-secondary" type="button" data-top-metric="qty" data-table-target="#top-sellers-table">Ilość</button>
+  </div>
+</div>`;
+  return `${toggle}${sortableTable(
+    [
+      { label: '#' },
+      { label: 'Produkt' },
+      { label: 'Sprzedane (szt)', sortType: 'number', metric: 'qty' },
+      { label: 'Wartość', sortType: 'number', metric: 'value', defaultSort: 'desc' },
+      { label: 'Udział', sortType: 'number' },
+    ],
+    bodyRows,
+    'table-hover',
+    undefined,
+    'top-sellers-table'
+  )}`;
 }

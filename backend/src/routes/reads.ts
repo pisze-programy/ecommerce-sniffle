@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
+import { toPlnSeriesPoint } from '../services/currency.ts';
 
 function utcDay(offsetDays: number): string {
   const date = new Date();
@@ -41,7 +42,11 @@ export function createReadsRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
       return c.json({ error: 'Missing shop query parameter' }, 400);
     }
     const productId = c.req.param('productId');
-    const series = await c.get('storage').readSeries(shop, productId);
+    const module = c.get('modules').find((entry) => entry.config.enabled && entry.config.domain === shop);
+    const currency = module === undefined ? undefined : module.config.currency;
+    const series = (await c.get('storage').readSeries(shop, productId)).map((point) =>
+      toPlnSeriesPoint(point, currency)
+    );
     return c.json({ shop, productId, series });
   });
 

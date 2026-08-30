@@ -12,11 +12,22 @@ export interface D1Like {
   batch(statements: D1Statement[]): Promise<unknown>;
 }
 
+export interface ShopNames {
+  readonly productUrls: Map<string, string>;
+  readonly productTitles: Map<string, string>;
+  readonly variantTitles: Map<string, string>;
+}
+
 export interface Storage {
   writeSnapshot(snapshot: Snapshot): Promise<void>;
   readLatestSnapshot(shop: string): Promise<Snapshot | null>;
   readSnapshots(shop: string, from?: string, to?: string): Promise<readonly Snapshot[]>;
-  readProductUrls(shop: string): Promise<Map<string, string>>;
+  readShopNames(shop: string): Promise<ShopNames>;
+  upsertNames(
+    shop: string,
+    products: readonly { productId: string; url: string; title: string }[],
+    variants: readonly { productId: string; variantId: string; title: string }[]
+  ): Promise<void>;
   readShops(): Promise<string[]>;
   readMaxObservedQuantity(shop: string): Promise<number>;
   readShopDailyRange(shop: string, fromDay: string, toDay: string): Promise<readonly DailyPoint[]>;
@@ -114,9 +125,11 @@ function toRow(snapshot: Snapshot): SnapshotRow[] {
   }));
 }
 
-function toProductRows(snapshot: Snapshot): Array<{ shop: string; productId: string; url: string }> {
+function toProductRows(
+  snapshot: Snapshot
+): Array<{ shop: string; productId: string; url: string; title: string | null }> {
   const seen = new Set<string>();
-  const rows: Array<{ shop: string; productId: string; url: string }> = [];
+  const rows: Array<{ shop: string; productId: string; url: string; title: string | null }> = [];
   for (const variant of snapshot.variants) {
     const url = variant.productUrl;
     if (url === undefined || url === null) {
@@ -127,7 +140,25 @@ function toProductRows(snapshot: Snapshot): Array<{ shop: string; productId: str
       continue;
     }
     seen.add(key);
-    rows.push({ shop: snapshot.shop, productId: variant.productId, url });
+    const title = variant.productTitle === undefined ? null : variant.productTitle;
+    rows.push({ shop: snapshot.shop, productId: variant.productId, url, title });
+  }
+  return rows;
+}
+
+function toVariantRows(
+  snapshot: Snapshot
+): Array<{ shop: string; productId: string; variantId: string; title: string }> {
+  const rows: Array<{ shop: string; productId: string; variantId: string; title: string }> = [];
+  for (const variant of snapshot.variants) {
+    const title = variant.variantTitle;
+    if (title === undefined || title === null || title.length === 0) {
+      continue;
+    }
+    if (title === 'default' || title === 'Default Title') {
+      continue;
+    }
+    rows.push({ shop: snapshot.shop, productId: variant.productId, variantId: variant.variantId, title });
   }
   return rows;
 }
@@ -212,11 +243,39 @@ function fromEventRow(row: EventRow): StockEvent {
   };
 }
 
+function nameStatements(
+  db: D1Like,
+  products: readonly { shop: string; productId: string; url: string; title: string | null }[],
+  variants: readonly { shop: string; productId: string; variantId: string; title: string }[]
+): D1Statement[] {
+  const statements: D1Statement[] = [];
+  for (const product of products) {
+    statements.push(
+      db
+        .prepare(
+          'INSERT INTO products (shop, product_id, url, title) VALUES (?, ?, ?, ?) ON CONFLICT(shop, product_id) DO UPDATE SET url = excluded.url, title = COALESCE(excluded.title, products.title)'
+        )
+        .bind(product.shop, product.productId, product.url, product.title)
+    );
+  }
+  for (const variant of variants) {
+    statements.push(
+      db
+        .prepare(
+          'INSERT INTO variants (shop, product_id, variant_id, title) VALUES (?, ?, ?, ?) ON CONFLICT(shop, variant_id) DO UPDATE SET product_id = excluded.product_id, title = excluded.title'
+        )
+        .bind(variant.shop, variant.productId, variant.variantId, variant.title)
+    );
+  }
+  return statements;
+}
+
 export function createStorage(db: D1Like, logger: Logger): Storage {
   return {
     async writeSnapshot(snapshot: Snapshot): Promise<void> {
       const rows = toRow(snapshot);
       const productRows = toProductRows(snapshot);
+      const variantRows = toVariantRows(snapshot);
       if (rows.length === 0) {
         return;
       }
@@ -237,18 +296,38 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
             row.available
           )
       );
-      for (const product of productRows) {
-        statements.push(
-          db
-            .prepare('INSERT OR REPLACE INTO products (shop, product_id, url) VALUES (?, ?, ?)')
-            .bind(product.shop, product.productId, product.url)
-        );
-      }
+      statements.push(...nameStatements(db, productRows, variantRows));
       try {
         await db.batch(statements);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error('storage.writeSnapshot failed', { shop: snapshot.shop, error: message });
+        throw error;
+      }
+    },
+
+    async upsertNames(
+      shop: string,
+      products: readonly { productId: string; url: string; title: string }[],
+      variants: readonly { productId: string; variantId: string; title: string }[]
+    ): Promise<void> {
+      const productRows = products.map((product) => ({
+        shop,
+        productId: product.productId,
+        url: product.url,
+        title: product.title,
+      }));
+      const variantRows = variants.map((variant) => ({
+        shop,
+        productId: variant.productId,
+        variantId: variant.variantId,
+        title: variant.title,
+      }));
+      try {
+        await db.batch(nameStatements(db, productRows, variantRows));
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.upsertNames failed', { shop, error: message });
         throw error;
       }
     },
@@ -276,15 +355,29 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       };
     },
 
-    async readProductUrls(shop: string): Promise<Map<string, string>> {
-      const result = (await db.prepare('SELECT product_id, url FROM products WHERE shop = ?').bind(shop).all()) as {
-        results: Array<{ product_id: string; url: string }>;
+    async readShopNames(shop: string): Promise<ShopNames> {
+      const products = (await db
+        .prepare('SELECT product_id, url, title FROM products WHERE shop = ?')
+        .bind(shop)
+        .all()) as {
+        results: Array<{ product_id: string; url: string; title: string | null }>;
       };
-      const map = new Map<string, string>();
-      for (const row of result.results) {
-        map.set(row.product_id, row.url);
+      const variants = (await db.prepare('SELECT variant_id, title FROM variants WHERE shop = ?').bind(shop).all()) as {
+        results: Array<{ variant_id: string; title: string }>;
+      };
+      const productUrls = new Map<string, string>();
+      const productTitles = new Map<string, string>();
+      for (const row of products.results) {
+        productUrls.set(row.product_id, row.url);
+        if (row.title !== null && row.title.length > 0) {
+          productTitles.set(row.product_id, row.title);
+        }
       }
-      return map;
+      const variantTitles = new Map<string, string>();
+      for (const row of variants.results) {
+        variantTitles.set(row.variant_id, row.title);
+      }
+      return { productUrls, productTitles, variantTitles };
     },
 
     async readSnapshots(shop: string, from?: string, to?: string): Promise<readonly Snapshot[]> {
@@ -398,8 +491,8 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       }
       const pattern = `%${query}%`;
       const result = (await db
-        .prepare('SELECT shop, product_id FROM products WHERE product_id LIKE ? OR url LIKE ? LIMIT 20')
-        .bind(pattern, pattern)
+        .prepare('SELECT shop, product_id FROM products WHERE product_id LIKE ? OR url LIKE ? OR title LIKE ? LIMIT 20')
+        .bind(pattern, pattern, pattern)
         .all()) as { results: Array<{ shop: string; product_id: string }> };
       return result.results.map((row) => ({ shop: row.shop, productId: row.product_id }));
     },

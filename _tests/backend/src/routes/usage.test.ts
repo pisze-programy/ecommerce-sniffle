@@ -241,4 +241,49 @@ describe('usage routes', () => {
     const response = await app.request('/admin/recompute-daily-stats', { method: 'POST', body: '{}' }, env);
     expect(response.status).toBe(401);
   });
+
+  it('upserts names via the admin endpoint', async () => {
+    const env = mockEnv([]);
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/upsert-names',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-secret', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shop: 'forcer.pl',
+          products: [{ productId: 'p1', url: 'https://forcer.pl/products/set-air', title: 'SET AIR' }],
+          variants: [{ productId: 'p1', variantId: 'v1', title: 'Black / S' }],
+        }),
+      },
+      env
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; products: number; variants: number };
+    expect(body.ok).toBe(true);
+    expect(body.products).toBe(1);
+    expect(body.variants).toBe(1);
+  });
+
+  it('rejects an invalid upsert-names body', async () => {
+    const env = mockEnv([]);
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/upsert-names',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer test-secret', 'Content-Type': 'application/json' },
+        body: '{}',
+      },
+      env
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an unauthorized upsert-names request', async () => {
+    const env = mockEnv([]);
+    const app = makeApp();
+    const response = await app.request('/admin/upsert-names', { method: 'POST', body: '{}' }, env);
+    expect(response.status).toBe(401);
+  });
 });
