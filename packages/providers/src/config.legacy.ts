@@ -322,4 +322,22 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     enabled: false,
     currency: 'PLN',
   },
+  // marionis - Shopify, disabled. The stock data is junk.
+  // The products.json returns garbage that does not match the shop.
+  // Do not re-enable before the data source is fixed.
+  {
+    id: 'marionis',
+    domain: 'marionis.pl',
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'mcp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 15,
+    requiresProxy: true,
+    endpoint: 'https://marionis.pl/products.json',
+    enabled: false,
+    currency: 'PLN',
+  },
 ];

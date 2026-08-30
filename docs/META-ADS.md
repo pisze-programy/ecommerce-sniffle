@@ -344,22 +344,58 @@ equals the total count. No duplicates.
 
 ## Page ids
 
-Known page ids:
-
 | Shop                 | Page id          |
 | -------------------- | ---------------- |
+| beaumont             | 1519901994992512 |
+| booso                | 374174135978715  |
+| derichgallery        | 570949689437938  |
+| dives-med            | 119704217731025  |
+| dobrerzeczy          | 109748315469254  |
+| e-daag               | 362425697158919  |
+| emereedivine         | 932290296631176  |
+| forcer               | 1391555270923932 |
+| godsavequeens        | 158931730924476  |
+| gymglamour           | 1704643286461690 |
 | hdrey-group          | 129962510193438  |
-| forcer               | 528691826989201  |
+| icedstuff            | 204732753536016  |
+| icon-amsterdam       | 874522592419062  |
 | laboratoriumpanidomu | 1527130717525496 |
+| monartofficial       | 116086326898893  |
+| mualasklep           | 615115091694097  |
+| nago                 | 1597769753863797 |
+| papitoenergy         | 611411515387427  |
+| premieresociety      | 346690272208482  |
+| rever                | 923578254349971  |
+| risky                | 197155313699047  |
+| royalwatch           | 106464751419083  |
+| sanah                | 613781125410769  |
+| theodderside         | 149072851929567  |
+| wkdzik               | 880134425337750  |
+| wojanshop            | 869005663179143  |
 
-Add the remaining page ids later.
+We do not track ads for these shops.
+
+This is a decision, not a gap.
+We decided to exclude them on purpose:
+we do not collect their ads.
+Do not treat an empty page id as a missing value.
+
+- 33mata
+- brokies
+- fagata
+- friendzstore
+- infini
+- islandrecords
+- marionis
+- mushi
+- sklepskolim
+- wakenbake
 
 ## Status
 
 Env is wired. Data is verified.
 Implementation is done. Tests pass.
-Migrations 0028 and 0029 are applied.
+Migrations 0028 to 0035 are applied.
 The review fixes are applied.
+All page ids are verified by hand.
 Deployment is pending.
-The cron needs a long-lived token.
-The current token expired.

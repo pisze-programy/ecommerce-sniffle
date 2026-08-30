@@ -51,7 +51,7 @@ Legend:
 | brokies              | Brookes sp. z o.o.                           | 0000624657                          | -                           | brokies.wrld (+YT @brokies2727)                            | DONE   |
 | premieresociety      | Premiere sp. z o.o.                          | 0000160814                          | premieresociety             | premieresociety                                            | DONE   |
 | dobrerzeczy          | Fundacja dobrerzeczy                         | 0000535327                          | dobrerzeczytm               | dobrerzeczy                                                | DONE   |
-| marionis             | -                                            | -                                   | -                           | marionis.pl (+TikTok @marionis.pl)                         | GAP    |
+| marionis             | - (disabled, junk data)                      | -                                   | -                           | marionis.pl (+TikTok @marionis.pl)                         | GAP    |
 | e-daag               | Ledrin Sp. z o.o. (brand DAAG)               | 0000085721                          | -                           | -                                                          | DONE   |
 | friendzstore         | Friendzstore Sp. z o.o.                      | 0001185078                          | -                           | -                                                          | DONE   |
 | berecords            | Baila Ella Records sp. z o.o. (disabled)     | 0001003456                          | -                           | -                                                          | DONE   |
