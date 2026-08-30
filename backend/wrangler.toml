@@ -22,3 +22,8 @@ id = "a386d8fe723e4dff83578cf635e11dfa"
 [[services]]
 binding = "SNITCH"
 service = "cf-snitch"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "ecommerce-sniffle-media"
+preview_bucket_name = "ecommerce-sniffle-media"

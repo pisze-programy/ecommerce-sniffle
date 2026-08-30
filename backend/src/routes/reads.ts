@@ -59,6 +59,34 @@ export function createReadsRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     return c.json({ shop, latest });
   });
 
+  api.get('/media/*', async (c) => {
+    const bucket = c.env.MEDIA;
+    if (bucket === undefined) {
+      return c.text('media disabled', 404);
+    }
+    const key = c.req.path.slice('/media/'.length);
+    if (key.length === 0) {
+      return c.text('missing key', 400);
+    }
+    try {
+      const object = await bucket.get(key);
+      if (object === null) {
+        return c.text('not found', 404);
+      }
+      const headers = new Headers();
+      const contentType = object.httpMetadata?.contentType;
+      if (contentType !== undefined && contentType !== null) {
+        headers.set('content-type', contentType);
+      }
+      headers.set('cache-control', 'public, max-age=604800');
+      return new Response(object.body, { headers });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      c.get('logger').error('media.readFailed', { key, error: message });
+      return c.text('error', 500);
+    }
+  });
+
   api.get('/coverage', async (c) => {
     const modules = c.get('modules');
     const storage = c.get('storage');

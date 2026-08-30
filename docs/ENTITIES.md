@@ -2,7 +2,11 @@
 
 This file defines the data models for the entity graph.
 It covers entities, persons, relations, social media, and ads.
-Nothing here is implemented yet.
+The pilot is implemented for hdrey, divesmed and forcer.
+Entities live in D1 (migration `0009_entities.sql`).
+The shop page shows the entity graph and the Social card.
+The social scraper is a manual admin trigger for now.
+The cron comes later.
 The goal is to check that the models fit the vision.
 
 ## Scope
@@ -228,24 +232,25 @@ The owner role for Karolina comes from her Instagram biography.
 The scraper detects the bio pattern 'Owner: @username'.
 A person confirms the relation by hand. No auto relation.
 
-## Graph per shop
+## Entity sections per shop
 
-The graph is a small inline SVG on the shop page.
-It shows the entity as the center.
-The graph is historical.
-It does not chase the exact current state.
+The shop page shows two cards. No visual graph.
 
-- entity: rounded rect, name and registry, primary color
-- persons: circles with initials, above the entity
-- linked shops: below the entity, clickable to /shop/{id}
-- active edge: solid line, role label and date range
-- past edge: dashed, faded, shows the date range
-- loose connection: dotted, evidence from social data
-- shared person visually links two entities
-- empty entity: visible node with a 'no data' hint
+1. Podmiot: the firm identity.
+   It shows the name, the registry (KRS, REGON, NIP), the legal form,
+   the Bizraport link and the social links.
 
-For shop hdrey the graph shows:
-Hdrey Group (center), Rafał (owner), Karolina (influ and ambasador),
+2. Powiązania: the relations.
+   It lists the persons (owners) with their role badges and date ranges,
+   and the linked shops reached through shared persons or a shared owner.
+
+The sections are historical.
+They do not chase the exact current state.
+A past relation shows a gray badge with its date range.
+A shop with a shared owner appears as a linked shop.
+
+For shop hdrey the sections show:
+Hdrey Group (Podmiot), Rafał (owner) and Karolina (influ and ambasador),
 and linked shops: divesmed (same-owner) and forcer (through Karolina).
 
 ## Future pages

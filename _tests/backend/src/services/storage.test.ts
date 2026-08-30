@@ -43,6 +43,11 @@ class MockStatement implements D1Statement {
     const first = result.results[0];
     return first === undefined ? null : first;
   }
+
+  async run(): Promise<unknown> {
+    const result = this.responder(this.query, this.args);
+    return result;
+  }
 }
 
 class MockD1 implements D1Like {
@@ -516,5 +521,223 @@ describe('createStorage', () => {
     );
     expect(capture.records[0]?.level).toBe('error');
     expect(capture.records[0]?.message).toBe('storage.writeEvents failed');
+  });
+
+  describe('readEntityStore', () => {
+    it('builds the store from D1 rows', async () => {
+      const { logger } = capturingLogger();
+      const db = new MockD1((query) => {
+        if (query.startsWith('SELECT id, name, kind')) {
+          return {
+            results: [
+              {
+                id: 'hdrey-group',
+                name: 'Hdrey Group',
+                kind: 'company',
+                krs: '0000683399',
+                regon: null,
+                nip: null,
+                bizraport_url: 'https://bizraport/hdrey',
+                meta_page_id: '129962510193438',
+                cpm_min: 15,
+                cpm_max: 30,
+              },
+            ],
+          };
+        }
+        if (query.startsWith('SELECT id, name, linkedin_url')) {
+          return { results: [{ id: 'karolina', name: 'Karolina', linkedin_url: null }] };
+        }
+        if (query.startsWith('SELECT owner_kind')) {
+          return {
+            results: [
+              {
+                owner_kind: 'entity',
+                owner_id: 'hdrey-group',
+                platform: 'instagram',
+                handle: 'hdrey_pl',
+                url: 'https://ig/hdrey_pl',
+              },
+            ],
+          };
+        }
+        if (query.startsWith('SELECT person_id')) {
+          return {
+            results: [
+              {
+                person_id: 'karolina',
+                entity_id: 'hdrey-group',
+                role: 'owner',
+                label: 'influ',
+                from_day: null,
+                to_day: null,
+              },
+            ],
+          };
+        }
+        if (query.startsWith('SELECT from_entity_id')) {
+          return { results: [] };
+        }
+        return { results: [] };
+      });
+      const storage = createStorage(db, logger);
+      const store = await storage.readEntityStore();
+      expect(store.entities[0]?.id).toBe('hdrey-group');
+      expect(store.entities[0]?.cpmOverride).toEqual({ min: 15, max: 30 });
+      expect(store.entities[0]?.metaPageId).toBe('129962510193438');
+      expect(store.entities[0]?.socials).toEqual([
+        { platform: 'instagram', handle: 'hdrey_pl', url: 'https://ig/hdrey_pl' },
+      ]);
+      expect(store.persons[0]?.name).toBe('Karolina');
+      expect(store.personRelations[0]?.role).toBe('owner');
+      expect(store.entityRelations).toEqual([]);
+    });
+  });
+
+  describe('social storage', () => {
+    it('writes and reads profiles, posts and stories', async () => {
+      const { logger } = capturingLogger();
+      const postRows: Array<Record<string, unknown>> = [];
+      const profileRows: Array<Record<string, unknown>> = [];
+      const db = new MockD1((query) => {
+        if (query.startsWith('INSERT OR REPLACE INTO social_posts')) {
+          const row = {
+            platform: 'instagram',
+            id: 'p1',
+            user_id: '331874442',
+            shortcode: 'ABC',
+            media_type: 'photo',
+            is_reel: 0,
+            taken_at: '2026-08-30T10:00:00.000Z',
+            caption: 'hello',
+            media_urls: '["https://cdn/1.jpg"]',
+            is_paid_partnership: 1,
+            is_commercial: 0,
+            tagged_users: '["hdrey_pl"]',
+            r2_key: null,
+            fetched_at: '2026-08-30T11:00:00.000Z',
+          };
+          postRows.push(row);
+          return { results: [row] };
+        }
+        if (query.startsWith('SELECT platform, id, user_id')) {
+          return { results: postRows };
+        }
+        if (query.startsWith('INSERT OR REPLACE INTO social_profiles')) {
+          profileRows.push({
+            platform: 'instagram',
+            user_id: '331874442',
+            handle: 'karolina_pisarek',
+            full_name: 'Karolina',
+          });
+          return { results: [] };
+        }
+        if (query.startsWith('SELECT platform, user_id, handle')) {
+          return { results: profileRows };
+        }
+        return { results: [] };
+      });
+      const storage = createStorage(db, logger);
+      await storage.upsertSocialProfile({
+        platform: 'instagram',
+        userId: '331874442',
+        handle: 'karolina_pisarek',
+        fullName: 'Karolina',
+      });
+      await storage.writeSocialPosts([
+        {
+          platform: 'instagram',
+          id: 'p1',
+          userId: '331874442',
+          shortcode: 'ABC',
+          type: 'photo',
+          isReel: false,
+          takenAt: '2026-08-30T10:00:00.000Z',
+          caption: 'hello',
+          mediaUrls: ['https://cdn/1.jpg'],
+          isPaidPartnership: true,
+          isCommercial: false,
+          taggedUsers: ['hdrey_pl'],
+          r2Key: null,
+          fetchedAt: '2026-08-30T11:00:00.000Z',
+        },
+      ]);
+      const posts = await storage.readSocialPosts(['331874442'], 10);
+      expect(posts).toHaveLength(1);
+      expect(posts[0]?.taggedUsers).toEqual(['hdrey_pl']);
+      expect(posts[0]?.isPaidPartnership).toBe(true);
+      expect(posts[0]?.mediaUrls).toEqual(['https://cdn/1.jpg']);
+      const profiles = await storage.readSocialProfiles();
+      expect(profiles[0]?.handle).toBe('karolina_pisarek');
+    });
+
+    it('logs and rethrows on a write failure', async () => {
+      const capture = capturingLogger();
+      const db = new MockD1(() => {
+        throw new Error('db down');
+      });
+      const storage = createStorage(db, capture.logger);
+      await expect(
+        storage.writeSocialPosts([
+          {
+            platform: 'instagram',
+            id: 'p1',
+            userId: '1',
+            shortcode: 'ABC',
+            type: 'photo',
+            isReel: false,
+            takenAt: '2026-08-30T10:00:00.000Z',
+            caption: null,
+            mediaUrls: [],
+            isPaidPartnership: false,
+            isCommercial: false,
+            taggedUsers: [],
+            r2Key: null,
+            fetchedAt: '2026-08-30T11:00:00.000Z',
+          },
+        ])
+      ).rejects.toThrow('db down');
+      expect(capture.records[0]?.level).toBe('error');
+      expect(capture.records[0]?.message).toBe('storage.writeSocialPosts failed');
+    });
+  });
+});
+
+describe('entity financials', () => {
+  it('writes and reads the current year row', async () => {
+    const { logger } = capturingLogger();
+    const rows: Array<Record<string, unknown>> = [];
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT OR REPLACE INTO entity_financials')) {
+        rows.push({
+          entity_id: 'hdrey-group',
+          year: 2025,
+          assets: 16900000,
+          revenue: 134500000,
+          net_profit: -3010000,
+          valuation: 89700000,
+          fetched_at: '2026-08-30T00:00:00.000Z',
+        });
+        return { results: [] };
+      }
+      if (query.startsWith('SELECT entity_id, year, assets')) {
+        return { results: rows };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.upsertEntityFinancials({
+      entityId: 'hdrey-group',
+      year: 2025,
+      assets: 16900000,
+      revenue: 134500000,
+      netProfit: -3010000,
+      valuation: 89700000,
+      fetchedAt: '2026-08-30T00:00:00.000Z',
+    });
+    const entry = await storage.readEntityFinancials('hdrey-group');
+    expect(entry?.assets).toBe(16900000);
+    expect(entry?.netProfit).toBe(-3010000);
+    expect(entry?.year).toBe(2025);
   });
 });

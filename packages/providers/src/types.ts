@@ -42,6 +42,9 @@ export interface ProviderConfig {
   // The shop reports prices in this currency. The display layer converts
   // non-PLN amounts to PLN. Undefined means the prices are PLN.
   readonly currency?: string;
+  // The entity (company or brand) that owns the shop. Used by the
+  // report layer to draw the entity graph. The VPS does not use it.
+  readonly entityId?: string;
   readonly excludedStockIds?: readonly number[];
   readonly adaptiveRate?: AdaptiveRateConfig;
 }

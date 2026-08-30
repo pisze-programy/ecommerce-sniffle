@@ -1,10 +1,21 @@
 import type { DailyStats, Snapshot, StockEvent, VariantState } from '@ecommerce-sniffle/analysis';
 import type { Logger } from '@ecommerce-sniffle/providers';
+import type {
+  EntityFinancials,
+  EntityKind,
+  EntityRelationType,
+  EntityStore,
+  PersonRole,
+  SocialLink,
+  SocialPlatform,
+} from '../entities.ts';
+import type { SocialPost, SocialProfile, SocialStory } from './social/types.ts';
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement;
   all(): Promise<{ results: unknown[] }>;
   first(): Promise<unknown>;
+  run(): Promise<unknown>;
 }
 
 export interface D1Like {
@@ -42,6 +53,15 @@ export interface Storage {
   readAvailableDays(shop: string): Promise<readonly string[]>;
   readDayCount(shop: string): Promise<number>;
   readFirstSeed(shop: string): Promise<string | null>;
+  readEntityStore(): Promise<EntityStore>;
+  upsertSocialProfile(profile: SocialProfile): Promise<void>;
+  writeSocialPosts(posts: readonly SocialPost[]): Promise<void>;
+  writeSocialStories(stories: readonly SocialStory[]): Promise<void>;
+  readSocialProfiles(): Promise<readonly SocialProfile[]>;
+  readSocialPosts(userIds: readonly string[], limit: number): Promise<readonly SocialPost[]>;
+  readSocialStories(userIds: readonly string[], limit: number): Promise<readonly SocialStory[]>;
+  upsertEntityFinancials(entry: EntityFinancials): Promise<void>;
+  readEntityFinancials(entityId: string): Promise<EntityFinancials | null>;
 }
 
 export interface SeriesPoint {
@@ -109,6 +129,76 @@ interface EventWriteRow {
   to_price: number | null;
   units: number;
   confidence: string;
+}
+
+interface SocialPostRow {
+  platform: string;
+  id: string;
+  user_id: string;
+  shortcode: string;
+  media_type: string;
+  is_reel: number;
+  taken_at: string;
+  caption: string | null;
+  media_urls: string;
+  is_paid_partnership: number;
+  is_commercial: number;
+  tagged_users: string;
+  r2_key: string | null;
+  fetched_at: string;
+}
+
+interface SocialStoryRow {
+  platform: string;
+  id: string;
+  user_id: string;
+  media_type: string;
+  media_urls: string;
+  taken_at: string;
+  expiring_at: string;
+  is_paid_partnership: number;
+  is_commercial: number;
+  has_cta_sticker: number;
+  mentions: string;
+  r2_key: string | null;
+  fetched_at: string;
+}
+
+function fromSocialPostRow(row: SocialPostRow): SocialPost {
+  return {
+    platform: row.platform as 'instagram',
+    id: row.id,
+    userId: row.user_id,
+    shortcode: row.shortcode,
+    type: row.media_type as 'photo' | 'video' | 'carousel',
+    isReel: row.is_reel === 1,
+    takenAt: row.taken_at,
+    caption: row.caption,
+    mediaUrls: jsonArray(row.media_urls),
+    isPaidPartnership: row.is_paid_partnership === 1,
+    isCommercial: row.is_commercial === 1,
+    taggedUsers: jsonArray(row.tagged_users),
+    r2Key: row.r2_key,
+    fetchedAt: row.fetched_at,
+  };
+}
+
+function fromSocialStoryRow(row: SocialStoryRow): SocialStory {
+  return {
+    platform: row.platform as 'instagram',
+    id: row.id,
+    userId: row.user_id,
+    mediaType: row.media_type as 'photo' | 'video',
+    mediaUrls: jsonArray(row.media_urls),
+    takenAt: row.taken_at,
+    expiringAt: row.expiring_at,
+    isPaidPartnership: row.is_paid_partnership === 1,
+    isCommercial: row.is_commercial === 1,
+    hasCtaSticker: row.has_cta_sticker === 1,
+    mentions: jsonArray(row.mentions),
+    r2Key: row.r2_key,
+    fetchedAt: row.fetched_at,
+  };
 }
 
 function toRow(snapshot: Snapshot): SnapshotRow[] {
@@ -268,6 +358,22 @@ function nameStatements(
     );
   }
   return statements;
+}
+
+function jsonString(value: readonly string[]): string {
+  return JSON.stringify(value);
+}
+
+function jsonArray(value: string | null): readonly string[] {
+  if (value === null) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 export function createStorage(db: D1Like, logger: Logger): Storage {
@@ -632,6 +738,276 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
         .bind(shop)
         .first()) as { day: string | null } | null;
       return row === null || row.day === null ? null : row.day;
+    },
+
+    async readEntityStore(): Promise<EntityStore> {
+      const entityRows = (await db
+        .prepare(
+          'SELECT id, name, kind, krs, regon, nip, bizraport_url, meta_page_id, cpm_min, cpm_max FROM entities ORDER BY id'
+        )
+        .all()) as {
+        results: Array<{
+          id: string;
+          name: string;
+          kind: string;
+          krs: string | null;
+          regon: string | null;
+          nip: string | null;
+          bizraport_url: string | null;
+          meta_page_id: string | null;
+          cpm_min: number | null;
+          cpm_max: number | null;
+        }>;
+      };
+      const personRows = (await db.prepare('SELECT id, name, linkedin_url FROM persons ORDER BY id').all()) as {
+        results: Array<{ id: string; name: string; linkedin_url: string | null }>;
+      };
+      const socialRows = (await db
+        .prepare('SELECT owner_kind, owner_id, platform, handle, url FROM socials')
+        .all()) as {
+        results: Array<{ owner_kind: string; owner_id: string; platform: string; handle: string; url: string }>;
+      };
+      const relationRows = (await db
+        .prepare('SELECT person_id, entity_id, role, label, from_day, to_day FROM person_relations')
+        .all()) as {
+        results: Array<{
+          person_id: string;
+          entity_id: string;
+          role: string;
+          label: string;
+          from_day: string | null;
+          to_day: string | null;
+        }>;
+      };
+      const entityRelationRows = (await db
+        .prepare('SELECT from_entity_id, to_entity_id, type, label, from_day, to_day FROM entity_relations')
+        .all()) as {
+        results: Array<{
+          from_entity_id: string;
+          to_entity_id: string;
+          type: string;
+          label: string;
+          from_day: string | null;
+          to_day: string | null;
+        }>;
+      };
+      const socialsByOwner = new Map<string, SocialLink[]>();
+      for (const row of socialRows.results) {
+        const key = `${row.owner_kind}:${row.owner_id}`;
+        const list = socialsByOwner.get(key) ?? [];
+        list.push({ platform: row.platform as SocialPlatform, handle: row.handle, url: row.url });
+        socialsByOwner.set(key, list);
+      }
+      const entities = entityRows.results.map((row) => ({
+        id: row.id,
+        name: row.name,
+        kind: row.kind as EntityKind,
+        krs: row.krs,
+        regon: row.regon,
+        nip: row.nip,
+        bizraportUrl: row.bizraport_url,
+        metaPageId: row.meta_page_id,
+        cpmOverride: row.cpm_min === null || row.cpm_max === null ? null : { min: row.cpm_min, max: row.cpm_max },
+        socials: socialsByOwner.get(`entity:${row.id}`) ?? [],
+      }));
+      const persons = personRows.results.map((row) => ({
+        id: row.id,
+        name: row.name,
+        linkedinUrl: row.linkedin_url,
+        socials: socialsByOwner.get(`person:${row.id}`) ?? [],
+      }));
+      const personRelations = relationRows.results.map((row) => ({
+        personId: row.person_id,
+        entityId: row.entity_id,
+        role: row.role as PersonRole,
+        from: row.from_day,
+        to: row.to_day,
+      }));
+      const entityRelations = entityRelationRows.results.map((row) => ({
+        fromEntityId: row.from_entity_id,
+        toEntityId: row.to_entity_id,
+        type: row.type as EntityRelationType,
+        label: row.label,
+        from: row.from_day,
+        to: row.to_day,
+      }));
+      return { entities, persons, personRelations, entityRelations };
+    },
+
+    async upsertSocialProfile(profile: SocialProfile): Promise<void> {
+      try {
+        await db
+          .prepare('INSERT OR REPLACE INTO social_profiles (platform, user_id, handle, full_name) VALUES (?, ?, ?, ?)')
+          .bind(profile.platform, profile.userId, profile.handle, profile.fullName)
+          .run();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.upsertSocialProfile failed', { userId: profile.userId, error: message });
+        throw error;
+      }
+    },
+
+    async writeSocialPosts(posts: readonly SocialPost[]): Promise<void> {
+      if (posts.length === 0) {
+        return;
+      }
+      try {
+        await db.batch(
+          posts.map((post) =>
+            db
+              .prepare(
+                'INSERT OR REPLACE INTO social_posts (platform, id, user_id, shortcode, media_type, is_reel, taken_at, caption, media_urls, is_paid_partnership, is_commercial, tagged_users, r2_key, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+              )
+              .bind(
+                post.platform,
+                post.id,
+                post.userId,
+                post.shortcode,
+                post.type,
+                post.isReel ? 1 : 0,
+                post.takenAt,
+                post.caption,
+                jsonString(post.mediaUrls),
+                post.isPaidPartnership ? 1 : 0,
+                post.isCommercial ? 1 : 0,
+                jsonString(post.taggedUsers),
+                post.r2Key,
+                post.fetchedAt
+              )
+          )
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.writeSocialPosts failed', { count: posts.length, error: message });
+        throw error;
+      }
+    },
+
+    async writeSocialStories(stories: readonly SocialStory[]): Promise<void> {
+      if (stories.length === 0) {
+        return;
+      }
+      try {
+        await db.batch(
+          stories.map((story) =>
+            db
+              .prepare(
+                'INSERT OR REPLACE INTO social_stories (platform, id, user_id, media_type, media_urls, taken_at, expiring_at, is_paid_partnership, is_commercial, has_cta_sticker, mentions, r2_key, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+              )
+              .bind(
+                story.platform,
+                story.id,
+                story.userId,
+                story.mediaType,
+                jsonString(story.mediaUrls),
+                story.takenAt,
+                story.expiringAt,
+                story.isPaidPartnership ? 1 : 0,
+                story.isCommercial ? 1 : 0,
+                story.hasCtaSticker ? 1 : 0,
+                jsonString(story.mentions),
+                story.r2Key,
+                story.fetchedAt
+              )
+          )
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.writeSocialStories failed', { count: stories.length, error: message });
+        throw error;
+      }
+    },
+
+    async readSocialProfiles(): Promise<readonly SocialProfile[]> {
+      const result = (await db.prepare('SELECT platform, user_id, handle, full_name FROM social_profiles').all()) as {
+        results: Array<{ platform: string; user_id: string; handle: string; full_name: string | null }>;
+      };
+      return result.results.map((row) => ({
+        platform: row.platform as 'instagram',
+        userId: row.user_id,
+        handle: row.handle,
+        fullName: row.full_name,
+      }));
+    },
+
+    async readSocialPosts(userIds: readonly string[], limit: number): Promise<readonly SocialPost[]> {
+      if (userIds.length === 0) {
+        return [];
+      }
+      const placeholders = userIds.map(() => '?').join(',');
+      const result = (await db
+        .prepare(
+          `SELECT platform, id, user_id, shortcode, media_type, is_reel, taken_at, caption, media_urls, is_paid_partnership, is_commercial, tagged_users, r2_key, fetched_at FROM social_posts WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
+        )
+        .bind(...userIds, limit)
+        .all()) as { results: SocialPostRow[] };
+      return result.results.map(fromSocialPostRow);
+    },
+
+    async readSocialStories(userIds: readonly string[], limit: number): Promise<readonly SocialStory[]> {
+      if (userIds.length === 0) {
+        return [];
+      }
+      const placeholders = userIds.map(() => '?').join(',');
+      const result = (await db
+        .prepare(
+          `SELECT platform, id, user_id, media_type, media_urls, taken_at, expiring_at, is_paid_partnership, is_commercial, has_cta_sticker, mentions, r2_key, fetched_at FROM social_stories WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
+        )
+        .bind(...userIds, limit)
+        .all()) as { results: SocialStoryRow[] };
+      return result.results.map(fromSocialStoryRow);
+    },
+
+    async upsertEntityFinancials(entry: EntityFinancials): Promise<void> {
+      try {
+        await db
+          .prepare(
+            'INSERT OR REPLACE INTO entity_financials (entity_id, year, assets, revenue, net_profit, valuation, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          )
+          .bind(
+            entry.entityId,
+            entry.year,
+            entry.assets,
+            entry.revenue,
+            entry.netProfit,
+            entry.valuation,
+            entry.fetchedAt
+          )
+          .run();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.upsertEntityFinancials failed', { entityId: entry.entityId, error: message });
+        throw error;
+      }
+    },
+
+    async readEntityFinancials(entityId: string): Promise<EntityFinancials | null> {
+      const row = (await db
+        .prepare(
+          'SELECT entity_id, year, assets, revenue, net_profit, valuation, fetched_at FROM entity_financials WHERE entity_id = ?'
+        )
+        .bind(entityId)
+        .first()) as {
+        entity_id: string;
+        year: number | null;
+        assets: number | null;
+        revenue: number | null;
+        net_profit: number | null;
+        valuation: number | null;
+        fetched_at: string;
+      } | null;
+      if (row === null) {
+        return null;
+      }
+      return {
+        entityId: row.entity_id,
+        year: row.year,
+        assets: row.assets,
+        revenue: row.revenue,
+        netProfit: row.net_profit,
+        valuation: row.valuation,
+        fetchedAt: row.fetched_at,
+      };
     },
   };
 }

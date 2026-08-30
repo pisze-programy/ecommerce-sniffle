@@ -3,6 +3,7 @@ import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
 import { isAuthorized } from './auth.ts';
 import { aggregateDaily } from '@ecommerce-sniffle/analysis';
+import { runSocialFetch } from '../services/social/run.ts';
 
 interface UsageBody {
   readonly taskId: string;
@@ -283,6 +284,35 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     }
     logger.info('upsert-names done', { shop, products: products.length, variants: variants.length });
     return c.json({ ok: true, products: products.length, variants: variants.length });
+  });
+
+  api.post('/admin/fetch-social', async (c) => {
+    if (!isAuthorized(c)) {
+      c.get('logger').warn('fetch-social.unauthorized');
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const apiKey = c.env.RAPIDAPI_KEY;
+    if (apiKey === undefined || apiKey.length === 0) {
+      c.get('logger').error('fetch-social.noApiKey');
+      return c.json({ ok: false, error: 'RAPIDAPI_KEY not set' }, 500);
+    }
+    const storage = c.get('storage');
+    const logger = c.get('logger');
+    try {
+      const result = await runSocialFetch(storage, logger, apiKey, c.env.MEDIA === undefined ? null : c.env.MEDIA);
+      logger.info('fetch-social done', {
+        targets: result.targets,
+        profilesResolved: result.profilesResolved,
+        posts: result.posts,
+        stories: result.stories,
+        mediaStored: result.mediaStored,
+      });
+      return c.json({ ok: true, ...result });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('fetch-social failed', { error: message });
+      return c.json({ ok: false, error: message }, 500);
+    }
   });
 
   return api;

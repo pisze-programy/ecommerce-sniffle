@@ -34,6 +34,9 @@ import { renderChangesWindows, renderDayComparison } from '../services/report/ch
 import { renderLowStock, renderPriceDrops, renderTopSellers } from '../services/report/overview.ts';
 import { renderShopsTable } from '../services/report/dashboard.ts';
 import type { ShopCard } from '../services/report/dashboard.ts';
+import { renderEntityCard } from '../services/report/entities.ts';
+import type { EntityShopLink } from '../services/report/entities.ts';
+import { renderSocialCard, socialUserIds } from '../services/report/social.ts';
 import { pageShell } from '../services/report/shell.ts';
 import { variantCell } from '../services/report/links.ts';
 
@@ -417,6 +420,35 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
         card({ title: 'Obniżki cen', body: renderPriceDrops(latest, names, config.platform), collapsed: true })
       );
     }
+    const shopsByEntity = new Map<string, EntityShopLink>();
+    for (const entry of modules) {
+      const entityId = entry.config.entityId;
+      if (entityId !== undefined && entry.config.enabled) {
+        shopsByEntity.set(entityId, { shopId: entry.config.id, domain: entry.config.domain });
+      }
+    }
+    const entityCard =
+      config.entityId === undefined
+        ? ''
+        : renderEntityCard(
+            await storage.readEntityStore(),
+            config.entityId,
+            shopsByEntity,
+            nowDay,
+            await storage.readEntityFinancials(config.entityId)
+          );
+    const socialCard = await (async () => {
+      if (config.entityId === undefined) {
+        return '';
+      }
+      const store = await storage.readEntityStore();
+      const profiles = await storage.readSocialProfiles();
+      const [posts, stories] = await Promise.all([
+        storage.readSocialPosts(socialUserIds(store, config.entityId, profiles), 10),
+        storage.readSocialStories(socialUserIds(store, config.entityId, profiles), 10),
+      ]);
+      return renderSocialCard(store, config.entityId, { profiles, posts, stories });
+    })();
     const body = `
 <div class="page-header d-flex flex-row flex-wrap align-items-center justify-content-start mb-3">
   ${breadcrumb([{ label: 'dashboard', href: '/dashboard' }, { label: config.id }])}
@@ -424,6 +456,8 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
 <h1 class="mb-3">${esc(config.id)} <span class="text-secondary fs-4">${esc(domain)} · ${esc(config.platform)}</span></h1>
 ${countdownNote}
 ${card({ title: 'Podsumowanie sklepu', body: headerBody })}
+${entityCard}
+${socialCard}
 ${priceDistributionCard}
 <div class="d-flex justify-content-end py-3">${dayControl}</div>
 ${daySections.join('\n')}

@@ -72,40 +72,35 @@ This is why mutations run on the VPS.
 
 ## What is next
 
-The plan for entities is approved.
-The data models are written down in `ENTITIES.md`.
-Nothing is implemented yet.
+The entities pilot is built and live.
+The data models are in `ENTITIES.md`.
+The harvested firm data is in `ENTITY-DATA.md`.
+Entities live in D1 (migrations `0009_entities.sql`, `0011_shops.sql`).
+The shop page shows the entity sections (Podmiot, Powiązania) and the Social card.
+The Podmiot card shows bizraport financials (aktywa, przychód, zysk, wartość)
+with the caption 'Dane z Bizraport'. The data is a manual browser backfill.
+The social scraper is a manual admin trigger for now.
+18 shops have an entity with a KRS and social profiles.
 
-We will build:
+Remaining work:
 
-1. Entities: companies and persons.
-   Data is static, defined by hand.
-   A shop points to a company.
-   A company points to its owner.
-   Example: hdrey and divesmed share one owner.
-   The graph shows this link automatically.
-
-2. A graph per shop.
-   The company is the center.
-   Persons and linked shops go around it.
-   The graph is simple inline SVG.
-   No graph library yet.
-
-3. A social scraper.
-   It gets Instagram and Facebook posts and stories.
-   It uses RapidAPI.
-   It runs once a day.
-   Metadata goes to D1. Media goes to R2.
-
-4. A Meta Ads scraper.
+1. The Meta Ads scraper.
    It uses the public Meta Ad Library.
    It shows active ads, countries, and dates.
    We estimate cost and CPA:
    - cost = impressions / 1000 x CPM range (15-30 PLN for PL beauty)
    - CPA = cost / units sold
+     Blocked on the Meta app review.
 
-Start with a pilot for hdrey and divesmed.
-Add the other shops later.
+2. The social scraper cron.
+   It is a manual trigger now.
+   It becomes a daily cron on the PRO plan.
+
+3. Facebook posts and stories.
+   They need a separate provider.
+
+4. The OpenRouter daily summary and TikTok and Google Ads.
+   They are deferred.
 
 ## Known limits
 
