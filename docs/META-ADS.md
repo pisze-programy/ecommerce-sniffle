@@ -36,7 +36,11 @@ It is free.
 Required parameters on every call:
 
 - `access_token`
-- `ad_reached_countries` with a JSON array like `['PL']`
+- `ad_reached_countries` with a JSON array.
+  The value `ALL` does not work. It returns no results.
+  The collector enumerates the EU and UK country codes.
+  It collects ads for every EU and UK market,
+  not only Poland.
 - `search_page_ids` with a JSON array of page ids
   or `search_terms`
 
@@ -308,6 +312,13 @@ The job for each shop with a page id:
 A manual endpoint triggers the same job:
 `POST /admin/fetch-meta-ads`.
 
+We collect only active ads.
+An ad that stops between two crons is gone from the next fetch.
+The last snapshot still holds its final reach.
+Analytics reads that snapshot.
+We accept a gap of one day.
+We do not backfill a stopped ad.
+
 The job skips a shop when the token is missing.
 It logs the reason.
 
@@ -318,11 +329,22 @@ When a fetch fails, the email lists the page id
 and the reason, for example `code 190: token expired`.
 A thrown error also sends a failed email.
 
+Before the run the job checks the token.
+It calls `/me` with the token.
+If the token is expired, the job sends a failed email
+and skips the run.
+The email reminds us to renew the token.
+Renew it to a 60-day token before it expires.
+
 The shop page shows the collected data:
 active ads, new and ended ads, reach,
 top ads with demographics and platforms,
 creative groups and their coverage.
 It shows no spend and no CPA. That is analytics.
+
+The Podmiot card holds a link to the Meta Ads Library
+when the shop has a page id.
+The link opens the page filter for all countries.
 
 ## Verified facts
 
@@ -373,8 +395,12 @@ equals the total count. No duplicates.
 | wkdzik               | 880134425337750  |
 | wojanshop            | 869005663179143  |
 
-We do not track ads for these shops.
+The archive holds commercial ads delivered to the EU or UK only.
+`derichgallery` runs ads in the US, outside this scope.
+The collector returns no ads for it.
+We still keep its page id. It costs nothing.
 
+We do not track ads for these shops.
 This is a decision, not a gap.
 We decided to exclude them on purpose:
 we do not collect their ads.

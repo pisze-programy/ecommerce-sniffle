@@ -162,4 +162,19 @@ describe('renderEntityCard', () => {
     expect(html).toContain('/media/entities/hdrey-group/bg.png');
     expect(html).toContain('/media/persons/rafal/avatar.png');
   });
+
+  it('renders the meta ads library link when a page id exists', () => {
+    const data = store();
+    const entities = data.entities.map((entity) =>
+      entity.id === 'hdrey-group' ? { ...entity, metaPageId: '880134425337750' } : entity
+    );
+    const html = renderEntityCard({ ...data, entities }, 'hdrey-group', shops(), '2026-08-30', null);
+    expect(html).toContain('Reklamy Meta');
+    expect(html).toContain('view_all_page_id=880134425337750');
+  });
+
+  it('renders no meta ads link without a page id', () => {
+    const html = renderEntityCard(store(), 'hdrey-group', shops(), '2026-08-30', null);
+    expect(html).not.toContain('Reklamy Meta');
+  });
 });

@@ -70,7 +70,7 @@ export interface Storage {
   writeMetaAdDays(rows: readonly MetaAdDay[]): Promise<void>;
   readMetaAdsActive(pageId: string): Promise<readonly MetaAd[]>;
   readMetaAdDays(pageId: string, dayFrom: string): Promise<readonly MetaAdDay[]>;
-  endMetaAds(pageId: string, stopDate: string, activeIds: readonly string[]): Promise<number>;
+  endMetaAds(pageId: string, stopDate: string, beforeDay: string): Promise<number>;
 }
 
 export interface SeriesPoint {
@@ -1209,22 +1209,12 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       }
     },
 
-    async endMetaAds(pageId: string, stopDate: string, activeIds: readonly string[]): Promise<number> {
+    async endMetaAds(pageId: string, stopDate: string, beforeDay: string): Promise<number> {
       try {
-        const placeholders = activeIds.map(() => '?').join(',');
-        let statement: D1Statement;
-        if (activeIds.length === 0) {
-          statement = db
-            .prepare('UPDATE meta_ads SET stop_date = ? WHERE page_id = ? AND stop_date IS NULL')
-            .bind(stopDate, pageId);
-        } else {
-          statement = db
-            .prepare(
-              `UPDATE meta_ads SET stop_date = ? WHERE page_id = ? AND stop_date IS NULL AND ad_archive_id NOT IN (${placeholders})`
-            )
-            .bind(stopDate, pageId, ...activeIds);
-        }
-        const result = (await statement.run()) as { meta?: { changes?: number } };
+        const result = (await db
+          .prepare('UPDATE meta_ads SET stop_date = ? WHERE page_id = ? AND stop_date IS NULL AND last_seen < ?')
+          .bind(stopDate, pageId, beforeDay)
+          .run()) as { meta?: { changes?: number } };
         return result.meta?.changes ?? 0;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

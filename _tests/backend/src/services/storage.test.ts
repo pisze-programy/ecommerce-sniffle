@@ -882,19 +882,22 @@ describe('meta ads storage', () => {
     expect(days[0].euTotalReach).toBe(4174096);
   });
 
-  it('ends ads that are not in the active set', async () => {
+  it('ends ads not seen on the current day', async () => {
     const { logger } = capturingLogger();
     let changes = 0;
-    const db = new MockD1((query) => {
+    let lastBind: readonly unknown[] = [];
+    const db = new MockD1((query, args) => {
       if (query.startsWith('UPDATE meta_ads SET stop_date')) {
         changes = 2;
+        lastBind = args;
         return { results: [], meta: { changes: 2 } };
       }
       return { results: [] };
     });
     const storage = createStorage(db, logger);
-    const ended = await storage.endMetaAds('1527130717525496', '2026-08-29', ['active-1']);
+    const ended = await storage.endMetaAds('1527130717525496', '2026-08-29', '2026-08-30');
     expect(ended).toBe(2);
     expect(changes).toBe(2);
+    expect(lastBind).toEqual(['2026-08-29', '1527130717525496', '2026-08-30']);
   });
 });

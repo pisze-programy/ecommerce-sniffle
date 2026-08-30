@@ -137,6 +137,10 @@ function renderFinancials(financials: EntityFinancials): string {
 <div class="text-end text-secondary fs-6 mt-1">Dane z Bizraport</div>`;
 }
 
+function metaAdsLibraryUrl(pageId: string): string {
+  return `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=ALL&is_targeted_country=false&media_type=all&search_type=page&sort_data%5Bdirection%5D=desc&sort_data%5Bmode%5D=total_impressions&view_all_page_id=${pageId}`;
+}
+
 function entityImageHeader(entity: Entity): string {
   const logo =
     entity.logoKey === null
@@ -163,6 +167,11 @@ function renderPodmiot(entity: Entity, financials: EntityFinancials | null): str
   if (entity.bizraportUrl !== null) {
     links.push(
       `<a class="btn btn-sm btn-outline-secondary" href="${esc(entity.bizraportUrl)}" target="_blank" rel="noopener">${icon('building')} Bizraport</a>`
+    );
+  }
+  if (entity.metaPageId !== null) {
+    links.push(
+      `<a class="btn btn-sm btn-outline-secondary" href="${esc(metaAdsLibraryUrl(entity.metaPageId))}" target="_blank" rel="noopener">${icon('ad-2')} Reklamy Meta</a>`
     );
   }
   links.push(socialButtons(entity.socials));

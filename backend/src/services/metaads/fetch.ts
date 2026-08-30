@@ -34,6 +34,11 @@ const FIELDS = [
 
 // A batch holds at most ten page ids. The API rejects more.
 export const BATCH_SIZE = 10;
+// The archive holds commercial ads delivered to the EU or UK.
+// The value ALL does not work for ad_reached_countries.
+// It returns no results. Enumerate the EU and UK codes instead.
+const REACHED_COUNTRIES =
+  "['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','GB','NO','CH']";
 // One batch must not paginate forever. 40 pages at limit 250 means 10k ads.
 const MAX_PAGES_PER_BATCH = 40;
 // A short pause keeps the request rate gentle. It does not count as CPU.
@@ -248,7 +253,7 @@ export async function fetchActiveAds(
   }
   const params = new URLSearchParams({
     access_token: deps.token,
-    ad_reached_countries: "['PL']",
+    ad_reached_countries: REACHED_COUNTRIES,
     ad_active_status: 'ACTIVE',
     limit: '250',
     fields: FIELDS,

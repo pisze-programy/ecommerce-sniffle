@@ -77,14 +77,13 @@ export async function runMetaAdsFetch(storage: Storage, logger: Logger, token: s
       }))
     );
     daysWritten += ads.length;
-    const activeIds = ads.map((ad) => ad.adArchiveId);
-    ended += await storage.endMetaAds(pageId, yesterday, activeIds);
+    ended += await storage.endMetaAds(pageId, yesterday, today);
   }
   for (const pageId of pageIds) {
     if (adsByPage.has(pageId) || failedSet.has(pageId)) {
       continue;
     }
-    ended += await storage.endMetaAds(pageId, yesterday, []);
+    ended += await storage.endMetaAds(pageId, yesterday, today);
   }
 
   logger.info('metaads.runDone', {

@@ -75,6 +75,19 @@ export default {
         ctx.waitUntil(Promise.resolve());
         return;
       }
+      if (await metaTokenExpired(token)) {
+        logger.warn('meta ads skipped: token expired');
+        await sendMetaAdsReport(env, day, 'failed', 'META_AD_TOKEN expired - renew it to a 60 day token', {
+          day,
+          shops: 0,
+          ads: 0,
+          daysWritten: 0,
+          ended: 0,
+          failedPages: ['token'],
+        });
+        ctx.waitUntil(Promise.resolve());
+        return;
+      }
       const storage = createStorage(env.DB, logger);
       try {
         const result = await runMetaAdsFetch(storage, logger, token);
@@ -221,6 +234,20 @@ async function sendCfSummary(env: Env, window: string, day: string): Promise<boo
     message: messages.join(' | '),
   });
   return true;
+}
+
+async function metaTokenExpired(token: string): Promise<boolean> {
+  try {
+    const url = `https://graph.facebook.com/v26.0/me?fields=id&access_token=${encodeURIComponent(token)}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      return false;
+    }
+    const body = (await response.json()) as { error?: { code?: number } };
+    return body.error?.code === 190;
+  } catch {
+    return false;
+  }
 }
 
 function warsawUtcOffsetHours(now: Date): number {
