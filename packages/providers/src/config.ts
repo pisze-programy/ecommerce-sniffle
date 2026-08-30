@@ -50,6 +50,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://rever.com.pl/product-sitemap.xml',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'dobrerzeczy',
@@ -64,6 +65,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://dobrerzeczy.pl/',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'royalwatch',
@@ -78,6 +80,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://www.royalwatch.pl/product-sitemap.xml',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'mushi',
@@ -92,6 +95,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://www.mushi.pl/sitemap.xml',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'premieresociety',
@@ -106,6 +110,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://premieresociety.com/pl/3-sklep',
     enabled: false,
+    currency: 'PLN',
   },
   // MCP Shopify
   {
@@ -121,6 +126,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://derichgallery.com/products.json',
     enabled: true,
+    currency: 'USD',
   },
   {
     id: 'monartofficial',
@@ -135,6 +141,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://monartofficial.com/products.json',
     enabled: true,
+    currency: 'EUR',
   },
   {
     id: 'booso',
@@ -149,6 +156,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://booso.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'forcer',
@@ -163,6 +171,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://forcer.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'godsavequeens',
@@ -177,6 +186,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://pl.godsavequeens.com/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'gymglamour',
@@ -191,6 +201,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://gymglamour.com/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'hdrey',
@@ -205,6 +216,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://hdrey.com/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'icon-amsterdam',
@@ -219,6 +231,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://icon-amsterdam.com/products.json',
     enabled: true,
+    currency: 'EUR',
   },
   {
     id: 'nago',
@@ -233,6 +246,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://nago.com/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'theodderside',
@@ -247,6 +261,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://theodderside.com/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'wakenbake',
@@ -261,6 +276,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://wakenbake.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'marionis',
@@ -275,6 +291,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://marionis.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'wojanshop',
@@ -289,6 +306,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://wojanshop.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'sanah',
@@ -303,6 +321,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://sanah.shop/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: '33mata',
@@ -317,6 +336,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://33mata.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'mualasklep',
@@ -331,6 +351,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://mualasklep.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'papitoenergy',
@@ -345,6 +366,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://www.papitoenergy.com/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'friendzstore',
@@ -359,6 +381,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://friendzstore.pl/products.json',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'berecords',
@@ -373,6 +396,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://berecords.pl/products.json',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'fagata',
@@ -387,6 +411,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://fagata.com/products.json',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'beaumont',
@@ -401,6 +426,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://beaumont.eu/products.json',
     enabled: true,
+    currency: 'EUR',
   },
   {
     id: 'islandrecords',
@@ -415,6 +441,39 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://islandrecords.pl/products.json',
     enabled: true,
+    currency: 'PLN',
+  },
+  // UCP (Universal Commerce Protocol) stock. The old /api/mcp dies on
+  // 31 Aug 2026. UCP is the replacement. See docs/UCP-MIGRATION.md.
+  {
+    id: 'icedstuff',
+    domain: 'icedstuff.pl',
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'ucp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 120,
+    requiresProxy: true,
+    endpoint: 'https://icedstuff.pl/products.json',
+    enabled: true,
+    currency: 'PLN',
+  },
+  {
+    id: 'divesmed',
+    domain: 'divesmed.pl',
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'ucp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 60,
+    requiresProxy: true,
+    endpoint: 'https://divesmed.pl/products.json',
+    enabled: true,
+    currency: 'PLN',
   },
   // Prestashop - cart-reveal (mutation, proxy). Worked well in the runs.
   {
@@ -430,6 +489,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://laboratoriumpanidomu.pl/',
     enabled: true,
+    currency: 'PLN',
   },
   // Shoper - basket-reveal (mutation, proxy). Verified locally, masked 0.
   {
@@ -445,6 +505,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://e-daag.com.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    currency: 'PLN',
     // The shop throttles the basket probe. The adaptive rate listens
     // to the shop and self-tunes. The rate starts at 2 per second. A
     // throttle halves it down to 0.5. Clean runs raise it by 0.25 up
@@ -471,6 +532,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://emereedivine.com/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'sklepskolim',
@@ -485,6 +547,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://sklepskolim.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    currency: 'PLN',
     adaptiveRate: {
       minRequestsPerSecond: 0.5,
       maxRequestsPerSecond: 3,
@@ -507,6 +570,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://wkdzik.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    currency: 'PLN',
     adaptiveRate: {
       minRequestsPerSecond: 0.5,
       maxRequestsPerSecond: 3,
@@ -529,6 +593,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://brokies.store/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    currency: 'PLN',
   },
   {
     id: 'risky',
@@ -543,6 +608,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://risky.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: true,
+    currency: 'PLN',
   },
   ...LEGACY_PROVIDERS,
 ];

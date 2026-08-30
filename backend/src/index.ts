@@ -17,6 +17,29 @@ app.use('*', async (c, next) => {
   c.set('modules', ALL_MODULES);
   await next();
 });
+// The UCP agent profile. Shopify fetches this URL for every UCP tool
+// call. It declares the cart capability only. A smaller profile keeps
+// the negotiated payload small. See docs/UCP-MIGRATION.md.
+const UCP_AGENT_PROFILE: Readonly<Record<string, unknown>> = {
+  ucp: {
+    version: '2026-04-08',
+    services: {
+      'dev.ucp.shopping': [
+        {
+          version: '2026-04-08',
+          spec: 'https://ucp.dev/2026-04-08/specification/overview',
+          transport: 'mcp',
+          schema: 'https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json',
+        },
+      ],
+    },
+    capabilities: {
+      'dev.ucp.shopping.cart': [{ version: '2026-04-08' }],
+    },
+    payment_handlers: {},
+  },
+};
+app.get('/ucp/agent-profile.json', (c) => c.json(UCP_AGENT_PROFILE, 200, { 'Cache-Control': 'public, max-age=3600' }));
 app.route('/', createApi());
 
 export default {

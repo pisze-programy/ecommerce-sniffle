@@ -32,6 +32,8 @@ import { berecordsModule } from './providers/shopify/berecords.ts';
 import { beaumontModule } from './providers/shopify/beaumont.ts';
 import { fagataModule } from './providers/shopify/fagata.ts';
 import { islandrecordsModule } from './providers/shopify/islandrecords.ts';
+import { icedstuffModule } from './providers/shopify/icedstuff.ts';
+import { divesmedModule } from './providers/shopify/divesmed.ts';
 import { arustamianModule } from './providers/shoper/arustamian.ts';
 import { eDaagModule } from './providers/shoper/e-daag.ts';
 import { emereedivineModule } from './providers/shoper/emereedivine.ts';
@@ -99,6 +101,8 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   beaumontModule,
   fagataModule,
   islandrecordsModule,
+  icedstuffModule,
+  divesmedModule,
 ];
 
 export function createDefaultRegistry() {

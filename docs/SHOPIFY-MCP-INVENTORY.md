@@ -150,9 +150,9 @@ challenge direct IPs.
 
 ## Watch out
 
-- The old `/api/mcp` path dies on 31 Aug 2026. The replacement
-  `/api/ucp/mcp` is live but broken as of today. It wants
-  `meta.ucp-agent.profile` and fails with `profile_malformed`.
+- The old `/api/mcp` path dies on 31 Aug 2026.
+  The replacement `/api/ucp/mcp` is live and verified.
+  See [UCP-MIGRATION.md](./UCP-MIGRATION.md).
 - The count is live, not frozen. Someone can buy between probes.
 - The measureFetch wrapper must keep `status`, `ok` and `headers`
   when the response has no content-length. A spread of a Response

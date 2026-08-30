@@ -8,6 +8,7 @@ const EXPECTED_IDS = [
   'booso',
   'deehome',
   'derichgallery',
+  'divesmed',
   'dobrerzeczy',
   'e-daag',
   'emereedivine',
@@ -16,8 +17,11 @@ const EXPECTED_IDS = [
   'godsavequeens',
   'gymglamour',
   'hdrey',
+  'huel',
+  'icedstuff',
   'icon-amsterdam',
   'influcenter',
+  'kfd',
   'laboratoriumpanidomu',
   'lexon',
   'magdabutrym',
@@ -34,8 +38,10 @@ const EXPECTED_IDS = [
   'rever',
   'royalwatch',
   'seembols',
+  'sfd',
   'shapellx',
   'sklepskolim',
+  'sodastream',
   'theodderside',
   'wakenbake',
   'westwing',
@@ -55,8 +61,8 @@ const EXPECTED_IDS = [
 ].sort();
 
 describe('PROVIDERS config', () => {
-  it('defines exactly 49 providers', () => {
-    expect(PROVIDERS.length).toBe(49);
+  it('defines exactly 55 providers', () => {
+    expect(PROVIDERS.length).toBe(55);
   });
 
   it('uses unique ids', () => {
@@ -79,7 +85,7 @@ describe('PROVIDERS config', () => {
   });
 
   it('uses a known platform', () => {
-    const allowed = new Set(['shopify', 'shoper', 'woocommerce', 'custom', 'prestashop', 'magento']);
+    const allowed = new Set(['shopify', 'shoper', 'woocommerce', 'custom', 'prestashop', 'magento', 'idosell']);
     for (const provider of PROVIDERS) {
       expect(allowed.has(provider.platform)).toBe(true);
     }
@@ -94,6 +100,7 @@ describe('PROVIDERS config', () => {
       'boolean',
       'storefront-availability',
       'mcp-inventory',
+      'ucp-inventory',
     ]);
     for (const provider of PROVIDERS) {
       expect(allowed.has(provider.stockSource)).toBe(true);
@@ -117,13 +124,13 @@ describe('PROVIDERS config', () => {
     expect(phlov?.requiresProxy).toBe(false);
   });
 
-  it('has 33 mutation providers, 4 get providers, 12 vps-get providers', () => {
+  it('has 37 mutation providers, 4 get providers, 14 vps-get providers', () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === 'vps-mutation');
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
-    expect(mutation.length).toBe(33);
+    expect(mutation.length).toBe(37);
     expect(get.length).toBe(4);
-    expect(vpsGet.length).toBe(12);
+    expect(vpsGet.length).toBe(14);
   });
 
   it('paces every shoper provider at 5 requests per second', () => {

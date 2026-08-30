@@ -14,6 +14,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://misbhv.com/products.json',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'montiel',
@@ -28,6 +29,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://montiel.com/products.json',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'noo-ma',
@@ -42,6 +44,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://noo.ma/products.json',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'magdabutrym',
@@ -56,6 +59,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://www.magdabutrym.com/sitemap-category/all.xml',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'shapellx',
@@ -70,6 +74,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://www.shapellx.com/',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'seembols',
@@ -84,6 +89,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://seembols.com/',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'westwing',
@@ -98,6 +104,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://www.westwing.pl/',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'deehome',
@@ -112,6 +119,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://deehome.pl/sklep/',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'bloozie',
@@ -126,6 +134,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://www.bloozie.pl/products.json',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'foodsbyann',
@@ -140,6 +149,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://foodsbyann.com/sitemap.xml.gz',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'phlov',
@@ -154,6 +164,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://www.phlov.com/',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'influcenter',
@@ -168,6 +179,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://influcenter.pl/',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'lexon',
@@ -182,6 +194,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: false,
     endpoint: 'https://lexon-design.com/en',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'arustamian',
@@ -196,6 +209,7 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://arustamian.com/webapi/front/pl_PL/products/PLN/list',
     enabled: false,
+    currency: 'PLN',
   },
   {
     id: 'osmpower',
@@ -210,5 +224,102 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://osmpower.pl/webapi/front/pl_PL/products/PLN/list',
     enabled: false,
+    currency: 'PLN',
+  },
+  // kfd - PrestaShop, parked. Discovery 2026-08-29.
+  // The shop is not Shoper. The Shoper webapi returns 404.
+  // The product page embeds a data-product JSON. It holds the
+  // quantity of the default flavor, the quantity of all flavors,
+  // the price, and the available_for_order flag. The JSON-LD block
+  // holds the price and the availability. The refresh POST returns
+  // data-stock and current-price-value. The Security Pro WAF resets
+  // connections on a burst of product GETs. Even a slow serial crawl
+  // was blocked during discovery. A combo product exposes only the
+  // default flavor and the total. Re-validate the crawl on the VPS
+  // IP before enabling. Do not reuse extractPrestaProductId for this
+  // shop. It returns the wrong id for kfd URLs. Parse the -p-<id>
+  // tail instead.
+  {
+    id: 'kfd',
+    domain: 'sklep.kfd.pl',
+    platform: 'prestashop',
+    schedule: '0 12 * * *',
+    window: 'both',
+    mode: 'vps-get',
+    stockSource: 'html',
+    ratePerSecond: 1,
+    durationSeconds: 900,
+    requiresProxy: false,
+    endpoint: 'https://sklep.kfd.pl/',
+    enabled: false,
+    currency: 'PLN',
+  },
+  // sfd - IdoSell, parked. Discovery 2026-08-29.
+  // The sitemap holds the full catalog. It lists 3210 product pages
+  // in one GET. The product page embeds PRODUCT_PAGE_CONFIG. It holds
+  // the price. It holds no stock and no availability. The listing
+  // loads availability by async. The endpoint is unknown. The basket
+  // add is a WebForms postback with 131 viewstate fields and one
+  // checkbox per flavor. The masked rule forbids a price-only
+  // provider. Find the availability endpoint before enabling.
+  {
+    id: 'sfd',
+    domain: 'sklep.sfd.pl',
+    platform: 'idosell',
+    schedule: '0 12 * * *',
+    window: 'both',
+    mode: 'vps-get',
+    stockSource: 'html',
+    ratePerSecond: 1,
+    durationSeconds: 600,
+    requiresProxy: false,
+    endpoint: 'https://sklep.sfd.pl/sitemap.xml',
+    enabled: false,
+    currency: 'PLN',
+  },
+  // huel - Shopify headless, parked. Discovery 2026-08-29.
+  // The store runs on a Next.js frontend. The origin is
+  // huelpoland.myshopify.com. It has no bot protection. The
+  // products.json returns 404. The catalog is the sitemap at
+  // sitemaps/sitemap/pl-pl.xml. It lists 58 products. The page
+  // embeds the price. It does not embed the availability. The
+  // /api/mcp endpoint is not confirmed. Validate the update_cart
+  // clamp on the real path before enabling.
+  {
+    id: 'huel',
+    domain: 'pl.huel.com',
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'mcp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 60,
+    requiresProxy: true,
+    endpoint: 'https://pl.huel.com/sitemaps/sitemap/pl-pl.xml',
+    enabled: false,
+    currency: 'PLN',
+  },
+  // sodastream - Shopify, parked. Discovery 2026-08-29.
+  // The shop is a standard Shopify store. It has no bot protection.
+  // The products.json lists 64 products. It holds the price and the
+  // availability. It does not hold the exact inventory. The /api/mcp
+  // endpoint is present. It exposes the update_cart tool. The
+  // mcp-inventory provider can reveal the exact stock. The catalog is
+  // small. Validate the update_cart clamp on the VPS before enabling.
+  {
+    id: 'sodastream',
+    domain: 'sodastream.pl',
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'mcp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 30,
+    requiresProxy: true,
+    endpoint: 'https://sodastream.pl/products.json',
+    enabled: false,
+    currency: 'PLN',
   },
 ];

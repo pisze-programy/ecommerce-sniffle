@@ -1,7 +1,14 @@
-export type Platform = 'shopify' | 'shoper' | 'woocommerce' | 'custom' | 'prestashop' | 'magento';
+export type Platform = 'shopify' | 'shoper' | 'woocommerce' | 'custom' | 'prestashop' | 'magento' | 'idosell';
 
 export type StockSource =
-  'embedded-json' | 'cart-probe' | 'basket-reveal' | 'html' | 'boolean' | 'storefront-availability' | 'mcp-inventory';
+  | 'embedded-json'
+  | 'cart-probe'
+  | 'basket-reveal'
+  | 'html'
+  | 'boolean'
+  | 'storefront-availability'
+  | 'mcp-inventory'
+  | 'ucp-inventory';
 
 export type ExecutionMode = 'cf-get' | 'vps-get' | 'vps-mutation';
 
@@ -32,6 +39,9 @@ export interface ProviderConfig {
   readonly requiresProxy: boolean;
   readonly endpoint: string;
   readonly enabled: boolean;
+  // The shop reports prices in this currency. The display layer converts
+  // non-PLN amounts to PLN. Undefined means the prices are PLN.
+  readonly currency?: string;
   readonly excludedStockIds?: readonly number[];
   readonly adaptiveRate?: AdaptiveRateConfig;
 }
