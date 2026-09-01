@@ -17,7 +17,8 @@
     "discover": "npm run build && node dist/discover.js",
     "probe": "npm run build && node dist/probe.js",
     "deep": "npm run build && node dist/deep.js",
-    "merchradar": "npm run build && node dist/merchradar.js"
+    "merchradar": "npm run build && node dist/merchradar.js",
+    "recon": "npm run build && node dist/recon-cli.js"
   },
   "dependencies": {
     "@ecommerce-sniffle/providers": "0.1.0",
