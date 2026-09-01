@@ -42,6 +42,7 @@ const UCP_AGENT_PROFILE: Readonly<Record<string, unknown>> = {
 };
 app.get('/ucp/agent-profile.json', (c) => c.json(UCP_AGENT_PROFILE, 200, { 'Cache-Control': 'public, max-age=3600' }));
 app.route('/', createApi());
+app.notFound((c) => c.redirect('/', 302));
 
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
@@ -236,12 +237,14 @@ async function sendCfSummary(env: Env, window: string, day: string): Promise<boo
   return true;
 }
 
-async function metaTokenExpired(token: string): Promise<boolean> {
+export async function metaTokenExpired(token: string): Promise<boolean> {
   try {
     const url = `https://graph.facebook.com/v26.0/me?fields=id&access_token=${encodeURIComponent(token)}`;
     const response = await fetch(url);
     if (!response.ok) {
-      return false;
+      // A dead token returns 401. Any auth failure means the token
+      // cannot authenticate. The operator must renew it.
+      return response.status === 401 || response.status === 400 || response.status === 403;
     }
     const body = (await response.json()) as { error?: { code?: number } };
     return body.error?.code === 190;

@@ -87,7 +87,7 @@ describe('taskReport', () => {
 describe('cronReport', () => {
   it('builds an always report with the window', () => {
     const report = cronReport('morning', 'failed', { done: 10, pending: 1 }, 'PENDING: theodderside');
-    expect(report.source).toBe('ecommerce-pulse/vps/cron');
+    expect(report.source).toBe('ecommerce-pulse/vps');
     expect(report.notify).toBe('always');
     expect(report.data).toEqual({ window: 'morning', done: 10, pending: 1 });
     expect(report.message).toBe('PENDING: theodderside');

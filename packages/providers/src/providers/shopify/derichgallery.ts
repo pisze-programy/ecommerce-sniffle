@@ -1,9 +1,9 @@
 import { PROVIDERS } from '../../config.ts';
 import { requireValue } from '../../helpers.ts';
 import type { ProviderModule } from '../../module.ts';
-import { buildMcpInventoryProvider } from './implementations/mcp-inventory.ts';
+import { buildUcpInventoryProvider } from './implementations/ucp-inventory.ts';
 
-export * from './implementations/mcp-inventory.ts';
+export * from './implementations/ucp-inventory.ts';
 
 const config = requireValue(
   PROVIDERS.find((c) => c.id === 'derichgallery'),
@@ -13,6 +13,6 @@ const config = requireValue(
 export const derichgalleryModule: ProviderModule = {
   config,
   build(deps) {
-    return buildMcpInventoryProvider(config, deps.logger, deps.directFetch);
+    return buildUcpInventoryProvider(config, deps.logger, deps.directFetch);
   },
 };

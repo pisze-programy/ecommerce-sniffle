@@ -71,7 +71,7 @@ export function cronReport(
   message: string
 ): SnitchReport {
   return {
-    source: 'ecommerce-pulse/vps/cron',
+    source: 'ecommerce-pulse/vps',
     status,
     data: { window, ...data },
     message,

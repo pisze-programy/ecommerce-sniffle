@@ -3,12 +3,14 @@ import { requireValue } from '../../helpers.ts';
 import type { ProviderModule } from '../../module.ts';
 import { buildUcpInventoryProvider } from './implementations/ucp-inventory.ts';
 
+export * from './implementations/ucp-inventory.ts';
+
 const config = requireValue(
-  PROVIDERS.find((c) => c.id === 'islandrecords'),
-  'config islandrecords'
+  PROVIDERS.find((c) => c.id === 'acewarsaw'),
+  'config acewarsaw'
 );
 
-export const islandrecordsModule: ProviderModule = {
+export const acewarsawModule: ProviderModule = {
   config,
   build(deps) {
     return buildUcpInventoryProvider(config, deps.logger, deps.directFetch);

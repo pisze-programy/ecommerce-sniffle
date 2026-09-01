@@ -90,9 +90,9 @@ The module lives here:
 `packages/providers/src/providers/shopify/implementations/ucp-inventory.ts`.
 It does not change the old `mcp-inventory`.
 
-The first active shop is icedstuff.pl. It uses the UCP source.
-Its catalog has 1475 variants. The run is about 0.4 MB with gzip.
-The second active shop is divesmed.pl. Its catalog has 31 products.
+The active shops are icedstuff.pl, divesmed.pl, and acewarsaw.pl.
+They use the UCP source. The icedstuff catalog has 1475 variants.
+The run is about 0.4 MB with gzip.
 
 ## The catalog tools
 
@@ -123,11 +123,10 @@ All 12 have the `update_cart` tool.
 
 ## The migration plan
 
-1. The `ucp-inventory` source is live for icedstuff.pl.
+1. The `ucp-inventory` source is live for all Shopify shops.
 2. The profile is hosted on the worker.
-3. The old shops still run `mcp-inventory`. They stay until
-   the old `/api/mcp` dies on 31 Aug 2026.
-4. Migrate the old shops one by one. Flip the stock source
-   to `ucp-inventory` and run the full path on the VPS.
-   Masked must be 0.
-5. Finish before 31 Aug 2026.
+3. All `mcp-inventory` stock sources flipped to `ucp-inventory`.
+   The modules build the UCP provider.
+4. Run the full path on the VPS. Masked must be 0.
+5. The old `/api/mcp` dies on 31 Aug 2026. The migration
+   must finish before that date.

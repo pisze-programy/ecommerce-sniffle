@@ -18,11 +18,15 @@ function okResponse(body: string) {
   };
 }
 
-function mcpBody(errors: Array<Record<string, unknown>>): string {
+function ucpBody(lineItems: Array<{ id: string; quantity: number }>): string {
+  const inner = JSON.stringify({
+    line_items: lineItems.map((item) => ({ item: { id: item.id }, quantity: item.quantity })),
+    messages: [],
+  });
   return JSON.stringify({
     jsonrpc: '2.0',
     id: 1,
-    result: { content: [{ type: 'text', text: JSON.stringify({ errors }) }] },
+    result: { content: [{ type: 'text', text: inner }], isError: false },
   });
 }
 
@@ -40,20 +44,38 @@ const CATALOG = JSON.stringify({
   ],
 });
 
+function readVariantIds(body: string): string[] {
+  const data = JSON.parse(body) as Readonly<Record<string, unknown>>;
+  const params = data['params'] as Readonly<Record<string, unknown>>;
+  const args = params['arguments'] as Readonly<Record<string, unknown>>;
+  const cart = args['cart'] as Readonly<Record<string, unknown>>;
+  const lines = (cart['line_items'] ?? []) as Array<Readonly<Record<string, unknown>>>;
+  return lines.map(
+    (line) =>
+      String((line['item'] as Readonly<Record<string, unknown>>)['id'] ?? '')
+        .split('/')
+        .pop() ?? ''
+  );
+}
+
 describe('nagoModule', () => {
-  it('reveals exact stock through the mcp clamp', async () => {
+  it('reveals exact stock through the ucp clamp', async () => {
     const logger = createLogger(() => {});
+    const quantities = new Map<string, number>([
+      ['100', 8],
+      ['200', 13],
+    ]);
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: unknown) => {
+      vi.fn(async (url: unknown, init?: RequestInit) => {
         const u = String(url);
-        if (u.includes('products.json')) return okResponse(CATALOG);
-        if (u.includes('/api/mcp')) {
+        if (u.includes('products.json')) {
+          return okResponse(CATALOG);
+        }
+        if (u.includes('/api/ucp/mcp')) {
+          const ids = readVariantIds(String(init?.body));
           return okResponse(
-            mcpBody([
-              { field: ['add_items', '0', 'quantity'], message: 'Możesz dodać do koszyka tylko 8 Longsleeve - S.' },
-              { field: ['add_items', '1', 'quantity'], message: 'Możesz dodać do koszyka tylko 13 Longsleeve - M.' },
-            ])
+            ucpBody(ids.map((id) => ({ id: `gid://shopify/ProductVariant/${id}`, quantity: quantities.get(id) ?? 0 })))
           );
         }
         throw new Error('unexpected url ' + u);
@@ -71,14 +93,20 @@ describe('nagoModule', () => {
     const logger = createLogger(() => {});
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: unknown) => {
+      vi.fn(async (url: unknown, init?: RequestInit) => {
         const u = String(url);
-        if (u.includes('products.json')) return okResponse(CATALOG);
-        if (u.includes('/api/mcp')) {
+        if (u.includes('products.json')) {
+          return okResponse(CATALOG);
+        }
+        if (u.includes('/api/ucp/mcp')) {
+          const ids = readVariantIds(String(init?.body));
           return okResponse(
-            mcpBody([
-              { field: ['add_items', '0', 'quantity'], message: 'Możesz dodać do koszyka tylko 8 Longsleeve - S.' },
-            ])
+            ucpBody(
+              ids.map((id) => ({
+                id: `gid://shopify/ProductVariant/${id}`,
+                quantity: id === '200' ? 999999 : 8,
+              }))
+            )
           );
         }
         throw new Error('unexpected url ' + u);
@@ -86,7 +114,7 @@ describe('nagoModule', () => {
     );
     const provider = nagoModule.build({ logger });
     const catalog = await provider.revealStock({ productIds: [] });
-    // Variant M (200) got no clamp error -> no cap -> available flag 1.
+    // Variant M (200) accepted the huge quantity -> no cap -> available flag 1.
     expect(catalog.products[0]?.variants[0]?.quantity).toBe(8);
     expect(catalog.products[0]?.variants[1]?.quantity).toBe(1);
   });

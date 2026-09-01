@@ -49,7 +49,7 @@ const DEFAULT_CPM: CpmRange = { min: 15, max: 30 };
 export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-  api.get('/shops', async (c) => {
+  api.get('/', async (c) => {
     const modules = c.get('modules');
     const storage = c.get('storage');
     const enabled = modules.filter((module) => module.config.enabled);
@@ -202,12 +202,10 @@ ${card({ title: 'Sklepy', body: renderShopsTable(cards), className: 'mt-2' })}`;
     return c.html(pageShell('ecommerce-sniffle — Sklepy', body));
   });
 
-  api.get('/dashboard', (c) => c.redirect('/shops', 301));
-
   api.get('/search', async (c) => {
     const q = c.req.query('q');
     if (q === undefined || q.trim().length === 0) {
-      return c.redirect('/shops', 302);
+      return c.redirect('/', 302);
     }
     const query = q.trim();
     const storage = c.get('storage');
@@ -237,7 +235,7 @@ ${card({ title: 'Sklepy', body: renderShopsTable(cards), className: 'mt-2' })}`;
       )
       .join('');
     const body = `
-${breadcrumb([{ label: 'Sklepy', href: '/shops' }, { label: 'szukaj' }])}
+${breadcrumb([{ label: 'Sklepy', href: '/' }, { label: 'szukaj' }])}
 <h1 class="mb-3">Wyniki dla „${esc(query)}”</h1>
 ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep nie pasuje do zapytania.') : table(['sklep', 'domena', 'produkt'], rows)}`;
     return c.html(pageShell('ecommerce-sniffle — szukaj', body));
@@ -252,7 +250,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       return c.html(
         pageShell(
           'Nieznany sklep',
-          `${alert(`Nieznany sklep: ${esc(id)}`, 'red')}${breadcrumb([{ label: 'Sklepy', href: '/shops' }])}`
+          `${alert(`Nieznany sklep: ${esc(id)}`, 'red')}${breadcrumb([{ label: 'Sklepy', href: '/' }])}`
         ),
         404
       );
@@ -261,10 +259,10 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const domain = config.domain;
     const nowDay = new Date().toISOString().slice(0, 10);
     const days = await storage.readAvailableDays(domain);
-    const validDays = days.filter((d) => d < nowDay);
+    const validDays = days.filter((d) => d <= nowDay);
     const dayParam = c.req.query('day');
     const day =
-      dayParam === undefined || dayParam >= nowDay || !validDays.includes(dayParam)
+      dayParam === undefined || dayParam > nowDay || !validDays.includes(dayParam)
         ? validDays[0] === undefined
           ? ''
           : validDays[0]
@@ -292,24 +290,23 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const topRows = topSellingProducts(snapshots, { maxQuantity, limit: 10 });
 
     const trendSeries = buildTrendSeries(snapshots);
-    const dayOptions = validDays
-      .map((d) => `<option value="${esc(d)}"${d === day ? ' selected' : ''}>${esc(d)}</option>`)
-      .join('');
+    const dayAt = (days: readonly string[], index: number): string => {
+      const value = days[index];
+      return value === undefined ? '' : value;
+    };
     const prevDay = day === '' ? '' : dayBefore(day);
     const nextDay = day === '' ? '' : dayAfter(day);
     const prevLink =
-      day !== '' && prevDay !== '' && validDays.includes(prevDay)
+      prevDay !== '' && validDays.includes(prevDay)
         ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(prevDay))}" aria-label="Poprzedni dzień">${icon('chevron-left')}</a>`
         : '';
     const nextLink =
-      day !== '' && nextDay !== '' && validDays.includes(nextDay)
+      nextDay !== '' && validDays.includes(nextDay)
         ? `<a class="btn btn-outline-secondary btn-sm" href="${esc(stockQs(nextDay))}" aria-label="Następny dzień">${icon('chevron-right')}</a>`
         : '';
     const dayControl = `<div class="d-flex align-items-center gap-2 ms-auto">
   ${prevLink}
-  <select name="day" id="day" class="form-select w-auto" aria-label="Wybierz dzień" onchange="location.href='${esc(stockQs(''))}&day='+encodeURIComponent(this.value)">
-    ${dayOptions}
-  </select>
+  <input type="date" id="day" class="form-control w-auto" value="${esc(day)}" min="${esc(dayAt(validDays, validDays.length - 1))}" max="${esc(dayAt(validDays, 0))}" ${day === '' ? 'disabled' : ''} aria-label="Wybierz dzień" onchange="location.href='${esc(stockQs(''))}&day='+encodeURIComponent(this.value)">
   ${nextLink}
 </div>`;
 
@@ -438,7 +435,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     })();
     const body = `
 <div class="page-header d-flex flex-row flex-wrap align-items-center justify-content-start mb-3">
-  ${breadcrumb([{ label: 'Sklepy', href: '/shops' }, { label: config.id }])}
+  ${breadcrumb([{ label: 'Sklepy', href: '/' }, { label: config.id }])}
 </div>
 <h1 class="mb-3"><a href="https://${esc(domain)}" target="_blank" rel="noopener">${esc(domain)}</a></h1>
 ${countdownNote}
@@ -483,7 +480,7 @@ ${card({ title: 'Stan magazynowy (aktualny)', body: renderStock({ domain, platfo
     return c.html(table(['wariant', 'ilość', 'cena'], rows));
   });
 
-  api.get('/report', (c) => c.redirect('/shops', 301));
+  api.get('/report', (c) => c.redirect('/', 301));
   api.get('/report/:shop', (c) => c.redirect(`/shop/${c.req.param('shop')}`, 301));
 
   return api;

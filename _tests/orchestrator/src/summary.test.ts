@@ -53,7 +53,7 @@ describe('runCronSummary', () => {
         }
         if (String(url).includes('/v1/report')) {
           const body = JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>;
-          expect(body['source']).toBe('ecommerce-pulse/vps/cron');
+          expect(body['source']).toBe('ecommerce-pulse/vps');
           expect(body['status']).toBe('ok');
           expect(body['notify']).toBe('always');
           return jsonResponse(200, {});

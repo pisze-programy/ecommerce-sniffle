@@ -3,6 +3,7 @@ import { PROVIDERS, validateConfig } from '../../../../packages/providers/src/co
 import type { ProviderConfig } from '../../../../packages/providers/src/types.ts';
 
 const EXPECTED_IDS = [
+  'acewarsaw',
   'arustamian',
   'bloozie',
   'booso',
@@ -17,6 +18,7 @@ const EXPECTED_IDS = [
   'godsavequeens',
   'gymglamour',
   'hdrey',
+  'holy',
   'huel',
   'icedstuff',
   'icon-amsterdam',
@@ -61,8 +63,8 @@ const EXPECTED_IDS = [
 ].sort();
 
 describe('PROVIDERS config', () => {
-  it('defines exactly 55 providers', () => {
-    expect(PROVIDERS.length).toBe(55);
+  it('defines exactly 57 providers', () => {
+    expect(PROVIDERS.length).toBe(57);
   });
 
   it('uses unique ids', () => {
@@ -124,11 +126,11 @@ describe('PROVIDERS config', () => {
     expect(phlov?.requiresProxy).toBe(false);
   });
 
-  it('has 37 mutation providers, 4 get providers, 14 vps-get providers', () => {
+  it('has 39 mutation providers, 4 get providers, 14 vps-get providers', () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === 'vps-mutation');
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
-    expect(mutation.length).toBe(37);
+    expect(mutation.length).toBe(39);
     expect(get.length).toBe(4);
     expect(vpsGet.length).toBe(14);
   });
