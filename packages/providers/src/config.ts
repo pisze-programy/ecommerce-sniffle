@@ -3,6 +3,11 @@ import { assertNonEmptyString, assertPositiveFinite, assertPositiveInteger } fro
 import { EXCLUDED_STOCK_IDS } from './providers/shoper/excluded-stock-ids.ts';
 import { LEGACY_PROVIDERS } from './config.legacy.ts';
 
+// Run recon before you add a provider. Recon checks the bot vendor,
+// the challenge state, the embedded data, and the sitemap count.
+// Command: cd discovery && npm run recon -- <url>.
+// Doc: docs/RECON.md.
+
 function validateAdaptiveRate(rate: AdaptiveRateConfig): AdaptiveRateConfig {
   assertPositiveFinite(rate.minRequestsPerSecond, 'config.adaptiveRate.minRequestsPerSecond');
   assertPositiveFinite(rate.maxRequestsPerSecond, 'config.adaptiveRate.maxRequestsPerSecond');
@@ -515,6 +520,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     durationSeconds: 60,
     requiresProxy: true,
     endpoint: 'https://pl.holy.com/products.json',
+    entityId: 'holy',
     enabled: true,
     currency: 'PLN',
   },
