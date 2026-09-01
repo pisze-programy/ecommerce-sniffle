@@ -177,4 +177,62 @@ describe('renderEntityCard', () => {
     const html = renderEntityCard(store(), 'hdrey-group', shops(), '2026-08-30', null);
     expect(html).not.toContain('Reklamy Meta');
   });
+
+  it('renders a related brand that is a tracked shop as a link', () => {
+    const data = store();
+    const entityRelations = [
+      {
+        fromEntityId: 'hdrey-group',
+        toEntityId: 'dives-med',
+        type: 'related' as const,
+        label: 'marki powiązane',
+        from: null,
+        to: null,
+      },
+    ];
+    const html = renderEntityCard({ ...data, entityRelations }, 'hdrey-group', shops(), '2026-08-30', null);
+    expect(html).toContain('Marki powiązane');
+    expect(html).toContain('/shop/divesmed');
+    expect(html).toContain('Dives Med');
+  });
+
+  it('renders a related brand without a shop as a badge', () => {
+    const data = store();
+    const entityRelations = [
+      {
+        fromEntityId: 'hdrey-group',
+        toEntityId: 'infini',
+        type: 'related' as const,
+        label: 'marki powiązane',
+        from: null,
+        to: null,
+      },
+    ];
+    const html = renderEntityCard({ ...data, entityRelations }, 'hdrey-group', shops(), '2026-08-30', null);
+    expect(html).toContain('Marki powiązane');
+    expect(html).toContain('INFINI');
+    expect(html).not.toContain('/shop/infini');
+  });
+
+  it('renders the relation when the entity is on the to side', () => {
+    const data = store();
+    const entityRelations = [
+      {
+        fromEntityId: 'forcer',
+        toEntityId: 'hdrey-group',
+        type: 'related' as const,
+        label: 'marki powiązane',
+        from: null,
+        to: null,
+      },
+    ];
+    const html = renderEntityCard({ ...data, entityRelations }, 'hdrey-group', shops(), '2026-08-30', null);
+    expect(html).toContain('Marki powiązane');
+    expect(html).toContain('/shop/forcer');
+  });
+
+  it('renders no related brands section without relations', () => {
+    const html = renderEntityCard(store(), 'hdrey-group', shops(), '2026-08-30', null);
+    expect(html).not.toContain('Marki powiązane');
+  });
 });

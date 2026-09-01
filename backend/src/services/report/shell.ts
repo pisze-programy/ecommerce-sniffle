@@ -34,7 +34,7 @@ export function pageShell(title: string, body: string): string {
     <a class="visually-hidden-focusable" href="#main-content">Przejdź do treści</a>
     <header class="navbar navbar-expand-lg navbar-light bg-white border-bottom sticky-top">
       <div class="container-xl">
-        <a class="navbar-brand" href="/shops">ecommerce-sniffle</a>
+        <a class="navbar-brand" href="/">ecommerce-sniffle</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-nav" aria-controls="main-nav" aria-expanded="false"><span class="navbar-toggler-icon"></span></button>
         <div class="collapse navbar-collapse" id="main-nav">
           <form class="d-flex ms-auto mt-2 mt-lg-0" action="/search" method="get" role="search">
@@ -42,7 +42,7 @@ export function pageShell(title: string, body: string): string {
             <button class="btn btn-outline-secondary" type="submit">${icon('search')}</button>
           </form>
           <ul class="navbar-nav ms-lg-2">
-            <li class="nav-item"><a class="nav-link" href="/shops">Sklepy</a></li>
+            <li class="nav-item"><a class="nav-link" href="/">Sklepy</a></li>
           </ul>
         </div>
       </div>

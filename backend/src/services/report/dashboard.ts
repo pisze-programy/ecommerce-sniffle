@@ -21,7 +21,7 @@ export function renderShopsTable(cards: readonly ShopCard[]): string {
     .map((card) => {
       const sold = card.today === null ? '--' : `${card.today.sold} szt`;
       return `<tr>
-  <td class="text-nowrap"><a href="https://${esc(card.domain)}" target="_blank" rel="noopener">${esc(card.domain)}</a></td>
+  <td class="text-nowrap"><a href="/shop/${esc(card.id)}">${esc(card.domain)}</a></td>
   <td class="text-end">${money(card.summary.totalValue)}</td>
   <td class="text-end">${card.summary.uniqueProducts}</td>
   <td class="text-end">${sold}</td>

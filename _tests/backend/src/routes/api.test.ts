@@ -215,6 +215,7 @@ function buildApp(
     await next();
   });
   app.route('/', createApi());
+  app.notFound((c) => c.redirect('/', 302));
   return app;
 }
 
@@ -365,6 +366,13 @@ describe('api /run', () => {
     expect(response.status).toBe(404);
   });
 
+  it('redirects an unknown path to the root', async () => {
+    const app = buildApp(new MemoryStorage());
+    const response = await app.request('/no-such-path');
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/');
+  });
+
   it('runs a single shop when requested', async () => {
     const app = buildApp(new MemoryStorage(), [mockProviderModule()]);
     const response = await app.request('/run?shop=mock.pl');
@@ -483,7 +491,7 @@ describe('api /dashboard and /shop', () => {
     const app = buildApp(new MemoryStorage());
     const report = await app.request('/report');
     expect(report.status).toBe(301);
-    expect(report.headers.get('location')).toBe('/shops');
+    expect(report.headers.get('location')).toBe('/');
     const shopReport = await app.request('/report/forcer.pl');
     expect(shopReport.status).toBe(301);
     expect(shopReport.headers.get('location')).toBe('/shop/forcer.pl');
@@ -498,10 +506,10 @@ describe('api /dashboard and /shop', () => {
       variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
     });
     const app = buildApp(storage, [mockProviderModule()]);
-    const response = await app.request('/shops');
+    const response = await app.request('/');
     expect(response.status).toBe(200);
     const html = await response.text();
-    expect(html).toContain('https://mock.pl');
+    expect(html).toContain('/shop/mock');
     expect(html).toContain('tabler.min.css');
     expect(html).toContain('1000,00 zł');
   });
@@ -638,7 +646,7 @@ describe('api /dashboard and /shop', () => {
       suspectCount: 0,
     });
     const app = buildApp(storage, [mockProviderModule()]);
-    const response = await app.request('/shops');
+    const response = await app.request('/');
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain('Sprzedane 24h');

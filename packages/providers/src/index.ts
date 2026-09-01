@@ -36,6 +36,7 @@ import { icedstuffModule } from './providers/shopify/icedstuff.ts';
 import { divesmedModule } from './providers/shopify/divesmed.ts';
 import { acewarsawModule } from './providers/shopify/acewarsaw.ts';
 import { holyModule } from './providers/shopify/holy.ts';
+import { dresscodecrewModule } from './providers/shopify/dresscodecrew.ts';
 import { arustamianModule } from './providers/shoper/arustamian.ts';
 import { eDaagModule } from './providers/shoper/e-daag.ts';
 import { emereedivineModule } from './providers/shoper/emereedivine.ts';
@@ -43,6 +44,8 @@ import { sklepskolimModule } from './providers/shoper/sklepskolim.ts';
 import { wkdzikModule } from './providers/shoper/wkdzik.ts';
 import { brokiesModule } from './providers/shoper/brokies.ts';
 import { riskyModule } from './providers/shoper/risky.ts';
+import { royaljewelleryModule } from './providers/shoper/royaljewellery.ts';
+import { patandrubModule } from './providers/shoper/patandrub.ts';
 import { osmpowerModule } from './providers/shoper/osmpower.ts';
 import { reverModule } from './providers/web/rever.ts';
 import { dobrerzeczyModule } from './providers/web/dobrerzeczy.ts';
@@ -51,6 +54,7 @@ import { mushiModule } from './providers/web/mushi.ts';
 import { premieresocietyModule } from './providers/web/premieresociety.ts';
 import { foodsbyannModule } from './providers/web/foodsbyann.ts';
 import { laboratoriumpanidomuModule } from './providers/prestashop/laboratoriumpanidomu.ts';
+import { deynncosmeticsModule } from './providers/prestashop/deynncosmetics.ts';
 import { phlovModule } from './providers/prestashop/phlov.ts';
 import { influcenterModule } from './providers/magento/influcenter.ts';
 import { lexonModule } from './providers/magento/lexon.ts';
@@ -79,6 +83,8 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   wkdzikModule,
   brokiesModule,
   riskyModule,
+  royaljewelleryModule,
+  patandrubModule,
   osmpowerModule,
   reverModule,
   dobrerzeczyModule,
@@ -87,6 +93,7 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   premieresocietyModule,
   foodsbyannModule,
   laboratoriumpanidomuModule,
+  deynncosmeticsModule,
   phlovModule,
   influcenterModule,
   lexonModule,
@@ -107,6 +114,7 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   divesmedModule,
   acewarsawModule,
   holyModule,
+  dresscodecrewModule,
 ];
 
 export function createDefaultRegistry() {

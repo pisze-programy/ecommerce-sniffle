@@ -191,9 +191,12 @@ async function fetchText(url: string, fetchFn: CatalogFetch): Promise<string> {
 async function discoverCategories(base: string, fetchFn: CatalogFetch, logger: Logger): Promise<string[]> {
   const html = await fetchText(`${base}/`, fetchFn);
   const categories = new Set<string>();
-  for (const match of html.matchAll(/href="\/(\d+-[^"?]+)"/g)) {
+  // Some shops link categories with root-relative hrefs. Some use
+  // absolute hrefs. Match both. The captured group is the category.
+  for (const match of html.matchAll(/href="(?:https?:\/\/[^"]*?)?\/(\d+-[^"?]+)"/g)) {
     const category = match[1];
-    if (category !== undefined) {
+    // A category never ends with .html. A product page does. Skip it.
+    if (category !== undefined && !category.endsWith('.html')) {
       categories.add(`/${category}`);
     }
   }

@@ -3,6 +3,7 @@
 
 import type { Entity, EntityFinancials, EntityStore, Person, PersonRelation } from '../../entities.ts';
 import { findEntity, findPerson, ROLE_LABELS } from '../../entities.ts';
+import type { EntityRelation } from '../../entities.ts';
 import { badge, card, datagrid, emptyState, esc, icon } from '../report-components.ts';
 
 export interface EntityShopLink {
@@ -185,6 +186,33 @@ function renderPodmiot(entity: Entity, financials: EntityFinancials | null): str
   });
 }
 
+function relatedBrandLink(
+  store: EntityStore,
+  relation: EntityRelation,
+  entityId: string,
+  shops: ReadonlyMap<string, EntityShopLink>
+): string {
+  const otherId = relation.fromEntityId === entityId ? relation.toEntityId : relation.fromEntityId;
+  const entity = findEntity(store, otherId);
+  const name = entity === null ? otherId : entity.name;
+  const shop = shops.get(otherId);
+  if (shop !== undefined) {
+    return `<a class="btn btn-sm btn-outline-secondary" href="/shop/${esc(shop.shopId)}">${icon('building-store')} ${esc(name)}</a>`;
+  }
+  return `<span class="badge bg-secondary">${esc(name)}</span>`;
+}
+
+function renderRelatedBrands(store: EntityStore, entityId: string, shops: ReadonlyMap<string, EntityShopLink>): string {
+  const relations = store.entityRelations.filter(
+    (relation) => relation.fromEntityId === entityId || relation.toEntityId === entityId
+  );
+  if (relations.length === 0) {
+    return '';
+  }
+  const links = relations.map((relation) => relatedBrandLink(store, relation, entityId, shops)).join('');
+  return `<div class="subheader mt-3 mb-1">Marki powiązane</div><div class="d-flex flex-wrap gap-1">${links}</div>`;
+}
+
 function renderRelations(
   store: EntityStore,
   entityId: string,
@@ -194,8 +222,9 @@ function renderRelations(
   const relations = store.personRelations.filter((relation) => relation.entityId === entityId);
   const personIds = [...new Set(relations.map((relation) => relation.personId))];
   const persons = personIds.map((id) => findPerson(store, id)).filter((person): person is Person => person !== null);
+  const brands = renderRelatedBrands(store, entityId, shops);
 
-  if (persons.length === 0) {
+  if (persons.length === 0 && brands.length === 0) {
     return card({
       title: 'Powiązania',
       body: emptyState('Brak powiązań', 'Nie znaleziono relacji dla tego podmiotu.'),
@@ -220,7 +249,7 @@ function renderRelations(
     `</div>`;
   return card({
     title: 'Powiązania',
-    body: personsSection,
+    body: (persons.length > 0 ? personsSection : '') + brands,
     collapsed: true,
   });
 }
