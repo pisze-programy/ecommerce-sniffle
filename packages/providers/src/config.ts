@@ -573,6 +573,22 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     currency: 'PLN',
     entityId: 'deynncosmetics',
   },
+  {
+    id: 'zerosklep',
+    domain: 'zerosklep.pl',
+    platform: 'prestashop',
+    schedule: '45 4 * * *',
+    window: 'both',
+    mode: 'cf-get',
+    stockSource: 'embedded-quantity',
+    ratePerSecond: 1,
+    durationSeconds: 60,
+    requiresProxy: false,
+    endpoint: 'https://zerosklep.pl/wszystkie-produkty',
+    enabled: true,
+    currency: 'PLN',
+    entityId: 'zerosklep',
+  },
   // Shoper - basket-reveal (mutation, proxy). Verified locally, masked 0.
   {
     id: 'e-daag',

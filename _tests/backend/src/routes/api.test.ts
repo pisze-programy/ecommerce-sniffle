@@ -650,6 +650,10 @@ describe('api /dashboard and /shop', () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain('Sprzedane 24h');
+    expect(html).toContain('Produkty (wariant)');
+    expect(html).toContain('qty-change');
+    expect(html).toContain('5 szt');
+    expect(html).toContain('500,00 zł');
     expect(html).toContain('chart-portfolio-value');
     expect(html).toContain('chart-top-sold');
     expect(html).toContain('▲ 67%');

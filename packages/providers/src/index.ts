@@ -55,6 +55,7 @@ import { premieresocietyModule } from './providers/web/premieresociety.ts';
 import { foodsbyannModule } from './providers/web/foodsbyann.ts';
 import { laboratoriumpanidomuModule } from './providers/prestashop/laboratoriumpanidomu.ts';
 import { deynncosmeticsModule } from './providers/prestashop/deynncosmetics.ts';
+import { zerosklepModule } from './providers/prestashop/zerosklep.ts';
 import { phlovModule } from './providers/prestashop/phlov.ts';
 import { influcenterModule } from './providers/magento/influcenter.ts';
 import { lexonModule } from './providers/magento/lexon.ts';
@@ -94,6 +95,7 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   foodsbyannModule,
   laboratoriumpanidomuModule,
   deynncosmeticsModule,
+  zerosklepModule,
   phlovModule,
   influcenterModule,
   lexonModule,

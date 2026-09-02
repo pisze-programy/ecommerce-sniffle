@@ -16,14 +16,27 @@ export interface ShopCard {
   readonly prev: DailyPoint | null;
 }
 
+// Two lines stacked in one cell. The sort key is the top value.
+function stackedCell(top: string, bottom: string, sortValue: number | string): string {
+  return `<span data-sort-value="${sortValue}"><span class="qty-change">${top}</span><span class="qty-range">${bottom}</span></span>`;
+}
+
 export function renderShopsTable(cards: readonly ShopCard[]): string {
   const rows = cards
     .map((card) => {
-      const sold = card.today === null ? '--' : `${card.today.sold} szt`;
+      const products = stackedCell(
+        String(card.summary.uniqueProducts),
+        String(card.summary.variantCount),
+        card.summary.uniqueProducts
+      );
+      const sold =
+        card.today === null
+          ? '--'
+          : stackedCell(`${card.today.sold} szt`, money(card.today.soldValue), card.today.sold);
       return `<tr>
   <td class="text-nowrap"><a href="/shop/${esc(card.id)}">${esc(card.domain)}</a></td>
   <td class="text-end">${money(card.summary.totalValue)}</td>
-  <td class="text-end">${card.summary.uniqueProducts}</td>
+  <td class="text-end">${products}</td>
   <td class="text-end">${sold}</td>
 </tr>`;
     })
@@ -32,7 +45,7 @@ export function renderShopsTable(cards: readonly ShopCard[]): string {
     [
       { label: 'Domena' },
       { label: 'Wartość', sortType: 'number' },
-      { label: 'Produkty', sortType: 'number' },
+      { label: 'Produkty (wariant)', sortType: 'number' },
       { label: 'Sprzedane 24h', sortType: 'number' },
     ],
     rows,

@@ -64,11 +64,12 @@ const EXPECTED_IDS = [
   'royaljewellery',
   'sanah',
   'wojanshop',
+  'zerosklep',
 ].sort();
 
 describe('PROVIDERS config', () => {
-  it('defines exactly 61 providers', () => {
-    expect(PROVIDERS.length).toBe(61);
+  it('defines exactly 62 providers', () => {
+    expect(PROVIDERS.length).toBe(62);
   });
 
   it('uses unique ids', () => {
@@ -136,7 +137,7 @@ describe('PROVIDERS config', () => {
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
     expect(mutation.length).toBe(42);
-    expect(get.length).toBe(5);
+    expect(get.length).toBe(6);
     expect(vpsGet.length).toBe(14);
   });
 
