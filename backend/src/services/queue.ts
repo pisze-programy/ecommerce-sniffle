@@ -4,7 +4,7 @@ export interface QueueStatement {
   bind(...values: unknown[]): QueueStatement;
   first(): Promise<unknown>;
   all(): Promise<{ results: unknown[] }>;
-  run(): Promise<{ meta: { changes: number } }>;
+  run(): Promise<unknown>;
 }
 
 export interface QueueDb {
@@ -186,8 +186,8 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
 
     async reapExpired(now, maxAttempts): Promise<number> {
       try {
-        const first = await reap.bind(maxAttempts, now).run();
-        const second = await reapPending.bind(maxAttempts, now).run();
+        const first = (await reap.bind(maxAttempts, now).run()) as { meta: { changes: number } };
+        const second = (await reapPending.bind(maxAttempts, now).run()) as { meta: { changes: number } };
         return first.meta.changes + second.meta.changes;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

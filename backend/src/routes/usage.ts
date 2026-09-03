@@ -110,19 +110,19 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     const db = c.env.DB;
     const doneRows = await db
       .prepare(
-        "SELECT provider_id FROM tasks WHERE window = ? AND status = 'done' AND created_at >= ? AND created_at < ?"
+        "SELECT provider_id FROM tasks WHERE window = ? AND mode IN ('vps-get','vps-mutation') AND status = 'done' AND created_at >= ? AND created_at < ?"
       )
       .bind(window, dayStart, dayEnd)
       .all();
     const failedRows = await db
       .prepare(
-        "SELECT provider_id, error FROM tasks WHERE window = ? AND status IN ('failed','dlq') AND created_at >= ? AND created_at < ?"
+        "SELECT provider_id, error FROM tasks WHERE window = ? AND mode IN ('vps-get','vps-mutation') AND status IN ('failed','dlq') AND created_at >= ? AND created_at < ?"
       )
       .bind(window, dayStart, dayEnd)
       .all();
     const pendingRows = await db
       .prepare(
-        "SELECT provider_id FROM tasks WHERE window = ? AND status = 'pending' AND created_at >= ? AND created_at < ?"
+        "SELECT provider_id FROM tasks WHERE window = ? AND mode IN ('vps-get','vps-mutation') AND status = 'pending' AND created_at >= ? AND created_at < ?"
       )
       .bind(window, dayStart, dayEnd)
       .all();

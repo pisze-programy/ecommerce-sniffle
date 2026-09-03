@@ -143,7 +143,7 @@ export default {
     }
     const store = createTaskStore(env.DB, logger);
     await store.reapExpired(now, 3);
-    const queueModules = ALL_MODULES.filter((module) => module.config.mode !== 'cf-get');
+    const queueModules = ALL_MODULES;
     const enqueued = await enqueueProviders(env.DB, logger, queueModules, window, day, now);
     logger.info('queue enqueued', { window, day, enqueued, cron: controller.cron });
     const results = await runGetPipeline(env.DB, env, logger);

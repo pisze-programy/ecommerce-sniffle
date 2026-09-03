@@ -149,6 +149,58 @@ describe('usage routes', () => {
     expect(response.status).toBe(401);
   });
 
+  it('excludes cf-get tasks from the vps summary', async () => {
+    const taskQueries: string[] = [];
+    const db = {
+      prepare(query: string) {
+        if (query.includes(' FROM tasks ')) {
+          taskQueries.push(query);
+        }
+        const statement = {
+          bind() {
+            return statement;
+          },
+          async all() {
+            if (query.includes("status = 'done'") && query.includes("mode IN ('vps-get','vps-mutation')")) {
+              return { results: [{ provider_id: 'forcer' }] };
+            }
+            return { results: [] };
+          },
+          async run() {
+            return { meta: { changes: 1 } };
+          },
+        };
+        return statement;
+      },
+      async batch() {
+        return [];
+      },
+    };
+    const app = makeApp();
+    const env = {
+      DB: db,
+      STATE: null as never,
+      INGEST_SECRET: 'test-secret',
+    };
+    const response = await app.request(
+      '/summary/morning/2026-08-25',
+      { headers: { Authorization: 'Bearer test-secret' } },
+      env
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      done: string[];
+      failed: Array<{ providerId: string }>;
+      pending: string[];
+    };
+    expect(body.done).toEqual(['forcer']);
+    expect(body.pending).toEqual([]);
+    expect(taskQueries.length).toBe(3);
+    for (const query of taskQueries) {
+      expect(query).toContain("mode IN ('vps-get','vps-mutation')");
+    }
+  });
+
   it('recomputes daily stats with the sanity cap', async () => {
     let insertBinds: readonly unknown[] = [];
     const db = {

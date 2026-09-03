@@ -7,6 +7,7 @@ import { createApi } from '../../../../backend/src/routes/api.ts';
 import type { AppVariables } from '../../../../backend/src/routes/api.ts';
 import type { Env } from '../../../../backend/src/env/types.ts';
 import type { D1Like, D1Statement, Storage, SeriesPoint } from '../../../../backend/src/services/storage.ts';
+import { MemoryQueueDb } from '../services/memory-queue-db.ts';
 import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
 import { dayBefore } from '../../../../backend/src/services/report/format.ts';
 
@@ -149,26 +150,6 @@ class MemoryStorage implements Storage {
   }
 }
 
-class EmptyD1 implements D1Like {
-  prepare(_query: string): D1Statement {
-    return {
-      bind(): D1Statement {
-        return this;
-      },
-      async all() {
-        return { results: [] };
-      },
-      async first() {
-        return null;
-      },
-    };
-  }
-
-  async batch(): Promise<unknown> {
-    return null;
-  }
-}
-
 function mockProviderModule(): ProviderModule {
   const config = {
     id: 'mock',
@@ -210,7 +191,7 @@ function buildApp(
   app.use('*', async (c, next) => {
     c.set('logger', silentLogger());
     c.set('storage', storage);
-    c.set('db', new EmptyD1());
+    c.set('db', new MemoryQueueDb());
     c.set('modules', modules);
     await next();
   });
