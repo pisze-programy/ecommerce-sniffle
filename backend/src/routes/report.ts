@@ -39,6 +39,7 @@ import { renderEntityCard } from '../services/report/entities.ts';
 import type { EntityShopLink } from '../services/report/entities.ts';
 import { renderSocialCard, socialUserIds } from '../services/report/social.ts';
 import { renderMetaAdsCard } from '../services/report/metaads.ts';
+import { renderGoogleAdsCard } from '../services/report/googleads.ts';
 import { pageShell } from '../services/report/shell.ts';
 import { variantCell } from '../services/report/links.ts';
 
@@ -436,6 +437,23 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       const cpm = entity.cpmOverride === null ? DEFAULT_CPM : entity.cpmOverride;
       return renderMetaAdsCard(ads, days, nowDay, cpm);
     })();
+    const googleAdsCard = await (async () => {
+      if (config.entityId === undefined) {
+        return '';
+      }
+      const store = await storage.readEntityStore();
+      const entity = store.entities.find((entry) => entry.id === config.entityId);
+      if (entity === undefined || entity.googleAdvertiserId === null) {
+        return '';
+      }
+      const activeSince = addDays(nowDay, -7);
+      const [ads, days] = await Promise.all([
+        storage.readGoogleAdsActive(entity.googleAdvertiserId, activeSince),
+        storage.readGoogleAdDays(entity.googleAdvertiserId, addDays(nowDay, -30)),
+      ]);
+      const cpm = entity.cpmOverride === null ? DEFAULT_CPM : entity.cpmOverride;
+      return renderGoogleAdsCard(ads, days, nowDay, cpm);
+    })();
     const body = `
 <div class="page-header d-flex flex-row flex-wrap align-items-center justify-content-start mb-3">
   ${breadcrumb([{ label: 'Sklepy', href: '/' }, { label: config.id }])}
@@ -446,6 +464,7 @@ ${card({ title: 'Podsumowanie sklepu', body: headerBody })}
 ${entityCard}
 ${socialCard}
 ${metaAdsCard}
+${googleAdsCard}
 ${priceDistributionCard}
 <div class="d-flex justify-content-end py-3">${dayControl}</div>
 ${daySections.join('\n')}

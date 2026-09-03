@@ -8,6 +8,7 @@ import { runGetPipeline } from './services/run.ts';
 import { sendSnitchReport } from './services/snitch.ts';
 import { createTaskStore, enqueueProviders } from './services/queue.ts';
 import { runMetaAdsFetch } from './services/metaads/run.ts';
+import { runGoogleAdsFetch } from './services/googleads/run.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 app.use('*', async (c, next) => {
@@ -128,6 +129,50 @@ export default {
           ended: 0,
           failedPages: [],
         });
+      }
+      const bqKey = env.GOOGLE_BQ_KEY;
+      if (bqKey === undefined || bqKey.length === 0) {
+        logger.warn('google ads skipped: no key');
+      } else {
+        try {
+          const result = await runGoogleAdsFetch(storage, logger, bqKey);
+          logger.info('google ads done', {
+            shops: result.shops,
+            ads: result.ads,
+            daysWritten: result.daysWritten,
+            ended: result.ended,
+            errors: result.failures.length,
+          });
+          const messages: string[] = [`shops ${result.shops}`, `ads ${result.ads}`, `days ${result.daysWritten}`];
+          if (result.ended > 0) {
+            messages.push(`ended ${result.ended}`);
+          }
+          for (const failure of result.failures) {
+            messages.push(`FAILED ${failure.advertiserId}: ${failure.reason}`);
+          }
+          if (messages.length === 0) {
+            messages.push('no advertisers configured');
+          }
+          await sendGoogleAdsReport(env, day, result.failures.length > 0 ? 'failed' : 'ok', messages.join(' | '), {
+            day,
+            shops: result.shops,
+            ads: result.ads,
+            daysWritten: result.daysWritten,
+            ended: result.ended,
+            failedAdvertisers: result.failures.map((failure) => failure.advertiserId),
+          });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('google ads cron failed', { error: message });
+          await sendGoogleAdsReport(env, day, 'failed', `cron error: ${message}`, {
+            day,
+            shops: 0,
+            ads: 0,
+            daysWritten: 0,
+            ended: 0,
+            failedAdvertisers: [],
+          });
+        }
       }
       ctx.waitUntil(Promise.resolve());
       return;
@@ -269,6 +314,32 @@ function warsawUtcOffsetHours(now: Date): number {
   return Math.round((warsawMs - now.getTime()) / 3600000);
 }
 
+async function sendGoogleAdsReport(
+  env: Env,
+  day: string,
+  status: 'ok' | 'failed',
+  message: string,
+  data: Readonly<Record<string, unknown>>
+): Promise<void> {
+  try {
+    await sendSnitchReport(env, {
+      source: 'ecommerce-pulse/google-ads',
+      status,
+      notify: 'always',
+      data,
+      message,
+    });
+  } catch (error: unknown) {
+    const reportError = error instanceof Error ? error.message : String(error);
+    // The logger is the only reporter. A snitch failure must not crash the cron.
+    consoleSink({
+      level: 'error',
+      message: 'google ads snitch failed',
+      context: { error: reportError, day },
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
 async function sendMetaAdsReport(
   env: Env,
   day: string,

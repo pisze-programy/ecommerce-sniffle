@@ -39,6 +39,7 @@ export interface Entity {
   readonly bizraportUrl: string | null;
   readonly socials: readonly SocialLink[];
   readonly metaPageId: string | null;
+  readonly googleAdvertiserId: string | null;
   readonly cpmOverride: CpmRange | null;
   readonly logoKey: string | null;
   readonly bgKey: string | null;

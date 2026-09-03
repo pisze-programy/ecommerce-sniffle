@@ -4,6 +4,7 @@ import type { Logger, LogRecord } from '@ecommerce-sniffle/providers';
 import { createStorage } from '../../../../backend/src/services/storage.ts';
 import type { D1Like, D1Statement } from '../../../../backend/src/services/storage.ts';
 import type { Snapshot, DailyStats, StockEvent, VariantState } from '@ecommerce-sniffle/analysis';
+import type { GoogleAd } from '../../../../backend/src/services/googleads/types.ts';
 
 interface Capture {
   readonly records: LogRecord[];
@@ -922,5 +923,154 @@ describe('meta ads storage', () => {
     expect(ended).toBe(2);
     expect(changes).toBe(2);
     expect(lastBind).toEqual(['2026-08-29', '1527130717525496', '2026-08-30']);
+  });
+});
+
+describe('google ads storage', () => {
+  function googleAd(): GoogleAd {
+    return {
+      creativeId: 'CR05850846188550488065',
+      advertiserId: 'AR10613569593844695041',
+      entityId: 'laboratoriumpanidomu',
+      disclosedName: 'Laboratorium Pani Domu Sp. z o.o.',
+      format: 'VIDEO',
+      topic: 'Home & Garden',
+      pageUrl: 'https://adstransparency.google.com/advertiser/AR/creative/CR?region=anywhere',
+      firstShown: '2025-09-10',
+      lastShown: '2026-09-02',
+      impLo: 15000,
+      impHi: 20000,
+      audience: { demographic: null, geo: null, contextual: null, customerLists: null, topics: null },
+      surfaces: [{ surface: 'YOUTUBE', lo: 15000, hi: 20000 }],
+    };
+  }
+
+  it('writes and reads active ads', async () => {
+    const { logger } = capturingLogger();
+    const rows: Record<string, unknown>[] = [];
+    let selectArgs: readonly unknown[] = [];
+    const db = new MockD1((query, args) => {
+      if (query.startsWith('INSERT INTO google_ads')) {
+        return { results: [] };
+      }
+      if (query.startsWith('SELECT creative_id, advertiser_id, entity_id')) {
+        selectArgs = args;
+        return { results: rows };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.upsertGoogleAds([googleAd()]);
+    rows.push({
+      creative_id: 'CR05850846188550488065',
+      advertiser_id: 'AR10613569593844695041',
+      entity_id: 'laboratoriumpanidomu',
+      disclosed_name: 'Laboratorium Pani Domu Sp. z o.o.',
+      format: 'VIDEO',
+      topic: 'Home & Garden',
+      page_url: 'https://adstransparency.google.com/advertiser/AR/creative/CR?region=anywhere',
+      first_shown: '2025-09-10',
+      last_shown: '2026-09-02',
+      imp_lo: 15000,
+      imp_hi: 20000,
+      audience: '{"demographic":null,"geo":null,"contextual":null,"customerLists":null,"topics":null}',
+      surfaces: '[{"surface":"YOUTUBE","lo":15000,"hi":20000}]',
+      first_seen: '2026-09-03',
+      last_seen: '2026-09-03',
+    });
+    const ads = await storage.readGoogleAdsActive('AR10613569593844695041', '2026-08-27');
+    expect(ads).toHaveLength(1);
+    expect(ads[0].impLo).toBe(15000);
+    expect(ads[0].surfaces[0].surface).toBe('YOUTUBE');
+    expect(ads[0].audience.geo).toBe(null);
+    expect(selectArgs).toEqual(['AR10613569593844695041', '2026-08-27']);
+  });
+
+  it('writes and reads daily impression snapshots', async () => {
+    const { logger } = capturingLogger();
+    const rows: Record<string, unknown>[] = [];
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT OR REPLACE INTO google_ad_days')) {
+        return { results: [] };
+      }
+      if (query.startsWith('SELECT day, creative_id, advertiser_id')) {
+        return { results: rows };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.writeGoogleAdDays([
+      {
+        day: '2026-09-03',
+        creativeId: 'CR05850846188550488065',
+        advertiserId: 'AR10613569593844695041',
+        impLo: 15000,
+        impHi: 20000,
+      },
+    ]);
+    rows.push({
+      day: '2026-09-03',
+      creative_id: 'CR05850846188550488065',
+      advertiser_id: 'AR10613569593844695041',
+      imp_lo: 15000,
+      imp_hi: 20000,
+    });
+    const days = await storage.readGoogleAdDays('AR10613569593844695041', '2026-08-01');
+    expect(days).toHaveLength(1);
+    expect(days[0].impHi).toBe(20000);
+  });
+
+  it('logs and rethrows a failed upsert', async () => {
+    const { logger, records } = capturingLogger();
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT INTO google_ads')) {
+        throw new Error('boom');
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await expect(storage.upsertGoogleAds([googleAd()])).rejects.toThrow('boom');
+    expect(records.some((record) => record.message === 'storage.upsertGoogleAds failed')).toBe(true);
+  });
+
+  it('logs and rethrows a failed days write', async () => {
+    const { logger, records } = capturingLogger();
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT OR REPLACE INTO google_ad_days')) {
+        throw new Error('boom');
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await expect(
+      storage.writeGoogleAdDays([{ day: '2026-09-03', creativeId: 'CR1', advertiserId: 'AR1', impLo: 0, impHi: 1 }])
+    ).rejects.toThrow('boom');
+    expect(records.some((record) => record.message === 'storage.writeGoogleAdDays failed')).toBe(true);
+  });
+
+  it('logs and rethrows a failed active read', async () => {
+    const { logger, records } = capturingLogger();
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT creative_id, advertiser_id, entity_id')) {
+        throw new Error('boom');
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await expect(storage.readGoogleAdsActive('AR1', '2026-08-27')).rejects.toThrow('boom');
+    expect(records.some((record) => record.message === 'storage.readGoogleAdsActive failed')).toBe(true);
+  });
+
+  it('logs and rethrows a failed days read', async () => {
+    const { logger, records } = capturingLogger();
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT day, creative_id, advertiser_id')) {
+        throw new Error('boom');
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await expect(storage.readGoogleAdDays('AR1', '2026-08-01')).rejects.toThrow('boom');
+    expect(records.some((record) => record.message === 'storage.readGoogleAdDays failed')).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ import { isAuthorized } from './auth.ts';
 import { aggregateDaily } from '@ecommerce-sniffle/analysis';
 import { runSocialFetch } from '../services/social/run.ts';
 import { runMetaAdsFetch } from '../services/metaads/run.ts';
+import { runGoogleAdsFetch } from '../services/googleads/run.ts';
 
 function extForContentType(contentType: string): string {
   const type = contentType.toLowerCase();
@@ -404,6 +405,35 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('fetch-meta-ads failed', { error: message });
+      return c.json({ ok: false, error: message }, 500);
+    }
+  });
+
+  api.post('/admin/fetch-google-ads', async (c) => {
+    if (!isAuthorized(c)) {
+      c.get('logger').warn('fetch-google-ads.unauthorized');
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const keyJson = c.env.GOOGLE_BQ_KEY;
+    if (keyJson === undefined || keyJson.length === 0) {
+      c.get('logger').error('fetch-google-ads.noKey');
+      return c.json({ ok: false, error: 'GOOGLE_BQ_KEY not set' }, 500);
+    }
+    const storage = c.get('storage');
+    const logger = c.get('logger');
+    try {
+      const result = await runGoogleAdsFetch(storage, logger, keyJson);
+      logger.info('fetch-google-ads done', {
+        shops: result.shops,
+        ads: result.ads,
+        daysWritten: result.daysWritten,
+        ended: result.ended,
+        errors: result.failures.length,
+      });
+      return c.json({ ok: true, ...result });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('fetch-google-ads failed', { error: message });
       return c.json({ ok: false, error: message }, 500);
     }
   });

@@ -175,6 +175,11 @@ function renderPodmiot(entity: Entity, financials: EntityFinancials | null): str
       `<a class="btn btn-sm btn-outline-secondary" href="${esc(metaAdsLibraryUrl(entity.metaPageId))}" target="_blank" rel="noopener">${icon('ad-2')} Reklamy Meta</a>`
     );
   }
+  if (entity.googleAdvertiserId !== null) {
+    links.push(
+      `<a class="btn btn-sm btn-outline-secondary" href="${esc(`https://adstransparency.google.com/advertiser/${entity.googleAdvertiserId}?region=anywhere`)}" target="_blank" rel="noopener">${icon('ad-2')} Reklamy Google</a>`
+    );
+  }
   links.push(socialButtons(entity.socials));
   return card({
     title: 'Podmiot',

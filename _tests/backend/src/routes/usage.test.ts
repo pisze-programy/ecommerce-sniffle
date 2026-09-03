@@ -441,4 +441,36 @@ describe('usage routes', () => {
     expect(body.ok).toBe(true);
     expect(body.shops).toBe(0);
   });
+
+  it('rejects an unauthorized google ads fetch', async () => {
+    const env = mockEnv([]);
+    const app = makeApp();
+    const response = await app.request('/admin/fetch-google-ads', { method: 'POST' }, env);
+    expect(response.status).toBe(401);
+  });
+
+  it('fails when the google key is missing', async () => {
+    const env = mockEnv([]);
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/fetch-google-ads',
+      { method: 'POST', headers: { Authorization: 'Bearer test-secret' } },
+      env
+    );
+    expect(response.status).toBe(500);
+  });
+
+  it('runs the google ads fetch with a key and no advertisers', async () => {
+    const env = { ...mockEnv([]), GOOGLE_BQ_KEY: '{"type":"service_account"}' };
+    const app = makeApp();
+    const response = await app.request(
+      '/admin/fetch-google-ads',
+      { method: 'POST', headers: { Authorization: 'Bearer test-secret' } },
+      env
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; shops: number };
+    expect(body.ok).toBe(true);
+    expect(body.shops).toBe(0);
+  });
 });

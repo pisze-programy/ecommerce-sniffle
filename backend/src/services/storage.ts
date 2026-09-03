@@ -12,6 +12,7 @@ import type {
 import type { SocialPost, SocialProfile, SocialStory } from './social/types.ts';
 import type { MetaAd, MetaAdDay } from './metaads/types.ts';
 import { isMetaPlatform } from './metaads/types.ts';
+import type { GoogleAd, GoogleAdDay } from './googleads/types.ts';
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement;
@@ -72,6 +73,10 @@ export interface Storage {
   readMetaAdsActive(pageId: string): Promise<readonly MetaAd[]>;
   readMetaAdDays(pageId: string, dayFrom: string): Promise<readonly MetaAdDay[]>;
   endMetaAds(pageId: string, stopDate: string, beforeDay: string): Promise<number>;
+  upsertGoogleAds(ads: readonly GoogleAd[]): Promise<void>;
+  writeGoogleAdDays(rows: readonly GoogleAdDay[]): Promise<void>;
+  readGoogleAdsActive(advertiserId: string, activeSince: string): Promise<readonly GoogleAd[]>;
+  readGoogleAdDays(advertiserId: string, dayFrom: string): Promise<readonly GoogleAdDay[]>;
 }
 
 export interface SeriesPoint {
@@ -204,6 +209,24 @@ interface MetaAdRow {
   last_seen: string;
 }
 
+interface GoogleAdRow {
+  creative_id: string;
+  advertiser_id: string;
+  entity_id: string | null;
+  disclosed_name: string | null;
+  format: string | null;
+  topic: string | null;
+  page_url: string | null;
+  first_shown: string | null;
+  last_shown: string | null;
+  imp_lo: number | null;
+  imp_hi: number | null;
+  audience: string | null;
+  surfaces: string | null;
+  first_seen: string;
+  last_seen: string;
+}
+
 function fromMetaAdRow(row: MetaAdRow): MetaAd {
   return {
     adArchiveId: row.ad_archive_id,
@@ -226,6 +249,30 @@ function fromMetaAdRow(row: MetaAdRow): MetaAd {
     targetLocations: jsonParse(row.target_locations) ?? [],
     beneficiaryPayers: jsonParse(row.beneficiary_payers) ?? [],
     creativeHash: row.creative_hash ?? '',
+  };
+}
+
+function fromGoogleAdRow(row: GoogleAdRow): GoogleAd {
+  return {
+    creativeId: row.creative_id,
+    advertiserId: row.advertiser_id,
+    entityId: row.entity_id,
+    disclosedName: row.disclosed_name,
+    format: row.format,
+    topic: row.topic,
+    pageUrl: row.page_url,
+    firstShown: row.first_shown,
+    lastShown: row.last_shown,
+    impLo: row.imp_lo,
+    impHi: row.imp_hi,
+    audience: jsonParse<GoogleAd['audience']>(row.audience) ?? {
+      demographic: null,
+      geo: null,
+      contextual: null,
+      customerLists: null,
+      topics: null,
+    },
+    surfaces: jsonParse<GoogleAd['surfaces']>(row.surfaces) ?? [],
   };
 }
 
@@ -839,7 +886,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
     async readEntityStore(): Promise<EntityStore> {
       const entityRows = (await db
         .prepare(
-          'SELECT id, name, kind, krs, regon, nip, bizraport_url, meta_page_id, cpm_min, cpm_max, logo_key, bg_key FROM entities ORDER BY id'
+          'SELECT id, name, kind, krs, regon, nip, bizraport_url, meta_page_id, google_advertiser_id, cpm_min, cpm_max, logo_key, bg_key FROM entities ORDER BY id'
         )
         .all()) as {
         results: Array<{
@@ -851,6 +898,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
           nip: string | null;
           bizraport_url: string | null;
           meta_page_id: string | null;
+          google_advertiser_id?: string | null;
           cpm_min: number | null;
           cpm_max: number | null;
           logo_key: string | null;
@@ -907,6 +955,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
         nip: row.nip,
         bizraportUrl: row.bizraport_url,
         metaPageId: row.meta_page_id,
+        googleAdvertiserId: row.google_advertiser_id ?? null,
         cpmOverride: row.cpm_min === null || row.cpm_max === null ? null : { min: row.cpm_min, max: row.cpm_max },
         logoKey: row.logo_key,
         bgKey: row.bg_key,
@@ -1241,6 +1290,112 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error('storage.endMetaAds failed', { pageId, error: message });
+        throw error;
+      }
+    },
+
+    async upsertGoogleAds(ads: readonly GoogleAd[]): Promise<void> {
+      if (ads.length === 0) {
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const statement = (ad: GoogleAd): D1Statement =>
+        db
+          .prepare(
+            'INSERT INTO google_ads (creative_id, advertiser_id, entity_id, disclosed_name, format, topic, page_url, first_shown, last_shown, imp_lo, imp_hi, audience, surfaces, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT first_seen FROM google_ads WHERE creative_id = ?), ?), ?) ON CONFLICT(creative_id) DO UPDATE SET advertiser_id = excluded.advertiser_id, entity_id = excluded.entity_id, disclosed_name = excluded.disclosed_name, format = excluded.format, topic = excluded.topic, page_url = excluded.page_url, first_shown = excluded.first_shown, last_shown = excluded.last_shown, imp_lo = excluded.imp_lo, imp_hi = excluded.imp_hi, audience = excluded.audience, surfaces = excluded.surfaces, last_seen = excluded.last_seen'
+          )
+          .bind(
+            ad.creativeId,
+            ad.advertiserId,
+            ad.entityId,
+            ad.disclosedName,
+            ad.format,
+            ad.topic,
+            ad.pageUrl,
+            ad.firstShown,
+            ad.lastShown,
+            ad.impLo,
+            ad.impHi,
+            jsonObjectString(ad.audience),
+            jsonObjectString(ad.surfaces),
+            ad.creativeId,
+            today,
+            today
+          );
+      try {
+        // One batch holds at most a few hundred rows. The fetch can
+        // return thousands of creatives, so chunk the writes.
+        for (let i = 0; i < ads.length; i += 200) {
+          await db.batch(ads.slice(i, i + 200).map(statement));
+        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.upsertGoogleAds failed', { count: ads.length, error: message });
+        throw error;
+      }
+    },
+
+    async writeGoogleAdDays(rows: readonly GoogleAdDay[]): Promise<void> {
+      if (rows.length === 0) {
+        return;
+      }
+      try {
+        for (let i = 0; i < rows.length; i += 200) {
+          await db.batch(
+            rows
+              .slice(i, i + 200)
+              .map((row) =>
+                db
+                  .prepare(
+                    'INSERT OR REPLACE INTO google_ad_days (day, creative_id, advertiser_id, imp_lo, imp_hi) VALUES (?, ?, ?, ?, ?)'
+                  )
+                  .bind(row.day, row.creativeId, row.advertiserId, row.impLo, row.impHi)
+              )
+          );
+        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.writeGoogleAdDays failed', { count: rows.length, error: message });
+        throw error;
+      }
+    },
+
+    async readGoogleAdsActive(advertiserId: string, activeSince: string): Promise<readonly GoogleAd[]> {
+      try {
+        const result = (await db
+          .prepare(
+            'SELECT creative_id, advertiser_id, entity_id, disclosed_name, format, topic, page_url, first_shown, last_shown, imp_lo, imp_hi, audience, surfaces, first_seen, last_seen FROM google_ads WHERE advertiser_id = ? AND last_shown >= ? ORDER BY imp_hi DESC'
+          )
+          .bind(advertiserId, activeSince)
+          .all()) as { results: GoogleAdRow[] };
+        return result.results.map(fromGoogleAdRow);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.readGoogleAdsActive failed', { advertiserId, error: message });
+        throw error;
+      }
+    },
+
+    async readGoogleAdDays(advertiserId: string, dayFrom: string): Promise<readonly GoogleAdDay[]> {
+      try {
+        const result = (await db
+          .prepare(
+            'SELECT day, creative_id, advertiser_id, imp_lo, imp_hi FROM google_ad_days WHERE advertiser_id = ? AND day >= ? ORDER BY day'
+          )
+          .bind(advertiserId, dayFrom)
+          .all()) as {
+          results: Array<{ day: string; creative_id: string; advertiser_id: string; imp_lo: number; imp_hi: number }>;
+        };
+        return result.results.map((row) => ({
+          day: row.day,
+          creativeId: row.creative_id,
+          advertiserId: row.advertiser_id,
+          impLo: row.imp_lo,
+          impHi: row.imp_hi,
+        }));
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.readGoogleAdDays failed', { advertiserId, error: message });
         throw error;
       }
     },

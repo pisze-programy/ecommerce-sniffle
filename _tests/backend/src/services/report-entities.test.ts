@@ -16,6 +16,7 @@ function store(): EntityStore {
         bizraportUrl: 'https://bizraport/hdrey',
         socials: [{ platform: 'instagram', handle: 'hdrey_pl', url: 'https://ig/hdrey_pl' }],
         metaPageId: null,
+        googleAdvertiserId: null,
         cpmOverride: null,
 
         logoKey: null,
@@ -32,6 +33,7 @@ function store(): EntityStore {
         bizraportUrl: null,
         socials: [],
         metaPageId: null,
+        googleAdvertiserId: null,
         cpmOverride: null,
 
         logoKey: null,
@@ -48,6 +50,7 @@ function store(): EntityStore {
         bizraportUrl: null,
         socials: [],
         metaPageId: null,
+        googleAdvertiserId: null,
         cpmOverride: null,
 
         logoKey: null,
@@ -64,6 +67,7 @@ function store(): EntityStore {
         bizraportUrl: null,
         socials: [],
         metaPageId: null,
+        googleAdvertiserId: null,
         cpmOverride: null,
 
         logoKey: null,

@@ -44,6 +44,7 @@ interface Entity {
   bizraportUrl: string | null;
   socials: SocialLink[];
   metaPageId: string | null; // hand-collected, null on start
+  googleAdvertiserId: string | null; // hand-collected AR id, null on start
   cpmOverride: CpmRange | null; // per-entity CPM override
 }
 ```

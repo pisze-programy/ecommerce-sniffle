@@ -8,4 +8,5 @@ export interface Env {
   readonly MEDIA?: R2Bucket;
   readonly RAPIDAPI_KEY?: string;
   readonly META_AD_TOKEN?: string;
+  readonly GOOGLE_BQ_KEY?: string;
 }
