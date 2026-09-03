@@ -21,8 +21,8 @@ export function toPln(amount: number, currency: string | undefined): number {
   return amount * plnRate(currency);
 }
 
-function priceOrNull(price: number | null, rate: number): number | null {
-  return price === null ? null : round2(price * rate);
+function priceOrNull(price: number | null | undefined, rate: number): number | null {
+  return price === null || price === undefined ? null : round2(price * rate);
 }
 
 export function toPlnSnapshot(snapshot: Snapshot, currency: string | undefined): Snapshot {
@@ -57,7 +57,12 @@ export function toPlnPoint(point: DailyPoint, currency: string | undefined): Dai
   if (rate === 1) {
     return point;
   }
-  return { ...point, soldValue: round2(point.soldValue * rate) };
+  return {
+    ...point,
+    soldValue: round2(point.soldValue * rate),
+    soldMinPrice: priceOrNull(point.soldMinPrice, rate),
+    soldMaxPrice: priceOrNull(point.soldMaxPrice, rate),
+  };
 }
 
 export function toPlnSeriesPoint(point: SeriesPoint, currency: string | undefined): SeriesPoint {

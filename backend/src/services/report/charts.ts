@@ -1,5 +1,4 @@
 import { esc } from '../report-components.ts';
-import type { Snapshot } from '@ecommerce-sniffle/analysis';
 import type { DailyPoint } from '../storage.ts';
 
 export interface ChartOpts {
@@ -14,6 +13,33 @@ export interface ChartOpts {
   // Formatter functions cannot pass through JSON. Each entry replaces a
   // "__FUNC_<key>__" placeholder in the serialized config with raw JS.
   readonly formatters?: Readonly<Record<string, string>>;
+}
+
+// Raw JavaScript sources for the ApexCharts number formatters. The counts
+// render as integers with the szt unit. The money renders with the PLN
+// suffix. Without them ApexCharts shows 7.00 instead of 7 szt.
+const COUNT_AXIS_LABEL = `function(value) { return Number(value).toLocaleString('pl-PL'); }`;
+const PLN_AXIS_LABEL = `function(value) { return Number(value).toLocaleString('pl-PL', { maximumFractionDigits: 0 }) + ' zł'; }`;
+const SOLD_TOOLTIP = `function(value, opts) { var v = Number(value); return v.toLocaleString('pl-PL') + ' szt'; }`;
+
+// A full tooltip for one day of the week. It shows the sold count, the
+// revenue and the sold price range. The min and max arrays are baked in
+// because a formatter cannot close over chart data.
+function weekTooltipSource(minPrice: readonly (number | null)[], maxPrice: readonly (number | null)[]): string {
+  const min = JSON.stringify(minPrice);
+  const max = JSON.stringify(maxPrice);
+  return `function({ series, dataPointIndex }) {
+  var i = dataPointIndex;
+  var loArr = ${min};
+  var hiArr = ${max};
+  var count = function (v) { return Number(v).toLocaleString('pl-PL'); };
+  var pln = function (v) { return Number(v).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  var sold = count(series[0][i]);
+  var rev = pln(series[1][i]);
+  var lo = loArr[i] === null || loArr[i] === undefined ? '-' : pln(loArr[i]);
+  var hi = hiArr[i] === null || hiArr[i] === undefined ? '-' : pln(hiArr[i]);
+  return '<div style="padding:8px;font-size:12px;line-height:1.5">sprzedane <b>' + sold + ' szt</b><br>przychód <b>' + rev + ' zł</b><br>cena ' + lo + ' – ' + hi + ' zł</div>';
+}`;
 }
 
 export function chartBlock(containerId: string, opts: ChartOpts): string {
@@ -45,46 +71,56 @@ export function chartBlock(containerId: string, opts: ChartOpts): string {
   return `<div id="${esc(containerId)}" class="w-100"></div><script>document.addEventListener('DOMContentLoaded',function(){if(window.ApexCharts){window.__charts=window.__charts||{};var c=new ApexCharts(document.getElementById('${esc(containerId)}'),${json});c.render();window.__charts['${esc(containerId)}']=c;}});</script>`;
 }
 
-export interface TrendSeries {
+export interface WeeklySalesSeries {
   readonly labels: readonly string[];
-  readonly qty: readonly number[];
-  readonly price: readonly number[];
+  readonly sold: readonly number[];
+  readonly revenue: readonly number[];
+  readonly minPrice: readonly (number | null)[];
+  readonly maxPrice: readonly (number | null)[];
 }
 
-export function buildTrendSeries(snapshots: readonly Snapshot[]): TrendSeries {
-  const labels: string[] = [];
-  const qty: number[] = [];
-  const price: number[] = [];
-  for (const snapshot of snapshots) {
-    let totalQty = 0;
-    let priceSum = 0;
-    let priceCount = 0;
-    for (const variant of snapshot.variants) {
-      if (variant.quantity !== null) {
-        totalQty += variant.quantity;
-      }
-      if (variant.price !== null) {
-        priceSum += variant.price;
-        priceCount += 1;
-      }
-    }
-    labels.push(snapshot.snapshotAt.slice(5, 16).replace('T', ' '));
-    qty.push(totalQty);
-    price.push(priceCount === 0 ? 0 : Math.round((priceSum / priceCount) * 100) / 100);
+// The first fetch of a shop is the baseline for the later math, not
+// activity. Its day can hold a seed spike (a huge fake restock) that
+// flattens the chart scale. Drop that one day from chart input.
+export function withoutSeedDay(points: readonly DailyPoint[], seedDay: string | null): readonly DailyPoint[] {
+  if (seedDay === null) {
+    return points;
   }
-  return { labels, qty, price };
+  return points.filter((point) => point.day !== seedDay);
 }
 
-export function buildTrendConfig(trend: TrendSeries): ChartOpts {
+// The trend card shows what the shop sold, not what it holds. Each point
+// is one day of the week. The value is the money for that day in PLN.
+export function buildWeeklySalesSeries(points: readonly DailyPoint[]): WeeklySalesSeries {
+  return {
+    labels: points.map((point) => point.day.slice(5)),
+    sold: points.map((point) => point.sold),
+    revenue: points.map((point) => point.soldValue),
+    minPrice: points.map((point) => (point.soldMinPrice === undefined ? null : point.soldMinPrice)),
+    maxPrice: points.map((point) => (point.soldMaxPrice === undefined ? null : point.soldMaxPrice)),
+  };
+}
+
+export function buildWeeklySalesConfig(series: WeeklySalesSeries): ChartOpts {
   return {
     type: 'line',
     height: 260,
     series: [
-      { name: 'ilość', data: [...trend.qty], yaxis: 0 },
-      { name: 'cena', data: [...trend.price], yaxis: 1 },
+      { name: 'sprzedane', type: 'bar', data: [...series.sold], yaxis: 0 },
+      { name: 'przychód (PLN)', type: 'line', data: [...series.revenue], yaxis: 1 },
     ],
-    xaxis: { categories: [...trend.labels] },
-    yaxis: [{ title: { text: 'ilość' } }, { opposite: true, title: { text: 'cena (PLN)' } }],
+    xaxis: { categories: [...series.labels] },
+    yaxis: [
+      { title: { text: 'sprzedane (szt)' }, labels: { formatter: '__FUNC_soldAxis__' } },
+      { opposite: true, title: { text: 'przychód (PLN)' }, labels: { formatter: '__FUNC_plnAxis__' } },
+    ],
+    plotOptions: { bar: { columnWidth: '55%' } },
+    tooltip: { theme: 'dark', custom: '__FUNC_weekTooltip__' },
+    formatters: {
+      soldAxis: COUNT_AXIS_LABEL,
+      plnAxis: PLN_AXIS_LABEL,
+      weekTooltip: weekTooltipSource(series.minPrice, series.maxPrice),
+    },
   };
 }
 
@@ -97,7 +133,13 @@ export function buildDailyConfig(dailyRange: readonly DailyPoint[]): ChartOpts {
       { name: 'dostawione', type: 'line', data: dailyRange.map((point) => point.restocked) },
     ],
     xaxis: { categories: dailyRange.map((point) => point.day.slice(5)) },
+    yaxis: [{ labels: { formatter: '__FUNC_soldAxis__' } }],
     plotOptions: { bar: { columnWidth: '55%' } },
+    tooltip: { theme: 'dark', y: { formatter: '__FUNC_soldTooltip__' } },
+    formatters: {
+      soldAxis: COUNT_AXIS_LABEL,
+      soldTooltip: SOLD_TOOLTIP,
+    },
   };
 }
 

@@ -586,6 +586,66 @@ describe('api /dashboard and /shop', () => {
     expect(html).toContain('<a href="https://mock.pl/p1"');
   });
 
+  it('drops the seed day from the shop trend charts', async () => {
+    const storage = new MemoryStorage();
+    const snap = (snapshotAt: string): Snapshot => ({
+      shop: 'mock.pl',
+      snapshotAt,
+      window: snapshotAt.includes('04:00') ? 'morning' : 'evening',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    storage.snapshots.push(snap('2026-08-26T04:00:00.000Z'));
+    storage.snapshots.push(snap('2026-08-27T04:00:00.000Z'));
+    storage.snapshots.push(snap('2026-08-28T04:00:00.000Z'));
+    storage.stats.push({
+      shop: 'mock.pl',
+      day: '2026-08-26',
+      unitsSold: 0,
+      revenue: 0,
+      restocked: 11457,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+      soldMinPrice: null,
+      soldMaxPrice: null,
+    });
+    storage.stats.push({
+      shop: 'mock.pl',
+      day: '2026-08-27',
+      unitsSold: 5,
+      revenue: 500,
+      restocked: 10,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+      soldMinPrice: 100,
+      soldMaxPrice: 100,
+    });
+    storage.stats.push({
+      shop: 'mock.pl',
+      day: '2026-08-28',
+      unitsSold: 7,
+      revenue: 700,
+      restocked: 0,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+      soldMinPrice: 100,
+      soldMaxPrice: 100,
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock?day=2026-08-28');
+    const html = await response.text();
+    const categories = [...html.matchAll(/"categories":\[([^\]]*)\]/g)].map((match) => match[1] ?? '');
+    expect(categories.some((entry) => entry.includes('08-27'))).toBe(true);
+    for (const entry of categories) {
+      expect(entry).not.toContain('08-26');
+    }
+  });
+
   it('returns 404 for an unknown shop', async () => {
     const app = buildApp(new MemoryStorage(), [mockProviderModule()]);
     const response = await app.request('/shop/nope');

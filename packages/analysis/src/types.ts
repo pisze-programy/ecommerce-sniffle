@@ -44,4 +44,8 @@ export interface DailyStats {
   readonly promotionCount: number;
   readonly maskedCount: number;
   readonly suspectCount: number;
+  // The cheapest and the most expensive unit sold that day. Null when
+  // nothing was sold. Absent on rows written before the migration.
+  readonly soldMinPrice?: number | null;
+  readonly soldMaxPrice?: number | null;
 }

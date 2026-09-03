@@ -25,8 +25,9 @@ import {
   buildDailyConfig,
   buildPriceDistribution,
   buildPriceDistributionConfig,
-  buildTrendConfig,
-  buildTrendSeries,
+  buildWeeklySalesConfig,
+  buildWeeklySalesSeries,
+  withoutSeedDay,
   chartBlock,
 } from '../services/report/charts.ts';
 import { renderStock, stockQs } from '../services/report/stock.ts';
@@ -289,7 +290,9 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const snapshots = snapshotsRaw.map((snapshot) => toPlnSnapshot(snapshot, currency));
     const topRows = topSellingProducts(snapshots, { maxQuantity, limit: 10 });
 
-    const trendSeries = buildTrendSeries(snapshots);
+    const seedDay = validDays.length === 0 ? null : (validDays[validDays.length - 1] ?? null);
+    const chartRange = withoutSeedDay(dailyRange, seedDay);
+    const chartWeekly = buildWeeklySalesSeries(chartRange.slice(-7));
     const dayAt = (days: readonly string[], index: number): string => {
       const value = days[index];
       return value === undefined ? '' : value;
@@ -373,7 +376,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       daySections.push(
         card({
           title: 'Trendy',
-          body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildTrendConfig(trendSeries))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(dailyRange))}</div></div>`,
+          body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildWeeklySalesConfig(chartWeekly))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(chartRange))}</div></div>`,
           collapsed: true,
         })
       );

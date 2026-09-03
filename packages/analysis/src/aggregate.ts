@@ -49,6 +49,20 @@ export function aggregateDaily(input: DailyStatsInput, options: AggregateDailyOp
   let promotionCount = 0;
   let maskedCount = 0;
   let suspectCount = 0;
+  let soldMinPrice: number | null = null;
+  let soldMaxPrice: number | null = null;
+
+  const countSale = (event: StockEvent): void => {
+    const price = event.to === null ? 0 : salePrice(event.to);
+    unitsSold += event.units;
+    revenue += event.units * price;
+    if (soldMinPrice === null || price < soldMinPrice) {
+      soldMinPrice = price;
+    }
+    if (soldMaxPrice === null || price > soldMaxPrice) {
+      soldMaxPrice = price;
+    }
+  };
 
   for (const event of input.events) {
     if (event.confidence === 'low') {
@@ -62,9 +76,7 @@ export function aggregateDaily(input: DailyStatsInput, options: AggregateDailyOp
       if (overCap) {
         continue;
       }
-      const price = event.to === null ? 0 : salePrice(event.to);
-      unitsSold += event.units;
-      revenue += event.units * price;
+      countSale(event);
       continue;
     }
     if (event.type === 'soldOut') {
@@ -73,9 +85,7 @@ export function aggregateDaily(input: DailyStatsInput, options: AggregateDailyOp
         continue;
       }
       if (event.confidence === 'exact') {
-        const price = event.to === null ? 0 : salePrice(event.to);
-        unitsSold += event.units;
-        revenue += event.units * price;
+        countSale(event);
       }
       continue;
     }
@@ -104,7 +114,25 @@ export function aggregateDaily(input: DailyStatsInput, options: AggregateDailyOp
     promotionCount,
     maskedCount,
     suspectCount,
+    soldMinPrice,
+    soldMaxPrice,
   };
+}
+
+// The lower price bound wins for the minimum. The higher for the maximum.
+// A null side is ignored. Both null means nothing sold.
+function combineBounds(
+  current: number | null | undefined,
+  incoming: number | null | undefined,
+  pickLower: boolean
+): number | null {
+  if (incoming === null || incoming === undefined) {
+    return current === undefined ? null : current;
+  }
+  if (current === null || current === undefined) {
+    return incoming;
+  }
+  return pickLower ? Math.min(current, incoming) : Math.max(current, incoming);
 }
 
 // Combine a previous daily total with a new diff. The pipeline ingests a
@@ -124,5 +152,7 @@ export function mergeDailyStats(prev: DailyStats | null, next: DailyStats): Dail
     promotionCount: prev.promotionCount + next.promotionCount,
     maskedCount: prev.maskedCount + next.maskedCount,
     suspectCount: prev.suspectCount + next.suspectCount,
+    soldMinPrice: combineBounds(prev.soldMinPrice, next.soldMinPrice, true),
+    soldMaxPrice: combineBounds(prev.soldMaxPrice, next.soldMaxPrice, false),
   };
 }

@@ -234,7 +234,7 @@ describe('createStorage', () => {
     };
     await storage.writeDailyStats(stats);
     const insert = db.calls.find((call) => call.query.startsWith('INSERT OR REPLACE INTO daily_stats'));
-    expect(insert?.args).toEqual(['forcer.pl', '2026-08-24', 7, 680, 0, 0, 0, 0, 0]);
+    expect(insert?.args).toEqual(['forcer.pl', '2026-08-24', 7, 680, 0, 0, 0, 0, 0, null, null]);
   });
 
   it('reads daily stats', async () => {
@@ -364,11 +364,31 @@ describe('createStorage', () => {
 
   it('reads a daily range for a shop', async () => {
     const db = new MockD1((query) => {
-      if (query.startsWith('SELECT day, units_sold, revenue, restocked, suspect_count FROM daily_stats')) {
+      if (
+        query.startsWith(
+          'SELECT day, units_sold, revenue, restocked, suspect_count, sold_min_price, sold_max_price FROM daily_stats'
+        )
+      ) {
         return {
           results: [
-            { day: '2026-08-26', units_sold: 322, revenue: 100, restocked: 0, suspect_count: 0 },
-            { day: '2026-08-27', units_sold: 2487, revenue: 200, restocked: 5, suspect_count: 2 },
+            {
+              day: '2026-08-26',
+              units_sold: 322,
+              revenue: 100,
+              restocked: 0,
+              suspect_count: 0,
+              sold_min_price: 40,
+              sold_max_price: 60,
+            },
+            {
+              day: '2026-08-27',
+              units_sold: 2487,
+              revenue: 200,
+              restocked: 5,
+              suspect_count: 2,
+              sold_min_price: null,
+              sold_max_price: null,
+            },
           ],
         };
       }
@@ -378,8 +398,11 @@ describe('createStorage', () => {
     const points = await storage.readShopDailyRange('forcer.pl', '2026-08-26', '2026-08-27');
     expect(points).toHaveLength(2);
     expect(points[0]?.sold).toBe(322);
+    expect(points[0]?.soldMinPrice).toBe(40);
+    expect(points[0]?.soldMaxPrice).toBe(60);
     expect(points[1]?.soldValue).toBe(200);
     expect(points[1]?.restocked).toBe(5);
+    expect(points[1]?.soldMinPrice).toBeNull();
   });
 
   it('aggregates the portfolio by day', async () => {

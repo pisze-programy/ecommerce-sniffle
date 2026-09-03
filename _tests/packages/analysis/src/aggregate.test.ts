@@ -159,6 +159,8 @@ describe('aggregateDaily', () => {
       promotionCount: 0,
       maskedCount: 0,
       suspectCount: 0,
+      soldMinPrice: null,
+      soldMaxPrice: null,
     });
   });
 
@@ -304,5 +306,52 @@ describe('mergeDailyStats', () => {
     expect(merged.promotionCount).toBe(3);
     expect(merged.maskedCount).toBe(4);
     expect(merged.suspectCount).toBe(6);
+  });
+
+  it('combines the sold price bounds across diffs', () => {
+    const first = aggregateDaily({
+      shop: 'forcer.pl',
+      day: '2026-08-24',
+      events: [sold(1, 120), sold(1, 50)],
+    });
+    const second = aggregateDaily({
+      shop: 'forcer.pl',
+      day: '2026-08-24',
+      events: [sold(1, 200)],
+    });
+    const merged = mergeDailyStats(first, second);
+    expect(merged.soldMinPrice).toBe(50);
+    expect(merged.soldMaxPrice).toBe(200);
+  });
+
+  it('tracks the sold price bounds across multiple prices', () => {
+    const stats = aggregateDaily({
+      shop: 'forcer.pl',
+      day: '2026-08-24',
+      events: [sold(2, 150), sold(1, 60), sold(3, 90)],
+    });
+    expect(stats.soldMinPrice).toBe(60);
+    expect(stats.soldMaxPrice).toBe(150);
+    expect(stats.unitsSold).toBe(6);
+  });
+
+  it('leaves the sold price bounds null when nothing sold', () => {
+    const stats = aggregateDaily({
+      shop: 'forcer.pl',
+      day: '2026-08-24',
+      events: [
+        {
+          type: 'restock',
+          productId: 'p1',
+          variantId: 'v1',
+          from: variant({ quantity: 0 }),
+          to: variant({ quantity: 10 }),
+          units: 10,
+          confidence: 'exact',
+        },
+      ],
+    });
+    expect(stats.soldMinPrice).toBeNull();
+    expect(stats.soldMaxPrice).toBeNull();
   });
 });

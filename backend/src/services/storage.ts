@@ -88,6 +88,9 @@ export interface DailyPoint {
   readonly restocked: number;
   readonly restockValue: number;
   readonly suspect: number;
+  // The price bounds of a unit sold that day. Null when nothing sold.
+  readonly soldMinPrice?: number | null;
+  readonly soldMaxPrice?: number | null;
 }
 
 interface SnapshotRow {
@@ -112,6 +115,8 @@ interface StatsRow {
   promotion_count: number;
   masked_count: number;
   suspect_count: number;
+  sold_min_price: number | null;
+  sold_max_price: number | null;
 }
 
 interface EventRow {
@@ -335,6 +340,8 @@ function toStatsRow(stats: DailyStats): StatsRow {
     promotion_count: stats.promotionCount,
     masked_count: stats.maskedCount,
     suspect_count: stats.suspectCount,
+    sold_min_price: stats.soldMinPrice === undefined ? null : stats.soldMinPrice,
+    sold_max_price: stats.soldMaxPrice === undefined ? null : stats.soldMaxPrice,
   };
 }
 
@@ -349,6 +356,8 @@ function fromStatsRow(row: StatsRow): DailyStats {
     promotionCount: row.promotion_count,
     maskedCount: row.masked_count,
     suspectCount: row.suspect_count,
+    soldMinPrice: row.sold_min_price,
+    soldMaxPrice: row.sold_max_price,
   };
 }
 
@@ -620,11 +629,19 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
     async readShopDailyRange(shop: string, fromDay: string, toDay: string): Promise<readonly DailyPoint[]> {
       const result = (await db
         .prepare(
-          'SELECT day, units_sold, revenue, restocked, suspect_count FROM daily_stats WHERE shop = ? AND day >= ? AND day <= ? ORDER BY day'
+          'SELECT day, units_sold, revenue, restocked, suspect_count, sold_min_price, sold_max_price FROM daily_stats WHERE shop = ? AND day >= ? AND day <= ? ORDER BY day'
         )
         .bind(shop, fromDay, toDay)
         .all()) as {
-        results: Array<{ day: string; units_sold: number; revenue: number; restocked: number; suspect_count: number }>;
+        results: Array<{
+          day: string;
+          units_sold: number;
+          revenue: number;
+          restocked: number;
+          suspect_count: number;
+          sold_min_price: number | null;
+          sold_max_price: number | null;
+        }>;
       };
       return result.results.map((row) => ({
         day: row.day,
@@ -633,6 +650,8 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
         restocked: Number(row.restocked),
         restockValue: 0,
         suspect: Number(row.suspect_count),
+        soldMinPrice: row.sold_min_price === null ? null : Number(row.sold_min_price),
+        soldMaxPrice: row.sold_max_price === null ? null : Number(row.sold_max_price),
       }));
     },
 
@@ -683,7 +702,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       try {
         await db
           .prepare(
-            'INSERT OR REPLACE INTO daily_stats (shop, day, units_sold, revenue, restocked, sold_out_count, promotion_count, masked_count, suspect_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT OR REPLACE INTO daily_stats (shop, day, units_sold, revenue, restocked, sold_out_count, promotion_count, masked_count, suspect_count, sold_min_price, sold_max_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
           )
           .bind(
             row.shop,
@@ -694,7 +713,9 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
             row.sold_out_count,
             row.promotion_count,
             row.masked_count,
-            row.suspect_count
+            row.suspect_count,
+            row.sold_min_price,
+            row.sold_max_price
           )
           .all();
       } catch (error: unknown) {
