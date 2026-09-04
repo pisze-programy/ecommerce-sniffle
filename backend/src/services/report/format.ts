@@ -45,3 +45,32 @@ export function moneyOrDash(amount: number): string {
   }
   return money(amount);
 }
+
+// Polish unit word: 1 produkt, 3 produkty, 5 produktów, 12 produktów.
+export function plural(count: number, one: string, few: string, many: string): string {
+  const n = Math.abs(Math.trunc(count)) % 100;
+  if (n >= 12 && n <= 14) {
+    return many;
+  }
+  const last = n % 10;
+  if (last === 1) {
+    return one;
+  }
+  if (last >= 2 && last <= 4) {
+    return few;
+  }
+  return many;
+}
+
+// Short money for card values: 1,06 mln zł, 458,2 tys. zł.
+// Exact grosze move to the sub-caption.
+export function moneyCompact(amount: number): string {
+  const fmt = (value: number): string => value.toLocaleString('pl-PL', { maximumFractionDigits: value >= 100 ? 0 : 1 });
+  if (Math.abs(amount) >= 1000000) {
+    return `${(amount / 1000000).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} mln zł`;
+  }
+  if (Math.abs(amount) >= 10000) {
+    return `${fmt(amount / 1000)} tys. zł`;
+  }
+  return money(amount);
+}

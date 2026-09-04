@@ -69,6 +69,11 @@ describe('statGrid', () => {
     expect(html).toContain('Sprzedane');
     expect(html).toContain('12');
   });
+
+  it('renders the sub-caption under the value', () => {
+    const html = statGrid([{ label: 'Stan', value: '8 437 szt', sub: 'dokładnie 8 437' }]);
+    expect(html).toContain('dokładnie 8 437');
+  });
 });
 
 describe('table', () => {

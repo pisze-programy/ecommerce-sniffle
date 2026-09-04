@@ -18,20 +18,36 @@ describe('buildPriceDistribution', () => {
     expect(buildPriceDistribution([])).toEqual([]);
   });
 
-  it('bins skewed prices on a growing scale with clean snapped ranges', () => {
+  it('splits a wide range into few log bins with round edges', () => {
     const prices = [290, 500, 550, 700, 1090, 1500, 3900, 5500];
     const points = buildPriceDistribution(prices);
-    expect(points.length).toBeGreaterThan(1);
+    expect(points).toHaveLength(5);
+    expect(points[0]?.label).toBe('200–500');
+    expect(points[0]?.count).toBe(1);
     const total = points.reduce((acc, point) => acc + point.count, 0);
     expect(total).toBe(prices.length);
     expect(points[points.length - 1]?.cumulativePct).toBe(100);
-    expect(points[0]?.label).toContain('–');
   });
 
-  it('snaps the lowest edge down so a cheap product lands in a clean range', () => {
+  it('starts the first bin at the cheapest price', () => {
     const points = buildPriceDistribution([4, 60, 70, 80, 90, 100]);
     expect(points[0]?.label).toBe('2–5');
     expect(points[0]?.count).toBe(1);
+  });
+
+  it('caps the bulk at the 99th percentile with an overflow bin', () => {
+    const cheap = Array.from({ length: 200 }, (_, i) => 39 + (i * (900 - 39)) / 199);
+    const points = buildPriceDistribution([...cheap, 5000, 8699]);
+    expect(points).toHaveLength(6);
+    expect(points[5]?.label).toBe('>900');
+    expect(points[5]?.count).toBe(2);
+    const bulk = points.slice(0, 5).reduce((acc, point) => acc + point.count, 0);
+    expect(bulk).toBe(200);
+    const total = points.reduce((acc, point) => acc + point.count, 0);
+    expect(total).toBe(202);
+    expect(points[5]?.cumulativePct).toBe(100);
+    const firstShare = (points[0]?.count ?? 0) / 200;
+    expect(firstShare).toBeLessThan(0.5);
   });
 
   it('puts every price in one bin when all are equal', () => {
@@ -43,15 +59,13 @@ describe('buildPriceDistribution', () => {
 });
 
 describe('buildPriceDistributionConfig', () => {
-  it('renders a count bar series and a cumulative percent line', () => {
+  it('renders one bar series without a cumulative line', () => {
     const points = buildPriceDistribution([10, 20, 30, 200, 2000]);
     const config = buildPriceDistributionConfig(points);
     const series = config.series as Array<{ name: string; type: string }>;
-    expect(series).toHaveLength(2);
+    expect(series).toHaveLength(1);
     expect(series[0]?.name).toBe('produkty');
     expect(series[0]?.type).toBe('bar');
-    expect(series[1]?.name).toBe('skumulowany %');
-    expect(series[1]?.type).toBe('line');
     expect(config.xaxis).toBeDefined();
   });
 

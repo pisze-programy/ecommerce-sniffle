@@ -92,27 +92,49 @@ function ageGroupRows(ads: readonly MetaAd[]): readonly AgeGroupRow[] {
   return [...byAge.entries()].map(([group, reach]) => ({ group, reach })).sort((a, b) => b.reach - a.reach);
 }
 
-export function renderMetaAdsCard(
+export interface MetaAdsSummary {
+  readonly active: number;
+  readonly newCount: number;
+  readonly reachTotal: number;
+  readonly dailyReach: number;
+  readonly costLow: number;
+  readonly costHigh: number;
+}
+
+export function metaAdsSummary(
+  ads: readonly MetaAd[],
+  days: readonly MetaAdDay[],
+  today: string,
+  cpm: CpmRange
+): MetaAdsSummary {
+  const newCount = ads.filter((ad) => ad.startDate !== null && daysAgo(ad.startDate, today) <= 7).length;
+  const reachTotal = ads.reduce((sum, ad) => sum + (ad.euTotalReach ?? 0), 0);
+  const reachEstimate = estimateDailyReach(ads, days, today);
+  const costEstimate = estimateDailyCost(reachEstimate.total, cpm);
+  return {
+    active: ads.length,
+    newCount,
+    reachTotal,
+    dailyReach: reachEstimate.total,
+    costLow: costEstimate.low,
+    costHigh: costEstimate.high,
+  };
+}
+
+export function renderMetaAdsInner(
   ads: readonly MetaAd[],
   days: readonly MetaAdDay[],
   today: string,
   cpm: CpmRange
 ): string {
-  if (ads.length === 0 && days.length === 0) {
-    return '';
-  }
-
-  const newCount = ads.filter((ad) => ad.startDate !== null && daysAgo(ad.startDate, today) <= 7).length;
-  const reachTotal = ads.reduce((sum, ad) => sum + (ad.euTotalReach ?? 0), 0);
-  const reachEstimate = estimateDailyReach(ads, days, today);
-  const costEstimate = estimateDailyCost(reachEstimate.total, cpm);
+  const summary = metaAdsSummary(ads, days, today, cpm);
 
   const statItems = [
-    { label: 'Aktywne', value: fmtInt(ads.length) },
-    ...(newCount > 0 ? [{ label: 'Nowe w 7 dni', value: fmtInt(newCount) }] : []),
-    { label: 'Zasięg (suma)', value: fmtInt(reachTotal) },
-    { label: 'Est. zasięg/dzień', value: fmtInt(reachEstimate.total) },
-    { label: 'Est. koszt/dzień', value: `${fmtInt(costEstimate.low)}–${fmtInt(costEstimate.high)} zł` },
+    { label: 'Aktywne', value: fmtInt(summary.active) },
+    ...(summary.newCount > 0 ? [{ label: 'Nowe w 7 dni', value: fmtInt(summary.newCount) }] : []),
+    { label: 'Zasięg (suma)', value: fmtInt(summary.reachTotal) },
+    { label: 'Est. zasięg/dzień', value: fmtInt(summary.dailyReach) },
+    { label: 'Est. koszt/dzień', value: `${fmtInt(summary.costLow)}–${fmtInt(summary.costHigh)} zł` },
   ];
 
   const groups = groupRows(ads);
@@ -184,12 +206,12 @@ export function renderMetaAdsCard(
     { label: 'Reach/dzień', sortType: 'number' },
   ];
   const adsBlock = card({
-    title: 'Lista reklam',
+    title: 'Lista reklam Meta',
     body: sortableTable(adHeaders, adRows, 'table-hover', 5, 'meta-ads-list'),
     collapsed: true,
     className: 'mt-2',
   });
 
   const body = `${statGrid(statItems)}${combinedBlock}${collationBlock}${adsBlock}`;
-  return card({ title: 'Reklamy', body, collapsed: true });
+  return body;
 }

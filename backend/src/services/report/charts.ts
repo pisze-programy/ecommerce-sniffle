@@ -143,9 +143,14 @@ export function buildDailyConfig(dailyRange: readonly DailyPoint[]): ChartOpts {
   };
 }
 
-// Price ranges grow by the 1-2-5 sequence, so skewed prices still fill
-// the chart. The edges snap to nice numbers and every bin stays, so the
-// axis is continuous and a cheap product lands in a clean range.
+// Prices are log-normal: most products cluster low with a long
+// expensive tail. Equal bins on a log scale draw that as a bell:
+// few bins, round 1-2-5 edges, no decimals. A linear scale would
+// crush everything into the first bar. The bulk ends at the 99th
+// percentile plus one overflow bin, so outliers cannot stretch
+// the axis. Narrow ranges fall back to equal linear bins.
+const MAX_EDGES = 6;
+
 const NICE_STEPS = [1, 2, 5];
 
 function allNiceValues(): number[] {
@@ -158,9 +163,73 @@ function allNiceValues(): number[] {
   return [...set].sort((a, b) => a - b);
 }
 
+function floorNice(value: number, nice: readonly number[]): number {
+  let out = nice[0] ?? value;
+  for (const candidate of nice) {
+    if (candidate <= value) {
+      out = candidate;
+    } else {
+      break;
+    }
+  }
+  return out;
+}
+
+function ceilNice(value: number, nice: readonly number[]): number {
+  for (const candidate of nice) {
+    if (candidate >= value) {
+      return candidate;
+    }
+  }
+  return nice[nice.length - 1] ?? value;
+}
+
+function thinEdges(edges: readonly number[], maxEdges: number): number[] {
+  if (edges.length <= maxEdges) {
+    return [...edges];
+  }
+  const picked: number[] = [];
+  for (let i = 0; i < maxEdges; i += 1) {
+    picked.push(edges[Math.round((i * (edges.length - 1)) / (maxEdges - 1))] ?? 0);
+  }
+  return [...new Set(picked)].sort((a, b) => a - b);
+}
+
+function linearEdges(min: number, max: number, count: number): number[] {
+  const rounded = (max - min) / (count - 1) >= 1;
+  const edges: number[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const value = min + ((max - min) * i) / (count - 1);
+    edges.push(rounded ? Math.round(value) : Math.round(value * 100) / 100);
+  }
+  return [...new Set(edges)].sort((a, b) => a - b);
+}
+
+function percentile(sorted: readonly number[], pct: number): number {
+  if (sorted.length === 0) {
+    return 0;
+  }
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((pct / 100) * sorted.length) - 1));
+  return sorted[index] ?? 0;
+}
+
+function buildEdges(min: number, top: number): number[] {
+  if (top / min >= 4) {
+    const nice = allNiceValues();
+    const candidates = nice.filter((value) => value >= floorNice(min, nice) && value <= ceilNice(top, nice));
+    const thinned = thinEdges(candidates, MAX_EDGES);
+    if (thinned.length >= 2) {
+      return thinned;
+    }
+  }
+  return linearEdges(min, top, MAX_EDGES);
+}
+
 function formatPrice(value: number): string {
-  const rounded = Math.round(value * 100) / 100;
-  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+  if (value >= 10) {
+    return String(Math.round(value));
+  }
+  return String(Math.round(value * 100) / 100);
 }
 
 export interface PriceDistributionPoint {
@@ -173,26 +242,25 @@ export function buildPriceDistribution(prices: readonly number[]): readonly Pric
   if (prices.length === 0) {
     return [];
   }
-  const min = Math.max(Math.min(...prices), 0.01);
+  const min = Math.min(...prices);
   const max = Math.max(...prices);
   if (min === max) {
     return [{ label: formatPrice(min), count: prices.length, cumulativePct: 100 }];
   }
-  const nice = allNiceValues();
-  const below = nice.filter((value) => value <= min);
-  const lo = below.length === 0 ? min : (below[below.length - 1] ?? min);
-  const above = nice.filter((value) => value >= max);
-  const hi = above.length === 0 ? max : (above[0] ?? max);
-  const edges = nice.filter((value) => value >= lo && value <= hi);
+  const sorted = [...prices].sort((a, b) => a - b);
+  const cap = percentile(sorted, 99);
+  const bulkMax = cap >= max ? max : cap;
+  const edges = buildEdges(min, bulkMax);
   const total = prices.length;
   let running = 0;
   const points: PriceDistributionPoint[] = [];
   for (let index = 0; index < edges.length - 1; index += 1) {
     const a = edges[index] ?? 0;
-    const b = edges[index + 1] ?? 0;
+    const last = index === edges.length - 2;
+    const b = last ? bulkMax : (edges[index + 1] ?? 0);
     let count = 0;
     for (const price of prices) {
-      if (price >= a && (price < b || index === edges.length - 2)) {
+      if (price >= a && (price < b || (last && (cap >= max || price <= cap)))) {
         count += 1;
       }
     }
@@ -203,31 +271,36 @@ export function buildPriceDistribution(prices: readonly number[]): readonly Pric
       cumulativePct: Math.round((running / total) * 100),
     });
   }
+  if (cap < max) {
+    let overflow = 0;
+    for (const price of prices) {
+      if (price > cap) {
+        overflow += 1;
+      }
+    }
+    running += overflow;
+    points.push({
+      label: `>${formatPrice(cap)}`,
+      count: overflow,
+      cumulativePct: Math.round((running / total) * 100),
+    });
+  }
   return points;
 }
 
 export function buildPriceDistributionConfig(points: readonly PriceDistributionPoint[]): ChartOpts {
   return {
-    type: 'line',
+    type: 'bar',
     height: 260,
-    series: [
-      { name: 'produkty', type: 'bar', data: points.map((point) => point.count), yaxis: 0 },
-      {
-        name: 'skumulowany %',
-        type: 'line',
-        data: points.map((point) => point.cumulativePct),
-        yaxis: 1,
-        dataLabels: { enabled: false },
-      },
-    ],
+    series: [{ name: 'produkty', type: 'bar', data: points.map((point) => point.count), yaxis: 0 }],
     xaxis: { categories: points.map((point) => point.label), title: { text: 'cena (zł)' } },
-    yaxis: [{ title: { text: 'produkty' } }, { opposite: true, title: { text: 'skumulowany %' }, max: 100 }],
-    plotOptions: { bar: { columnWidth: '100%', borderRadius: 0 } },
+    yaxis: [{ title: { text: 'produkty' } }],
+    plotOptions: { bar: { columnWidth: '80%' } },
     dataLabels: { enabled: true, style: { fontSize: '10px' } },
     tooltip: { theme: 'dark', y: { formatter: '__FUNC_priceTooltip__' } },
     formatters: {
       priceTooltip:
-        "function(value, opts) { var label = opts.w.globals.labels[opts.dataPointIndex]; if (label === undefined || label === null) { label = ''; } if (opts.seriesIndex === 0) { return label + ' zł · ' + value + ' produktów'; } return label + ' zł · ' + value + '%'; }",
+        "function(value, opts) { var label = opts.w.globals.labels[opts.dataPointIndex]; if (label === undefined || label === null) { label = ''; } var word = value === 1 ? 'produkt' : (value % 10 >= 2 && value % 10 <= 4 && (value % 100 < 12 || value % 100 > 14) ? 'produkty' : 'produktów'); return label + ' zł: ' + value + ' ' + word; }",
     },
   };
 }

@@ -5,6 +5,7 @@
 
 import type { Logger } from '@ecommerce-sniffle/providers';
 import type { GoogleAd, GoogleAudience, GoogleRunFailure, GoogleSurfaceStat } from './types.ts';
+import { sanitizeBounds } from './estimate.ts';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const BQ_SCOPE = 'https://www.googleapis.com/auth/bigquery';
@@ -196,7 +197,7 @@ function pickRegion(regions: unknown): RegionPick | null {
   };
 }
 
-function parseAd(row: Json, entityId: string | null): GoogleAd | null {
+function parseAd(row: Json, entityId: string | null): { ad: GoogleAd; capped: boolean } | null {
   const creativeId = asString(row['creative_id']);
   const advertiserId = asString(row['advertiser_id']);
   if (creativeId === null || advertiserId === null) {
@@ -206,20 +207,25 @@ function parseAd(row: Json, entityId: string | null): GoogleAd | null {
   if (region === null) {
     return null;
   }
+  const bounds = sanitizeBounds(region.lo, region.hi);
+  const capped = bounds.lo === null && bounds.hi === null && (region.lo !== null || region.hi !== null);
   return {
-    creativeId,
-    advertiserId,
-    entityId,
-    disclosedName: asString(row['advertiser_disclosed_name']),
-    format: asString(row['ad_format_type']),
-    topic: asString(row['topic']),
-    pageUrl: asString(row['creative_page_url']),
-    firstShown: region.firstShown,
-    lastShown: region.lastShown,
-    impLo: region.lo,
-    impHi: region.hi,
-    audience: parseAudience(row['audience_selection_approach_info']),
-    surfaces: region.surfaces,
+    ad: {
+      creativeId,
+      advertiserId,
+      entityId,
+      disclosedName: asString(row['advertiser_disclosed_name']),
+      format: asString(row['ad_format_type']),
+      topic: asString(row['topic']),
+      pageUrl: asString(row['creative_page_url']),
+      firstShown: region.firstShown,
+      lastShown: region.lastShown,
+      impLo: bounds.lo,
+      impHi: bounds.hi,
+      audience: parseAudience(row['audience_selection_approach_info']),
+      surfaces: region.surfaces,
+    },
+    capped,
   };
 }
 
@@ -271,14 +277,20 @@ function buildSql(advertiserIds: readonly string[]): string {
 }
 
 // Fetches all creatives of the tracked advertisers from creative_stats.
+export interface GoogleFetchResult {
+  readonly ads: readonly GoogleAd[];
+  readonly failed: readonly GoogleRunFailure[];
+  readonly capped: number;
+}
+
 // Returns one row per creative with the PL region entry (EEA fallback).
 export async function fetchGoogleAds(
   advertiserIds: readonly string[],
   entityIds: ReadonlyMap<string, string>,
   deps: GoogleFetchDeps
-): Promise<{ readonly ads: readonly GoogleAd[]; readonly failed: readonly GoogleRunFailure[] }> {
+): Promise<GoogleFetchResult> {
   if (advertiserIds.length === 0) {
-    return { ads: [], failed: [] };
+    return { ads: [], failed: [], capped: 0 };
   }
   let key: KeyFile;
   try {
@@ -289,6 +301,7 @@ export async function fetchGoogleAds(
     return {
       ads: [],
       failed: advertiserIds.map((advertiserId) => ({ advertiserId, reason: 'GOOGLE_BQ_KEY is not JSON' })),
+      capped: 0,
     };
   }
   const email = typeof key.client_email === 'string' ? key.client_email : '';
@@ -300,6 +313,7 @@ export async function fetchGoogleAds(
     return {
       ads: [],
       failed: advertiserIds.map((advertiserId) => ({ advertiserId, reason: 'GOOGLE_BQ_KEY misses fields' })),
+      capped: 0,
     };
   }
   const failAll = (reason: string): readonly GoogleRunFailure[] =>
@@ -310,7 +324,7 @@ export async function fetchGoogleAds(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     deps.logger.error('googleads.tokenFailed', { error: message });
-    return { ads: [], failed: failAll(`token failed: ${message}`) };
+    return { ads: [], failed: failAll(`token failed: ${message}`), capped: 0 };
   }
   const sql = buildSql(advertiserIds);
   try {
@@ -340,6 +354,7 @@ export async function fetchGoogleAds(
     const fields = job.schema?.fields ?? [];
     const ads: GoogleAd[] = [];
     let skipped = 0;
+    let capped = 0;
     for (const line of job.rows ?? []) {
       const row: Json = {};
       const cells = line.f ?? [];
@@ -348,18 +363,24 @@ export async function fetchGoogleAds(
         row[name] = decodeValue(fields[i] ?? {}, cells[i]?.v);
       }
       const advertiserId = asString(row['advertiser_id']);
-      const ad = parseAd(row, advertiserId === null ? null : (entityIds.get(advertiserId) ?? null));
-      if (ad === null) {
+      const parsed = parseAd(row, advertiserId === null ? null : (entityIds.get(advertiserId) ?? null));
+      if (parsed === null) {
         skipped += 1;
         continue;
       }
-      ads.push(ad);
+      if (parsed.capped) {
+        capped += 1;
+      }
+      ads.push(parsed.ad);
     }
     deps.logger.info('googleads.fetched', { advertisers: advertiserIds.length, ads: ads.length, skipped });
-    return { ads, failed: [] };
+    if (capped > 0) {
+      deps.logger.warn('googleads.boundsCapped', { advertisers: advertiserIds.length, creatives: capped });
+    }
+    return { ads, failed: [], capped };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     deps.logger.error('googleads.fetchFailed', { error: message });
-    return { ads: [], failed: failAll(message) };
+    return { ads: [], failed: failAll(message), capped: 0 };
   }
 }

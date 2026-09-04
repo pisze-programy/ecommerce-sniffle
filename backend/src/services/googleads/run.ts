@@ -40,6 +40,7 @@ export async function runGoogleAdsFetch(
   const activeSince = dayBefore(today, ACTIVE_WINDOW_DAYS);
   const failures: GoogleRunFailure[] = [];
   let allAds: readonly GoogleAd[] = [];
+  let capped = 0;
   try {
     const fetched =
       projectId === undefined
@@ -47,6 +48,7 @@ export async function runGoogleAdsFetch(
         : await fetchGoogleAds(advertiserIds, entityIds, { keyJson, projectId, logger });
     allAds = fetched.ads;
     failures.push(...fetched.failed);
+    capped = fetched.capped;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('googleads.runThrew', { error: message });
@@ -91,7 +93,8 @@ export async function runGoogleAdsFetch(
     ads: allAds.length,
     daysWritten,
     ended,
+    capped,
     errors: failures.length,
   });
-  return { shops: advertiserIds.length, ads: allAds.length, daysWritten, ended, failures };
+  return { shops: advertiserIds.length, ads: allAds.length, daysWritten, ended, capped, failures };
 }

@@ -13,6 +13,7 @@ import type { SocialPost, SocialProfile, SocialStory } from './social/types.ts';
 import type { MetaAd, MetaAdDay } from './metaads/types.ts';
 import { isMetaPlatform } from './metaads/types.ts';
 import type { GoogleAd, GoogleAdDay } from './googleads/types.ts';
+import { sanitizeBounds } from './googleads/estimate.ts';
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement;
@@ -253,6 +254,8 @@ function fromMetaAdRow(row: MetaAdRow): MetaAd {
 }
 
 function fromGoogleAdRow(row: GoogleAdRow): GoogleAd {
+  const bounds = sanitizeBounds(row.imp_lo, row.imp_hi);
+  const surfaces = jsonParse<GoogleAd['surfaces']>(row.surfaces) ?? [];
   return {
     creativeId: row.creative_id,
     advertiserId: row.advertiser_id,
@@ -263,8 +266,8 @@ function fromGoogleAdRow(row: GoogleAdRow): GoogleAd {
     pageUrl: row.page_url,
     firstShown: row.first_shown,
     lastShown: row.last_shown,
-    impLo: row.imp_lo,
-    impHi: row.imp_hi,
+    impLo: bounds.lo,
+    impHi: bounds.hi,
     audience: jsonParse<GoogleAd['audience']>(row.audience) ?? {
       demographic: null,
       geo: null,
@@ -272,7 +275,10 @@ function fromGoogleAdRow(row: GoogleAdRow): GoogleAd {
       customerLists: null,
       topics: null,
     },
-    surfaces: jsonParse<GoogleAd['surfaces']>(row.surfaces) ?? [],
+    surfaces: surfaces.map((entry) => {
+      const clean = sanitizeBounds(entry.lo, entry.hi);
+      return { surface: entry.surface, lo: clean.lo, hi: clean.hi };
+    }),
   };
 }
 

@@ -280,7 +280,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     requiresProxy: true,
     endpoint: 'https://theodderside.com/products.json',
     enabled: true,
-    currency: 'PLN',
+    currency: 'USD',
     entityId: 'theodderside',
   },
   {

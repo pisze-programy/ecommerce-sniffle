@@ -50,5 +50,6 @@ export interface GoogleAdRunResult {
   readonly ads: number;
   readonly daysWritten: number;
   readonly ended: number;
+  readonly capped: number;
   readonly failures: readonly GoogleRunFailure[];
 }

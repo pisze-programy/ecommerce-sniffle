@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLogger } from '../../../../../../packages/providers/src/logger.ts';
 import type { LogRecord, Logger } from '../../../../../../packages/providers/src/logger.ts';
 import {
+  buildCatalog,
   buildPrestaShopCartRevealProvider,
   extractCookies,
   extractPrestaProductId,
@@ -117,6 +118,49 @@ describe('extract helpers', () => {
 
   it('builds a title from the url slug', () => {
     expect(extractPrestaTitle('https://laboratoriumpanidomu.pl/x/1928-d-lux-plyn-1-l.html')).toBe('d lux plyn 1 l');
+  });
+});
+
+describe('buildCatalog excluded stock ids', () => {
+  it('drops removed products and logs the skip', async () => {
+    const capture = capturingLogger();
+    const cfg = { ...CFG, excludedStockIds: [2414] };
+    const stubFetch = async (url: unknown) => {
+      const u = String(url);
+      const body =
+        u === 'https://laboratoriumpanidomu.pl/'
+          ? '<a href="/741-produkty-d-lux">category</a>'
+          : '<a href="/produkty-d-lux/1928-d-lux-plyn.html">one</a><a href="/x/2414-gone.html">gone</a>';
+      return {
+        ok: true,
+        status: 200,
+        text: async () => body,
+        json: async () => ({ products: [] }),
+      };
+    };
+    const catalog = await buildCatalog(cfg, capture.logger, stubFetch as never);
+    expect(catalog.products.map((product) => product.id)).toEqual(['1928']);
+    expect(capture.records.some((record) => record.message === 'presta.catalog excluded')).toBe(true);
+  });
+
+  it('keeps every product without exclusions', async () => {
+    const capture = capturingLogger();
+    const stubFetch = async (url: unknown) => {
+      const u = String(url);
+      const body =
+        u === 'https://laboratoriumpanidomu.pl/'
+          ? '<a href="/741-produkty-d-lux">category</a>'
+          : '<a href="/produkty-d-lux/1928-d-lux-plyn.html">one</a>';
+      return {
+        ok: true,
+        status: 200,
+        text: async () => body,
+        json: async () => ({ products: [] }),
+      };
+    };
+    const catalog = await buildCatalog(CFG, capture.logger, stubFetch as never);
+    expect(catalog.products.map((product) => product.id)).toEqual(['1928']);
+    expect(capture.records.some((record) => record.message === 'presta.catalog excluded')).toBe(false);
   });
 });
 

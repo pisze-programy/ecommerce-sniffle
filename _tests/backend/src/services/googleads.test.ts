@@ -443,12 +443,26 @@ describe('fetchGoogleAds', () => {
     expect(records.some((record) => record.message === 'googleads.fetchFailed')).toBe(true);
   });
 
+  it('caps a near-INT64_MAX sentinel bound and logs it', async () => {
+    stubBigQuery([
+      creativeRow({ region: regionCell('PL', '2025-09-10', '2026-09-02', '10000000', '9223372036854776000') }),
+    ]);
+    const { logger, records } = makeLogger();
+    const result = await fetchGoogleAds([AR], new Map(), { keyJson: makeKeyJson(), logger });
+    expect(result.failed).toEqual([]);
+    expect(result.ads).toHaveLength(1);
+    expect(result.ads[0].impLo).toBe(null);
+    expect(result.ads[0].impHi).toBe(null);
+    expect(result.capped).toBe(1);
+    expect(records.some((record) => record.message === 'googleads.boundsCapped')).toBe(true);
+  });
+
   it('returns empty without advertisers and calls no fetch', async () => {
     const spy = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', spy);
     const { logger } = makeLogger();
     const result = await fetchGoogleAds([], new Map(), { keyJson: makeKeyJson(), logger });
-    expect(result).toEqual({ ads: [], failed: [] });
+    expect(result).toEqual({ ads: [], failed: [], capped: 0 });
     expect(spy).not.toHaveBeenCalled();
   });
 });
@@ -495,6 +509,20 @@ describe('runGoogleAdsFetch', () => {
     expect(records.some((record) => record.message === 'googleads.sharedAdvertiser')).toBe(true);
   });
 
+  it('counts capped creatives in the run result', async () => {
+    stubBigQuery([
+      creativeRow({ region: regionCell('PL', '2025-09-10', '2026-09-02', '10000000', '9223372036854776000') }),
+    ]);
+    const { logger } = makeLogger();
+    const db = entityStoreDb();
+    const storage = createStorage(db, logger);
+    const result = await runGoogleAdsFetch(storage, logger, makeKeyJson());
+    expect(result.shops).toBe(1);
+    expect(result.ads).toBe(1);
+    expect(result.capped).toBe(1);
+    expect(result.failures).toEqual([]);
+  });
+
   it('skips the fetch without advertisers', async () => {
     const spy = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', spy);
@@ -507,7 +535,7 @@ describe('runGoogleAdsFetch', () => {
     });
     const storage = createStorage(db, logger);
     const result = await runGoogleAdsFetch(storage, logger, makeKeyJson());
-    expect(result).toEqual({ shops: 0, ads: 0, daysWritten: 0, ended: 0, failures: [] });
+    expect(result).toEqual({ shops: 0, ads: 0, daysWritten: 0, ended: 0, capped: 0, failures: [] });
     expect(spy).not.toHaveBeenCalled();
   });
 

@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { GoogleAd, GoogleAdDay } from '../../../../backend/src/services/googleads/types.ts';
 import {
   estimateAdDailyImpressions,
+  estimateAdsDaily,
   estimateDailyCost,
+  estimateDailyCostByFormat,
   estimateDailyImpressions,
+  formatCpm,
   midpoint,
+  sanitizeBounds,
 } from '../../../../backend/src/services/googleads/estimate.ts';
 
 function ad(overrides: Partial<GoogleAd> = {}): GoogleAd {
@@ -38,6 +42,25 @@ describe('midpoint', () => {
   it('returns zero on missing bounds', () => {
     expect(midpoint(null, 20000)).toBe(0);
     expect(midpoint(15000, null)).toBe(0);
+  });
+});
+
+describe('sanitizeBounds', () => {
+  it('passes real bounds through', () => {
+    expect(sanitizeBounds(15000, 20000)).toEqual({ lo: 15000, hi: 20000 });
+    expect(sanitizeBounds(null, null)).toEqual({ lo: null, hi: null });
+  });
+
+  it('nulls the INT64_MAX sentinel upper bound', () => {
+    expect(sanitizeBounds(10000000, 9223372036854776000)).toEqual({ lo: null, hi: null });
+  });
+
+  it('nulls an absurd lower bound too', () => {
+    expect(sanitizeBounds(9223372036854776000, 9223372036854776000)).toEqual({ lo: null, hi: null });
+  });
+
+  it('keeps the largest real bound seen (8M)', () => {
+    expect(sanitizeBounds(0, 8000000)).toEqual({ lo: 0, hi: 8000000 });
   });
 });
 
@@ -98,5 +121,57 @@ describe('estimateDailyCost', () => {
   it('prices the reach with the CPM range', () => {
     expect(estimateDailyCost(2000, { min: 15, max: 30 })).toEqual({ low: 30, high: 60 });
     expect(estimateDailyCost(0, { min: 15, max: 30 })).toEqual({ low: 0, high: 0 });
+  });
+});
+
+describe('formatCpm', () => {
+  it('prices display, video, and search apart', () => {
+    expect(formatCpm('IMAGE', null)).toEqual({ min: 8, max: 20 });
+    expect(formatCpm('VIDEO', null)).toEqual({ min: 20, max: 40 });
+    expect(formatCpm('TEXT', null)).toEqual({ min: 60, max: 120 });
+  });
+
+  it('falls back to display pricing on unknown formats', () => {
+    expect(formatCpm(null, null)).toEqual({ min: 8, max: 20 });
+    expect(formatCpm('BANNER', null)).toEqual({ min: 8, max: 20 });
+  });
+
+  it('lets the entity override win over every format', () => {
+    expect(formatCpm('VIDEO', { min: 15, max: 30 })).toEqual({ min: 15, max: 30 });
+    expect(formatCpm('TEXT', { min: 15, max: 30 })).toEqual({ min: 15, max: 30 });
+  });
+});
+
+describe('estimateDailyCostByFormat', () => {
+  it('sums each ad with its own format range', () => {
+    const items = [
+      { format: 'IMAGE', daily: 10000, viaDelta: true },
+      { format: 'VIDEO', daily: 1000, viaDelta: false },
+    ];
+    expect(estimateDailyCostByFormat(items, null)).toEqual({ low: 100, high: 240 });
+  });
+
+  it('prices everything with the override when set', () => {
+    const items = [
+      { format: 'IMAGE', daily: 10000, viaDelta: true },
+      { format: 'TEXT', daily: 1000, viaDelta: true },
+    ];
+    expect(estimateDailyCostByFormat(items, { min: 15, max: 30 })).toEqual({ low: 165, high: 330 });
+  });
+
+  it('returns zero without items', () => {
+    expect(estimateDailyCostByFormat([], null)).toEqual({ low: 0, high: 0 });
+  });
+});
+
+describe('estimateAdsDaily', () => {
+  it('returns the per-ad daily with the format attached', () => {
+    const ads = [ad({ creativeId: 'CR1', format: 'VIDEO', impLo: 19000, impHi: 21000, firstShown: '2026-08-24' })];
+    const days = [day('2026-09-01', 15000, 20000, 'CR1'), day('2026-09-02', 17000, 20000, 'CR1')];
+    expect(estimateAdsDaily(ads, days, '2026-09-03')).toEqual([{ format: 'VIDEO', daily: 1000, viaDelta: true }]);
+  });
+
+  it('skips ads without a positive estimate', () => {
+    expect(estimateAdsDaily([ad({ impLo: null, impHi: null })], [], '2026-09-03')).toEqual([]);
   });
 });

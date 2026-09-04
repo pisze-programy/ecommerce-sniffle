@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GoogleAd, GoogleAdDay } from '../../../../backend/src/services/googleads/types.ts';
-import { renderGoogleAdsCard } from '../../../../backend/src/services/report/googleads.ts';
+import { renderGoogleAdsInner } from '../../../../backend/src/services/report/googleads.ts';
 
 function ad(overrides: Partial<GoogleAd> = {}): GoogleAd {
   return {
@@ -21,7 +21,7 @@ function ad(overrides: Partial<GoogleAd> = {}): GoogleAd {
   };
 }
 
-describe('renderGoogleAdsCard', () => {
+describe('renderGoogleAdsInner', () => {
   it('renders the collected ad data without analytics', () => {
     const ads: GoogleAd[] = [
       ad(),
@@ -53,8 +53,7 @@ describe('renderGoogleAdsCard', () => {
         impHi: 20000,
       },
     ];
-    const html = renderGoogleAdsCard(ads, days, '2026-09-03', { min: 15, max: 30 });
-    expect(html).toContain('Reklamy Google');
+    const html = renderGoogleAdsInner(ads, days, '2026-09-03', { min: 15, max: 30 });
     expect(html).toContain('Aktywne');
     expect(html).toContain('Wyświetlenia (suma środków)');
     expect(html).toContain('Est. wyświetlenia/dzień');
@@ -70,7 +69,16 @@ describe('renderGoogleAdsCard', () => {
     expect(html).not.toContain('wydatek');
   });
 
-  it('renders nothing for an empty shop', () => {
-    expect(renderGoogleAdsCard([], [], '2026-09-03', { min: 15, max: 30 })).toBe('');
+  it('excludes sentinel bounds from totals', () => {
+    const ads: GoogleAd[] = [ad(), ad({ creativeId: 'CR2', impLo: null, impHi: null, surfaces: [] })];
+    const html = renderGoogleAdsInner(ads, [], '2026-09-03', null);
+    expect(html).toContain('17 500');
+    expect(html).not.toContain('9223372036854776000');
+  });
+
+  it('renders stats for empty input; the section hides it', () => {
+    const html = renderGoogleAdsInner([], [], '2026-09-03', { min: 15, max: 30 });
+    expect(html).toContain('Lista reklam Google');
+    expect(html).toContain('Aktywne');
   });
 });

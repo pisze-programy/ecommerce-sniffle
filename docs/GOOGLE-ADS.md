@@ -174,8 +174,18 @@ CREATE INDEX idx_google_ads_advertiser ON google_ads (advertiser_id, last_seen D
 
 The daily estimate reads the day-over-day growth of the bound
 midpoint `(lo + hi) / 2`. The first snapshot divides the midpoint
-by the days since `first_shown`. The cost math reuses the Meta
-CPM helper with the entity override or the default range.
+by the days since `first_shown`.
+
+The Google CPM is not the Meta CPM. Each creative pays the range
+of its own format, in PLN per 1000 at 4 PLN per dollar:
+
+- IMAGE (Display, Shopping): 8-20 (benchmark $2-5)
+- VIDEO (YouTube ecommerce): 20-40 (benchmark $5-10)
+- TEXT (Search): 60-120 (Search sells clicks; bridged from a PL
+  ecommerce CPC of $1-2 with a 1-2% CTR, rough on purpose)
+
+A per-entity `cpmOverride` replaces every range above.
+The Meta default range (15-30) never applies to Google ads.
 
 ## Architecture
 

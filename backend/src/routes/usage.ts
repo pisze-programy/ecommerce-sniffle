@@ -428,6 +428,7 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
         ads: result.ads,
         daysWritten: result.daysWritten,
         ended: result.ended,
+        capped: result.capped,
         errors: result.failures.length,
       });
       return c.json({ ok: true, ...result });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MetaAd, MetaAdDay } from '../../../../backend/src/services/metaads/types.ts';
-import { renderMetaAdsCard } from '../../../../backend/src/services/report/metaads.ts';
+import { renderMetaAdsInner } from '../../../../backend/src/services/report/metaads.ts';
 
 function ad(overrides: Partial<MetaAd> = {}): MetaAd {
   return {
@@ -33,7 +33,7 @@ function ad(overrides: Partial<MetaAd> = {}): MetaAd {
   };
 }
 
-describe('renderMetaAdsCard', () => {
+describe('renderMetaAdsInner', () => {
   it('renders the collected ad data without analytics', () => {
     const ads: MetaAd[] = [
       ad(),
@@ -49,8 +49,8 @@ describe('renderMetaAdsCard', () => {
       { day: '2026-08-30', adArchiveId: '635204772540093', pageId: '1527130717525496', euTotalReach: 4174096 },
       { day: '2026-08-30', adArchiveId: '1508266897314177', pageId: '1527130717525496', euTotalReach: 1975883 },
     ];
-    const html = renderMetaAdsCard(ads, days, '2026-08-30', { min: 15, max: 30 });
-    expect(html).toContain('Reklamy');
+    const html = renderMetaAdsInner(ads, days, '2026-08-30', { min: 15, max: 30 });
+    expect(html).toContain('Lista reklam Meta');
     expect(html).toContain('Aktywne');
     expect(html).toContain('Zasięg (suma)');
     expect(html).toContain('Est. zasięg/dzień');
@@ -72,7 +72,9 @@ describe('renderMetaAdsCard', () => {
     expect(html).not.toContain('wydatek');
   });
 
-  it('renders nothing for an empty shop', () => {
-    expect(renderMetaAdsCard([], [], '2026-08-30')).toBe('');
+  it('renders stats for empty input; the section hides it', () => {
+    const html = renderMetaAdsInner([], [], '2026-08-30', { min: 15, max: 30 });
+    expect(html).toContain('Lista reklam Meta');
+    expect(html).toContain('Aktywne');
   });
 });

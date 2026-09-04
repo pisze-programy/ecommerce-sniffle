@@ -18,4 +18,9 @@ export const EXCLUDED_STOCK_IDS: Readonly<Record<string, readonly number[]>> = {
   phlov: [1038, 1041, 1046],
   // Products that need option combos and fail the add. Verified manually.
   'e-daag': [3342, 3865],
+  // Removed from the shop (404). Verified manually.
+  laboratoriumpanidomu: [
+    1779, 1783, 1807, 1811, 1818, 1833, 1862, 1898, 2235, 2334, 2414, 2436, 2578, 2579, 2593, 2626, 2684, 2901, 2931,
+    3107, 3111, 3117, 3257,
+  ],
 };

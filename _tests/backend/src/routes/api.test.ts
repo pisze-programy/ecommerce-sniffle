@@ -508,7 +508,7 @@ describe('api /dashboard and /shop', () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain('Podsumowanie sklepu');
-    expect(html).toContain('datagrid');
+    expect(html).toContain('row-cards');
     expect(html).toContain('Zmiany');
     expect(html).toContain('Top sprzedawane');
     expect(html).toContain('Stan magazynowy');
@@ -644,6 +644,44 @@ describe('api /dashboard and /shop', () => {
     for (const entry of categories) {
       expect(entry).not.toContain('08-26');
     }
+  });
+
+  it('shows measured sales sums and averages without the seed day', async () => {
+    const storage = new MemoryStorage();
+    const snap = (snapshotAt: string): Snapshot => ({
+      shop: 'mock.pl',
+      snapshotAt,
+      window: snapshotAt.includes('04:00') ? 'morning' : 'evening',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    storage.snapshots.push(snap('2026-08-26T04:00:00.000Z'));
+    storage.snapshots.push(snap('2026-08-27T04:00:00.000Z'));
+    storage.snapshots.push(snap('2026-08-28T04:00:00.000Z'));
+    const stat = (day: string, unitsSold: number, revenue: number): DailyStats => ({
+      shop: 'mock.pl',
+      day,
+      unitsSold,
+      revenue,
+      restocked: 0,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+      soldMinPrice: null,
+      soldMaxPrice: null,
+    });
+    storage.stats.push(stat('2026-08-26', 9999, 999900));
+    storage.stats.push(stat('2026-08-27', 5, 500));
+    storage.stats.push(stat('2026-08-28', 7, 700));
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock?day=2026-08-28');
+    const html = await response.text();
+    expect(html).toContain('Sprzedaż · 2 dni');
+    expect(html).toContain('12 szt');
+    expect(html).toContain('Tempo miesięczne (est.)');
+    expect(html).toContain('~180 szt / mies.');
+    expect(html).not.toContain('CPA est.');
+    expect(html).not.toContain('KRS vs tempo');
   });
 
   it('returns 404 for an unknown shop', async () => {

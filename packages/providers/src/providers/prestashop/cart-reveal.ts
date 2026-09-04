@@ -251,6 +251,8 @@ export async function buildCatalog(
   const categories = await discoverCategories(base, fetchFn, logger);
   const products: Product[] = [];
   const seen = new Set<string>();
+  const excluded = new Set<number>(providerConfig.excludedStockIds ?? []);
+  let skippedExcluded = 0;
   const categoryResults = await mapPool(categories, CATALOG_CONCURRENCY, async (category) => {
     try {
       const urls = await fetchProductUrls(base, category, providerConfig.ratePerSecond, fetchFn);
@@ -265,6 +267,10 @@ export async function buildCatalog(
     for (const url of entry.urls) {
       const id = extractPrestaProductId(url);
       if (id === null) {
+        continue;
+      }
+      if (excluded.has(Number(id))) {
+        skippedExcluded += 1;
         continue;
       }
       if (seen.has(id)) {
@@ -286,6 +292,13 @@ export async function buildCatalog(
     }
   }
   logger.debug('presta catalog fetched', { domain: providerConfig.domain, products: products.length });
+  if (excluded.size > 0) {
+    logger.info('presta.catalog excluded', {
+      domain: providerConfig.domain,
+      skipped: skippedExcluded,
+      products: products.length,
+    });
+  }
   return { domain: providerConfig.domain, fetchedAt: new Date().toISOString(), products };
 }
 

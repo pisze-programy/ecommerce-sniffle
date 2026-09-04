@@ -75,6 +75,7 @@ export function card(options: CardOptions): string {
 export interface StatCard {
   readonly label: string;
   readonly value: string;
+  readonly sub?: string;
   readonly cls?: string;
 }
 
@@ -82,7 +83,8 @@ export function statGrid(items: readonly StatCard[]): string {
   const cards = items
     .map((item) => {
       const cls = item.cls === undefined ? '' : item.cls;
-      return `<div class="col-6 col-sm-4 col-lg d-flex"><div class="card card-sm h-100 w-100"><div class="card-body"><div class="text-secondary text-uppercase fs-6">${esc(item.label)}</div><div class="h3 mb-0 ${esc(cls)}">${esc(item.value)}</div></div></div></div>`;
+      const sub = item.sub === undefined ? '' : `<div class="text-secondary fs-6">${esc(item.sub)}</div>`;
+      return `<div class="col-6 col-md-4 col-xl-3 d-flex"><div class="card card-sm h-100 w-100"><div class="card-body"><div class="text-secondary text-uppercase fs-6">${esc(item.label)}</div><div class="h3 mb-0 ${esc(cls)}">${esc(item.value)}</div>${sub}</div></div></div>`;
     })
     .join('');
   return `<div class="row row-cards">${cards}</div>`;

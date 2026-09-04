@@ -5,7 +5,7 @@
 
 import type { GoogleAd, GoogleAdDay } from './types.ts';
 import { estimateDailyCost } from '../metaads/estimate.ts';
-import type { CpmRange } from '../metaads/estimate.ts';
+import type { CpmRange, DailyCostEstimate } from '../metaads/estimate.ts';
 
 export type { CpmRange };
 export { estimateDailyCost };
@@ -17,11 +17,61 @@ export interface DailyImpressionsEstimate {
   readonly ads: number;
 }
 
+export interface AdDailyImpressions {
+  readonly format: string | null;
+  readonly daily: number;
+  readonly viaDelta: boolean;
+}
+
+// CPM per creative format, PLN per 1000. Sources: 2026 benchmarks
+// in USD at 4 PLN per dollar. Display (GDN) runs $2-5, YouTube for
+// ecommerce $5-10. Search sells clicks, not impressions; the $60-120
+// bridges a PL ecommerce CPC of $1-2 with a 1-2% CTR. Rough on
+// purpose. A per-entity override replaces every range below.
+export const FORMAT_CPM: Readonly<Record<string, CpmRange>> = {
+  IMAGE: { min: 8, max: 20 },
+  VIDEO: { min: 20, max: 40 },
+  TEXT: { min: 60, max: 120 },
+};
+
+const FALLBACK_CPM: CpmRange = { min: 8, max: 20 };
+
+export function formatCpm(format: string | null, override: CpmRange | null): CpmRange {
+  if (override !== null) {
+    return override;
+  }
+  if (format === null) {
+    return FALLBACK_CPM;
+  }
+  return FORMAT_CPM[format] ?? FALLBACK_CPM;
+}
+
 export function midpoint(lo: number | null, hi: number | null): number {
   if (lo === null || hi === null) {
     return 0;
   }
   return (lo + hi) / 2;
+}
+
+// Google reports an open-ended upper bound as a near-INT64_MAX
+// sentinel (observed 9223372036854776000). Real bounds top out
+// around 8M. Anything at or above 1e12 is not a measurement.
+// A capped bound poisons the midpoint, so both ends go null.
+export const BOUNDS_CAP = 1000000000000;
+
+export interface CleanBounds {
+  readonly lo: number | null;
+  readonly hi: number | null;
+}
+
+export function sanitizeBounds(lo: number | null, hi: number | null): CleanBounds {
+  if (lo !== null && lo >= BOUNDS_CAP) {
+    return { lo: null, hi: null };
+  }
+  if (hi !== null && hi >= BOUNDS_CAP) {
+    return { lo: null, hi: null };
+  }
+  return { lo, hi };
 }
 
 function dayDiff(from: string, to: string): number {
@@ -55,11 +105,11 @@ export function estimateAdDailyImpressions(ad: GoogleAd, series: readonly Google
   return Math.max(0, sum / deltas.length);
 }
 
-export function estimateDailyImpressions(
+export function estimateAdsDaily(
   ads: readonly GoogleAd[],
   days: readonly GoogleAdDay[],
   today: string
-): DailyImpressionsEstimate {
+): readonly AdDailyImpressions[] {
   const byAd = new Map<string, GoogleAdDay[]>();
   for (const row of days) {
     const list = byAd.get(row.creativeId);
@@ -69,28 +119,53 @@ export function estimateDailyImpressions(
       list.push(row);
     }
   }
-  let total = 0;
-  let viaDelta = 0;
-  let viaFallback = 0;
-  let adsCount = 0;
+  const items: AdDailyImpressions[] = [];
   for (const ad of ads) {
     const series = byAd.get(ad.creativeId) ?? [];
     const estimate = estimateAdDailyImpressions(ad, series, today);
     if (estimate <= 0) {
       continue;
     }
-    total += estimate;
-    adsCount += 1;
-    if (series.length >= 2) {
-      viaDelta += estimate;
+    items.push({ format: ad.format, daily: estimate, viaDelta: series.length >= 2 });
+  }
+  return items;
+}
+
+export function estimateDailyImpressions(
+  ads: readonly GoogleAd[],
+  days: readonly GoogleAdDay[],
+  today: string
+): DailyImpressionsEstimate {
+  const items = estimateAdsDaily(ads, days, today);
+  let total = 0;
+  let viaDelta = 0;
+  let viaFallback = 0;
+  for (const item of items) {
+    total += item.daily;
+    if (item.viaDelta) {
+      viaDelta += item.daily;
     } else {
-      viaFallback += estimate;
+      viaFallback += item.daily;
     }
   }
   return {
     total: Math.round(total),
     viaDelta: Math.round(viaDelta),
     viaFallback: Math.round(viaFallback),
-    ads: adsCount,
+    ads: items.length,
   };
+}
+
+export function estimateDailyCostByFormat(
+  items: readonly AdDailyImpressions[],
+  override: CpmRange | null
+): DailyCostEstimate {
+  let low = 0;
+  let high = 0;
+  for (const item of items) {
+    const cpm = formatCpm(item.format, override);
+    low += (item.daily / 1000) * cpm.min;
+    high += (item.daily / 1000) * cpm.max;
+  }
+  return { low: Math.round(low), high: Math.round(high) };
 }

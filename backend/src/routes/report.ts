@@ -10,16 +10,16 @@ import {
   badge,
   breadcrumb,
   card,
-  datagrid,
   emptyState,
   esc,
   icon,
   kpiGrid,
   money,
+  statGrid,
   table,
 } from '../services/report-components.ts';
-import type { DataGridItem, KpiCard } from '../services/report-components.ts';
-import { addDays, dayAfter, dayBefore, fmtDate, pctChange } from '../services/report/format.ts';
+import type { KpiCard, StatCard } from '../services/report-components.ts';
+import { addDays, dayAfter, dayBefore, fmtDate, moneyCompact, pctChange, plural } from '../services/report/format.ts';
 import { shopifyVariantUrl } from '../services/report/links.ts';
 import {
   buildDailyConfig,
@@ -38,8 +38,9 @@ import type { ShopCard } from '../services/report/dashboard.ts';
 import { renderEntityCard } from '../services/report/entities.ts';
 import type { EntityShopLink } from '../services/report/entities.ts';
 import { renderSocialCard, socialUserIds } from '../services/report/social.ts';
-import { renderMetaAdsCard } from '../services/report/metaads.ts';
-import { renderGoogleAdsCard } from '../services/report/googleads.ts';
+import { renderAdsSection } from '../services/report/ads.ts';
+import { metaAdsSummary } from '../services/report/metaads.ts';
+import { googleAdsSummary } from '../services/report/googleads.ts';
 import { pageShell } from '../services/report/shell.ts';
 import { variantCell } from '../services/report/links.ts';
 
@@ -281,6 +282,31 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const summary = calculateShopSummary(latest === null ? [] : [latest]);
     const todayPoint = dailyRange.find((point) => point.day === day) ?? null;
     const prevPoint = dailyRange.find((point) => point.day === dayBefore(day)) ?? null;
+    const adsData = await (async () => {
+      if (config.entityId === undefined) {
+        return null;
+      }
+      const store = await storage.readEntityStore();
+      const found = store.entities.find((entry) => entry.id === config.entityId);
+      if (found === undefined) {
+        return null;
+      }
+      const cpm = found.cpmOverride === null ? DEFAULT_CPM : found.cpmOverride;
+      const [metaAds, metaDays, googleAds, googleDays, financials] = await Promise.all([
+        found.metaPageId === null ? Promise.resolve([] as never[]) : storage.readMetaAdsActive(found.metaPageId),
+        found.metaPageId === null
+          ? Promise.resolve([] as never[])
+          : storage.readMetaAdDays(found.metaPageId, addDays(nowDay, -30)),
+        found.googleAdvertiserId === null
+          ? Promise.resolve([] as never[])
+          : storage.readGoogleAdsActive(found.googleAdvertiserId, addDays(nowDay, -7)),
+        found.googleAdvertiserId === null
+          ? Promise.resolve([] as never[])
+          : storage.readGoogleAdDays(found.googleAdvertiserId, addDays(nowDay, -30)),
+        storage.readEntityFinancials(found.id),
+      ]);
+      return { cpm, googleCpmOverride: found.cpmOverride, metaAds, metaDays, googleAds, googleDays, financials };
+    })();
     const morningRaw = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'morning');
     const eveningRaw = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'evening');
     const morningEvents = toPlnEvents(morningRaw, currency);
@@ -327,26 +353,113 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const countdownNote = isCountdownShop(domain)
       ? alert(
           'Ten sklep liczy stan od dużego sentinela w dół. Sprzedaż i wartość są szacunkowe, a nie rzeczywiste.',
-          'yellow',
-          'Countdown'
+          'yellow'
         )
       : '';
 
-    const headerData: DataGridItem[] = [
-      { title: 'Stan', content: `${summary.totalItems.toLocaleString('pl-PL')} szt` },
-      { title: 'Wartość', content: money(summary.totalValue) },
-      { title: 'Unikalne produkty', content: `${summary.uniqueProducts}` },
-      { title: 'Warianty', content: `${summary.variantCount}` },
-      { title: 'Średnia cena', content: summary.meanPrice === null ? '--' : money(summary.meanPrice) },
-      { title: 'Mediana ceny', content: summary.medianPrice === null ? '--' : money(summary.medianPrice) },
+    // Measured sales sums skip the seed day: the first snapshot has no
+    // predecessor, so its events are baseline noise, not sales.
+    const seedOldest = validDays.length === 0 ? null : (validDays[validDays.length - 1] ?? null);
+    const salesPoints = seedOldest === null ? dailyRange : dailyRange.filter((point) => point.day !== seedOldest);
+    const salesDays = salesPoints.length;
+    const soldSum = salesPoints.reduce((acc, point) => acc + point.sold, 0);
+    const valueSum = salesPoints.reduce((acc, point) => acc + point.soldValue, 0);
+    const avgSold = salesDays === 0 ? 0 : soldSum / salesDays;
+    const avgValue = salesDays === 0 ? 0 : valueSum / salesDays;
+
+    function salesSummaryCards(): StatCard[] {
+      if (isCountdownShop(domain) || salesDays === 0) {
+        return [];
+      }
+      const dailySold = Math.round(avgSold);
+      return [
+        {
+          label: `Sprzedaż · ${salesDays} dni`,
+          value: `${soldSum.toLocaleString('pl-PL')} szt`,
+          sub: `${moneyCompact(valueSum)} · ~${dailySold.toLocaleString('pl-PL')} szt/dzień`,
+        },
+        {
+          label: 'Tempo miesięczne (est.)',
+          value: `~${Math.round(avgSold * 30).toLocaleString('pl-PL')} szt / mies.`,
+          sub: `~${moneyCompact(avgValue * 30)} / mies.`,
+        },
+      ];
+    }
+
+    function adsSummaryCards(): StatCard[] {
+      if (adsData === null) {
+        return [];
+      }
+      const meta = metaAdsSummary(adsData.metaAds, adsData.metaDays, nowDay, adsData.cpm);
+      const google = googleAdsSummary(adsData.googleAds, adsData.googleDays, nowDay, adsData.googleCpmOverride);
+      const costLow = Math.round((meta.costLow + google.costLow) / 10) * 10;
+      const costHigh = Math.round((meta.costHigh + google.costHigh) / 10) * 10;
+      if (costLow === 0 && costHigh === 0) {
+        return [];
+      }
+      const cards: StatCard[] = [
+        {
+          label: 'Koszt reklam (est.)',
+          value: `~${costLow.toLocaleString('pl-PL')}–${costHigh.toLocaleString('pl-PL')} zł / dzień`,
+          sub: 'Meta + Google · z CPM',
+        },
+      ];
+      if (!isCountdownShop(domain) && avgSold > 0) {
+        cards.push({
+          label: 'CPA (est.)',
+          value: `~${Math.round(costLow / avgSold)}–${Math.round(costHigh / avgSold)} zł / szt`,
+          sub: `przy ~${Math.round(avgSold).toLocaleString('pl-PL')} szt/dzień`,
+        });
+      }
+      return cards;
+    }
+
+    function krsSummaryCard(): StatCard[] {
+      const financials = adsData?.financials ?? null;
+      if (financials === null || financials.revenue === null || isCountdownShop(domain) || avgValue <= 0) {
+        return [];
+      }
+      const tempoAnnual = avgValue * 365;
+      const coverage = Math.round((tempoAnnual / financials.revenue) * 100);
+      const year = financials.year === null ? 'KRS' : `KRS ${financials.year}`;
+      return [
+        {
+          label: 'Pokrycie KRS tempem',
+          value: `~${coverage}%`,
+          sub: `tempo ~${moneyCompact(tempoAnnual)}/rok · ${year}: ${moneyCompact(financials.revenue)}`,
+        },
+      ];
+    }
+
+    const perProduct = summary.uniqueProducts === 0 ? 0 : summary.variantCount / summary.uniqueProducts;
+    const headerCards: StatCard[] = [
+      { label: 'Stan magazynowy', value: `${summary.totalItems.toLocaleString('pl-PL')} szt` },
       {
-        title: 'Ostatni snapshot',
-        content: latest === null ? '--' : fmtDate(latest.snapshotAt),
-        status: latest === null ? 'gray' : dayBefore(day) <= latest.snapshotAt.slice(0, 10) ? 'green' : 'yellow',
+        label: 'Wartość stanu',
+        value: moneyCompact(summary.totalValue),
+        sub: `dokładnie ${money(summary.totalValue)}`,
       },
+      {
+        label: 'Asortyment',
+        value: `${summary.uniqueProducts.toLocaleString('pl-PL')} ${plural(summary.uniqueProducts, 'produkt', 'produkty', 'produktów')}`,
+        sub: `${summary.variantCount.toLocaleString('pl-PL')} wariantów · śr. ${perProduct.toFixed(1)} / produkt`,
+      },
+      summary.medianPrice === null
+        ? { label: 'Cena typowa', value: '--' }
+        : {
+            label: 'Cena typowa',
+            value: money(summary.medianPrice),
+            sub: `mediana${summary.meanPrice === null ? '' : ` · średnia ${money(summary.meanPrice)}`}`,
+          },
+      ...salesSummaryCards(),
+      ...adsSummaryCards(),
+      ...krsSummaryCard(),
     ];
 
-    const headerBody = `${datagrid(headerData)}<div class="mt-2">${badges.join('')}</div>`;
+    const fresh = latest !== null && dayBefore(day) <= latest.snapshotAt.slice(0, 10);
+    const headerNote =
+      latest === null ? undefined : `Dane z ${fmtDate(latest.snapshotAt)} · ${fresh ? 'aktualne' : 'nieaktualne'}`;
+    const headerBody = `${statGrid(headerCards)}<div class="mt-2">${badges.join('')}</div>`;
 
     const pricesByProduct = new Map<string, number>();
     if (latest !== null) {
@@ -421,50 +534,32 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       ]);
       return renderSocialCard(store, config.entityId, { profiles, posts, stories });
     })();
-    const metaAdsCard = await (async () => {
-      if (config.entityId === undefined) {
-        return '';
-      }
-      const store = await storage.readEntityStore();
-      const entity = store.entities.find((entry) => entry.id === config.entityId);
-      if (entity === undefined || entity.metaPageId === null) {
-        return '';
-      }
-      const [ads, days] = await Promise.all([
-        storage.readMetaAdsActive(entity.metaPageId),
-        storage.readMetaAdDays(entity.metaPageId, addDays(nowDay, -30)),
-      ]);
-      const cpm = entity.cpmOverride === null ? DEFAULT_CPM : entity.cpmOverride;
-      return renderMetaAdsCard(ads, days, nowDay, cpm);
-    })();
-    const googleAdsCard = await (async () => {
-      if (config.entityId === undefined) {
-        return '';
-      }
-      const store = await storage.readEntityStore();
-      const entity = store.entities.find((entry) => entry.id === config.entityId);
-      if (entity === undefined || entity.googleAdvertiserId === null) {
-        return '';
-      }
-      const activeSince = addDays(nowDay, -7);
-      const [ads, days] = await Promise.all([
-        storage.readGoogleAdsActive(entity.googleAdvertiserId, activeSince),
-        storage.readGoogleAdDays(entity.googleAdvertiserId, addDays(nowDay, -30)),
-      ]);
-      const cpm = entity.cpmOverride === null ? DEFAULT_CPM : entity.cpmOverride;
-      return renderGoogleAdsCard(ads, days, nowDay, cpm);
-    })();
+    const adsSection =
+      adsData === null
+        ? ''
+        : renderAdsSection({
+            metaAds: adsData.metaAds,
+            metaDays: adsData.metaDays,
+            googleAds: adsData.googleAds,
+            googleDays: adsData.googleDays,
+            today: nowDay,
+            cpm: adsData.cpm,
+            googleCpmOverride: adsData.googleCpmOverride,
+          });
     const body = `
 <div class="page-header d-flex flex-row flex-wrap align-items-center justify-content-start mb-3">
   ${breadcrumb([{ label: 'Sklepy', href: '/' }, { label: config.id }])}
 </div>
 <h1 class="mb-3"><a href="https://${esc(domain)}" target="_blank" rel="noopener">${esc(domain)}</a></h1>
 ${countdownNote}
-${card({ title: 'Podsumowanie sklepu', body: headerBody })}
+${
+  headerNote === undefined
+    ? card({ title: 'Podsumowanie sklepu', body: headerBody })
+    : card({ title: 'Podsumowanie sklepu', titleNote: headerNote, body: headerBody })
+}
 ${entityCard}
 ${socialCard}
-${metaAdsCard}
-${googleAdsCard}
+${adsSection}
 ${priceDistributionCard}
 <div class="d-flex justify-content-end py-3">${dayControl}</div>
 ${daySections.join('\n')}

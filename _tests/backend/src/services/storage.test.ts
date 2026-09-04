@@ -1020,6 +1020,42 @@ describe('google ads storage', () => {
     expect(days[0].impHi).toBe(20000);
   });
 
+  it('caps sentinel bounds and surfaces on read', async () => {
+    const { logger } = capturingLogger();
+    const rows: Record<string, unknown>[] = [
+      {
+        creative_id: 'CR1',
+        advertiser_id: 'AR1',
+        entity_id: null,
+        disclosed_name: null,
+        format: 'VIDEO',
+        topic: null,
+        page_url: null,
+        first_shown: null,
+        last_shown: null,
+        imp_lo: 10000000,
+        imp_hi: 9223372036854776000,
+        audience: null,
+        surfaces: '[{"surface":"SEARCH","lo":10000000,"hi":9223372036854776000}]',
+        first_seen: '2026-09-03',
+        last_seen: '2026-09-03',
+      },
+    ];
+    const db2 = new MockD1((query) => {
+      if (query.startsWith('SELECT creative_id, advertiser_id, entity_id')) {
+        return { results: rows };
+      }
+      return { results: [] };
+    });
+    const storage2 = createStorage(db2, logger);
+    const ads = await storage2.readGoogleAdsActive('AR1', '2026-08-27');
+    expect(ads).toHaveLength(1);
+    expect(ads[0].impLo).toBe(null);
+    expect(ads[0].impHi).toBe(null);
+    expect(ads[0].surfaces[0].lo).toBe(null);
+    expect(ads[0].surfaces[0].hi).toBe(null);
+  });
+
   it('logs and rethrows a failed upsert', async () => {
     const { logger, records } = capturingLogger();
     const db = new MockD1((query) => {

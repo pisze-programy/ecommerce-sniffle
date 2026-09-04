@@ -141,11 +141,15 @@ export default {
             ads: result.ads,
             daysWritten: result.daysWritten,
             ended: result.ended,
+            capped: result.capped,
             errors: result.failures.length,
           });
           const messages: string[] = [`shops ${result.shops}`, `ads ${result.ads}`, `days ${result.daysWritten}`];
           if (result.ended > 0) {
             messages.push(`ended ${result.ended}`);
+          }
+          if (result.capped > 0) {
+            messages.push(`capped ${result.capped}`);
           }
           for (const failure of result.failures) {
             messages.push(`FAILED ${failure.advertiserId}: ${failure.reason}`);
@@ -159,6 +163,7 @@ export default {
             ads: result.ads,
             daysWritten: result.daysWritten,
             ended: result.ended,
+            capped: result.capped,
             failedAdvertisers: result.failures.map((failure) => failure.advertiserId),
           });
         } catch (error: unknown) {
