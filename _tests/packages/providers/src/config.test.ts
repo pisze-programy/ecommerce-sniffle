@@ -27,6 +27,7 @@ const EXPECTED_IDS = [
   'influcenter',
   'kfd',
   'laboratoriumpanidomu',
+  'lecollet',
   'lexon',
   'magdabutrym',
   'marionis',
@@ -68,8 +69,8 @@ const EXPECTED_IDS = [
 ].sort();
 
 describe('PROVIDERS config', () => {
-  it('defines exactly 62 providers', () => {
-    expect(PROVIDERS.length).toBe(62);
+  it('defines exactly 63 providers', () => {
+    expect(PROVIDERS.length).toBe(63);
   });
 
   it('uses unique ids', () => {
@@ -132,13 +133,13 @@ describe('PROVIDERS config', () => {
     expect(phlov?.requiresProxy).toBe(false);
   });
 
-  it('has 42 mutation providers, 5 get providers, 14 vps-get providers', () => {
+  it('has 42 mutation providers, 6 get providers, 15 vps-get providers', () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === 'vps-mutation');
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
     expect(mutation.length).toBe(42);
     expect(get.length).toBe(6);
-    expect(vpsGet.length).toBe(14);
+    expect(vpsGet.length).toBe(15);
   });
 
   it('paces every shoper provider at 5 requests per second', () => {

@@ -2,21 +2,6 @@ import type { ProviderConfig } from './types.ts';
 
 export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
   {
-    id: 'misbhv',
-    domain: 'misbhv.com',
-    platform: 'shopify',
-    schedule: '15 5 * * *',
-    window: 'both',
-    mode: 'vps-get',
-    stockSource: 'embedded-json',
-    ratePerSecond: 2,
-    durationSeconds: 1800,
-    requiresProxy: false,
-    endpoint: 'https://misbhv.com/products.json',
-    enabled: false,
-    currency: 'PLN',
-  },
-  {
     id: 'montiel',
     domain: 'montiel.com',
     platform: 'shopify',

@@ -37,6 +37,7 @@ import { divesmedModule } from './providers/shopify/divesmed.ts';
 import { acewarsawModule } from './providers/shopify/acewarsaw.ts';
 import { holyModule } from './providers/shopify/holy.ts';
 import { dresscodecrewModule } from './providers/shopify/dresscodecrew.ts';
+import { lecolletModule } from './providers/shopify/lecollet.ts';
 import { arustamianModule } from './providers/shoper/arustamian.ts';
 import { eDaagModule } from './providers/shoper/e-daag.ts';
 import { emereedivineModule } from './providers/shoper/emereedivine.ts';
@@ -117,6 +118,7 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   acewarsawModule,
   holyModule,
   dresscodecrewModule,
+  lecolletModule,
 ];
 
 export function createDefaultRegistry() {

@@ -98,6 +98,12 @@ add_items: [ { product_variant_id: "gid://shopify/ProductVariant/{id}",
 
 Prefer this over the cart-probe. It is faster and never 429s.
 
+A shop can cap every cart line at a fixed number. lecollet.pl caps at 20.
+The clamp returns 20 for any stock above 20. The exact number stays
+hidden. Check the clamp against a product with large stock before you
+trust the MCP source. lecollet.pl uses the embedded Restock Rocket map
+instead: `_RestockRocketConfig.variantsInventoryQuantity`.
+
 ## Shoper
 
 - The list API paginates with `limit` and `offset`, not `page`.

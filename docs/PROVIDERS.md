@@ -100,6 +100,31 @@ See [PROBING.md](./PROBING.md).
 | mushi       | mushi.pl       | html         | cf-get  |
 | dobrerzeczy | dobrerzeczy.pl | html         | vps-get |
 
+### Shopify - Restock Rocket embedded (vps-get)
+
+| id       | domain      | stock source      | mode    |
+| -------- | ----------- | ----------------- | ------- |
+| lecollet | lecollet.pl | embedded-quantity | vps-get |
+
+The Restock Rocket app embeds the exact count on every product page:
+`window._RestockRocketConfig.variantsInventoryQuantity = {id : parseInt("N")}`.
+The catalog comes from products.json (327 products). Each product page
+adds one GET. The UCP cart on this shop caps every line at 20, so the
+MCP clamp cannot reveal stock above 20. Use the embedded source, not UCP.
+
+### Shopify - variantInventoryData embedded (vps-get)
+
+| id     | domain     | stock source  | mode    |
+| ------ | ---------- | ------------- | ------- |
+| misbhv | misbhv.com | embedded-json | vps-get |
+
+The shop embeds the exact count in a JSON script per product page:
+`<script id="variantInventoryData">[{"id":N,"inventory_quantity":M}]</script>`.
+The catalog comes from products.json (124 products). The shop
+rate-limits bursts, so the run paces at `ratePerSecond: 2`. One product
+(`knitted-beanie-251a518`) has no script. Its variant stays masked.
+The UCP cart clamps to the exact stock without a fixed cap.
+
 ### Web - exact stock notes
 
 - mushi.pl embeds `stock:{status,stock:N}` in the page. Exact count, cf-get.

@@ -61,6 +61,8 @@ Legend:
 | derichgallery        | Derich Gallery (foreign, USA)                | -                                   | 61573287702730              | derichgallery (+YT @DerichGallery)                         | DONE   |
 | monartofficial       | Mon Art Official (foreign, Belgium)          | -                                   | www.monartofficial          | mon.art.official                                           | DONE   |
 | beaumont             | Stone Fashion Group (foreign, Amsterdam)     | -                                   | BeaumontAmsterdam           | beaumont_amsterdam (+TikTok @beaumont_amsterdam, LinkedIn) | DONE   |
+| lecollet             | LECOLLET MAYA BOHOSIEWICZ SKA                | 0000961736                          | TheLeCollet                 | lecollet (+TikTok @lecollet, LinkedIn lecolletbrand)       | DONE   |
+| misbhv               | MISBHV Sp. z o.o.                            | 0000843876                          | -                           | misbhv                                                     | DONE   |
 
 ## Persons (in D1, migration 0020)
 
@@ -112,6 +114,8 @@ Legend:
 | Marcin Galant                        | Właściciel | martinfriendlyscott  | -                  | martinfknscott (TikTok) | -        |
 | Zuzanna Irena Grabowska              | Firma      | sanahmusic           | -                  | -                       | -        |
 | Karol Słuszniak                      | Właściciel | swooshniak           | -                  | -                       | -        |
+| Maja Bohosiewicz                     | Właściciel | majabohosiewicz      | -                  | -                       | -        |
+| Natalia Maczek                       | Właściciel | -                    | -                  | -                       | -        |
 
 Loose connection: Sofiia Sivokha bio says @gym_glamour ambasador.
 Karolina Pisarek is an ambassador for royalwatch.
