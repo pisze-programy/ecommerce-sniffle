@@ -115,7 +115,7 @@ Legend:
 | Zuzanna Irena Grabowska              | Firma      | sanahmusic           | -                  | -                       | -        |
 | Karol Słuszniak                      | Właściciel | swooshniak           | -                  | -                       | -        |
 | Maja Bohosiewicz                     | Właściciel | majabohosiewicz      | -                  | -                       | -        |
-| Natalia Maczek                       | Właściciel | -                    | -                  | -                       | -        |
+| Natalia Maczek                       | Właściciel | natalia_maczek       | -                  | -                       | -        |
 
 Loose connection: Sofiia Sivokha bio says @gym_glamour ambasador.
 Karolina Pisarek is an ambassador for royalwatch.
@@ -131,6 +131,21 @@ It is a loose brand and stays an empty node.
 4. Person profiles for Daniel Walendziak, Krzysztof Sawicki,
    Wojciech Maciej Gola, Sabina Hajdo-Piórek, Paweł Piórek.
 5. Confirm risky owners isamupt and d3tailer.
+
+## Bizraport financials (harvest 2026-09-06)
+
+Shops with a KRS report (migration 0048):
+
+- zerosklep: 2025, assets 14.1 m, revenue 41.1 m, profit 5.5 m,
+  value 54 m.
+- dresscodecrew (Phantom Label): 2024, assets 1.7 m, revenue 3.8 m,
+  profit 648 k, value 5.9 m.
+- deynncosmetics: 2025, assets 1.5 m, revenue 2 m, profit 304 k,
+  value 3.6 m.
+
+Shops with no KRS report yet (marked empty, retry after filing):
+forcer, mushi, royalwatch, emereedivine, patandrub, berecords,
+dobrerzeczy. godsavequeens was removed from KRS on 2020-10-30.
 
 ## Images (migration 0027)
 

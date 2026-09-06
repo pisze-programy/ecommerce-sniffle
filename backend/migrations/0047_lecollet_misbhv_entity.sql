@@ -25,7 +25,8 @@ VALUES
 
 INSERT OR IGNORE INTO socials (owner_kind, owner_id, platform, handle, url)
 VALUES
-  ('person', 'maja-bohosiewicz', 'instagram', 'majabohosiewicz', 'https://www.instagram.com/majabohosiewicz/');
+  ('person', 'maja-bohosiewicz', 'instagram', 'majabohosiewicz', 'https://www.instagram.com/majabohosiewicz/'),
+  ('person', 'natalia-maczek', 'instagram', 'natalia_maczek', 'https://www.instagram.com/natalia_maczek/');
 
 INSERT OR IGNORE INTO person_relations (person_id, entity_id, role, label, from_day, to_day)
 VALUES
