@@ -225,7 +225,7 @@ export async function enqueueProviders(
   db: QueueDb,
   logger: Logger,
   modules: readonly ProviderModule[],
-  window: 'morning' | 'evening',
+  window: string,
   day: string,
   now: number
 ): Promise<number> {

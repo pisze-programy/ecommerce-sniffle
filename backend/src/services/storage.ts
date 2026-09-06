@@ -33,6 +33,11 @@ export interface ShopNames {
   readonly variantTitles: Map<string, string>;
 }
 
+export interface DayEvent {
+  readonly snapshotAt: string;
+  readonly event: StockEvent;
+}
+
 export interface Storage {
   writeSnapshot(snapshot: Snapshot): Promise<void>;
   readLatestSnapshot(shop: string): Promise<Snapshot | null>;
@@ -51,8 +56,7 @@ export interface Storage {
   writeDailyStats(stats: DailyStats): Promise<void>;
   readDailyStats(shop: string, day: string): Promise<DailyStats | null>;
   writeEvents(shop: string, day: string, snapshotAt: string, events: readonly StockEvent[]): Promise<void>;
-  readEvents(shop: string, day: string): Promise<readonly StockEvent[]>;
-  readEventsByWindow(shop: string, day: string, window: 'morning' | 'evening'): Promise<readonly StockEvent[]>;
+  readEvents(shop: string, day: string): Promise<readonly DayEvent[]>;
   readSeries(shop: string, productId: string): Promise<readonly SeriesPoint[]>;
   readAvailableDays(shop: string): Promise<readonly string[]>;
   readDayCount(shop: string): Promise<number>;
@@ -126,6 +130,7 @@ interface StatsRow {
 }
 
 interface EventRow {
+  snapshot_at: string;
   type: string;
   product_id: string;
   variant_id: string;
@@ -592,8 +597,8 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       }
       return {
         shop,
-        snapshotAt: result.results[0]?.snapshot_at ?? '',
-        window: result.results[0]?.window === 'evening' ? 'evening' : 'morning',
+        snapshotAt: result.results[0] === undefined ? '' : result.results[0].snapshot_at,
+        window: result.results[0] === undefined ? 'unknown' : result.results[0].window,
         variants: result.results.map(fromRow),
       };
     },
@@ -642,14 +647,14 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       const snapshots: Snapshot[] = [];
       let current: {
         snapshotAt: string;
-        window: 'morning' | 'evening';
+        window: string;
         variants: VariantState[];
       } | null = null;
       for (const row of result.results) {
         if (current === null || current.snapshotAt !== row.snapshot_at) {
           current = {
             snapshotAt: row.snapshot_at,
-            window: row.window === 'evening' ? 'evening' : 'morning',
+            window: row.window,
             variants: [],
           };
           snapshots.push({
@@ -823,23 +828,12 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       }
     },
 
-    async readEvents(shop: string, day: string): Promise<readonly StockEvent[]> {
+    async readEvents(shop: string, day: string): Promise<readonly DayEvent[]> {
       const result = (await db
         .prepare('SELECT * FROM events WHERE shop = ? AND day = ? ORDER BY snapshot_at')
         .bind(shop, day)
         .all()) as { results: EventRow[] };
-      return result.results.map(fromEventRow);
-    },
-
-    async readEventsByWindow(shop: string, day: string, window: 'morning' | 'evening'): Promise<readonly StockEvent[]> {
-      const operator = window === 'morning' ? '<' : '>=';
-      const result = (await db
-        .prepare(
-          `SELECT * FROM events WHERE shop = ? AND day = ? AND CAST(substr(snapshot_at, 12, 2) AS INTEGER) ${operator} 12 ORDER BY snapshot_at`
-        )
-        .bind(shop, day)
-        .all()) as { results: EventRow[] };
-      return result.results.map(fromEventRow);
+      return result.results.map((row) => ({ snapshotAt: row.snapshot_at, event: fromEventRow(row) }));
     },
 
     async readSeries(shop: string, productId: string): Promise<readonly SeriesPoint[]> {

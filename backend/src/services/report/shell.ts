@@ -103,17 +103,6 @@ document.addEventListener('keydown', function (event) {
   event.preventDefault();
   toggle.click();
 });
-function toggleWindows(open) {
-  document.querySelectorAll('#changes-windows .window-collapse').forEach(function (el) {
-    if (open) { el.classList.add('show'); } else { el.classList.remove('show'); }
-  });
-}
-function filterChanges(select) {
-  var value = select.value;
-  document.querySelectorAll('#changes-windows tr[data-type]').forEach(function (tr) {
-    tr.style.display = value === '' || tr.getAttribute('data-type') === value ? '' : 'none';
-  });
-}
 function tableCellText(cell) {
   var el = cell.querySelector('[data-sort-value]');
   if (el !== null && el !== undefined) return el.getAttribute('data-sort-value') || '';

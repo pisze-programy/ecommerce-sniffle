@@ -77,7 +77,7 @@ export function parseSnapshotBody(data: unknown): Snapshot | null {
   if (typeof snapshotAt !== 'string' || snapshotAt.length === 0) {
     return null;
   }
-  if (window !== 'morning' && window !== 'evening' && window !== 'unknown') {
+  if (typeof window !== 'string' || window.length === 0) {
     return null;
   }
   const variantsRaw = obj['variants'];

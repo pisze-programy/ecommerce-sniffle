@@ -13,7 +13,9 @@ export type StockSource =
 
 export type ExecutionMode = 'cf-get' | 'vps-get' | 'vps-mutation';
 
-export type TaskWindow = 'morning' | 'evening' | 'both';
+// A window name. The value 'both' means every configured window.
+// The code never branches on a fixed window count.
+export type TaskWindow = string;
 
 // The shop can throttle the probe stream. The adaptive rate listens to
 // throttle signals and self-tunes. The presence of this block enables

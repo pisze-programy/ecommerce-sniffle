@@ -76,7 +76,11 @@ So the split is:
 
 The Cloudflare worker is the broker. It holds the tasks in D1.
 
-- The cron at 04:00 and 16:00 enqueues one task per provider per window.
+- The seed cron enqueues one task per provider per window. The cron
+  list lives in `backend/wrangler.toml`. The window schedule lives in
+  `backend/src/services/schedule.ts`. The default has one evening
+  window. Add a window: add one schedule entry, the crons and one VPS
+  cron line.
 - A worker claims a task. The claim is atomic. One task per shop runs
   at a time (per-shop in-flight).
 - The worker leases the task for 30 minutes. If the worker dies, the

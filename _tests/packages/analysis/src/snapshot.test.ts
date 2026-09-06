@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Catalog, Variant } from '@ecommerce-sniffle/providers';
-import { catalogToSnapshot, currentWindow } from '../../../../packages/analysis/src/snapshot.ts';
+import { catalogToSnapshot } from '../../../../packages/analysis/src/snapshot.ts';
 
 function variant(overrides: Partial<Variant> = {}): Variant {
   return {
@@ -69,18 +69,9 @@ describe('catalogToSnapshot', () => {
     const snapshot = catalogToSnapshot(withRegular, 'morning', '2026-08-24T06:00:00.000Z');
     expect(snapshot.variants[0]?.regularPrice).toBe(120);
   });
-});
 
-describe('currentWindow', () => {
-  it('returns morning before noon utc', () => {
-    expect(currentWindow(new Date('2026-08-24T06:00:00.000Z'))).toBe('morning');
-  });
-
-  it('returns evening after noon utc', () => {
-    expect(currentWindow(new Date('2026-08-24T16:00:00.000Z'))).toBe('evening');
-  });
-
-  it('returns morning exactly at noon', () => {
-    expect(currentWindow(new Date('2026-08-24T12:00:00.000Z'))).toBe('evening');
+  it('stamps any window name, not only morning or evening', () => {
+    const snapshot = catalogToSnapshot(catalog(), 'third-seed', '2026-08-24T06:00:00.000Z');
+    expect(snapshot.window).toBe('third-seed');
   });
 });

@@ -83,27 +83,37 @@ function changedWindowTable(
   });
 }
 
+export interface ChangeSection {
+  readonly label: string;
+  readonly events: readonly StockEvent[];
+}
+
 export function renderChangesWindows(
   day: string,
-  morning: readonly StockEvent[],
-  evening: readonly StockEvent[],
+  sections: readonly ChangeSection[],
   names: ShopNames,
   platform: string,
   maxQuantity: number
 ): string {
-  if (morning.length === 0 && evening.length === 0) {
+  let totalEvents = 0;
+  for (const section of sections) {
+    totalEvents += section.events.length;
+  }
+  if (totalEvents === 0) {
     return emptyState('Brak zmian', `${esc(day)} — w tym dniu nic się nie zmieniło.`);
   }
-  const sections: string[] = [];
-  sections.push(changedWindowTable('Morning 06:00', morning, names, platform, maxQuantity));
-  sections.push(changedWindowTable('Evening 18:00', evening, names, platform, maxQuantity));
+  const sectionHtml: string[] = [];
+  for (const section of sections) {
+    sectionHtml.push(changedWindowTable(section.label, section.events, names, platform, maxQuantity));
+  }
   const typeCounts = new Map<string, number>();
   const countType = (event: StockEvent): void => {
     const current = typeCounts.get(event.type);
     typeCounts.set(event.type, (current === undefined ? 0 : current) + 1);
   };
-  morning.forEach(countType);
-  evening.forEach(countType);
+  for (const section of sections) {
+    section.events.forEach(countType);
+  }
   const options = CHANGES_TYPES.map(([value, label]) => {
     const count = typeCounts.get(value);
     const resolved = count === undefined ? 0 : count;
@@ -118,7 +128,7 @@ export function renderChangesWindows(
     ${options}
   </select>
 </div>`;
-  return `<div id="changes-tables">${filterSelect}${sections.join('\n')}</div>`;
+  return `<div id="changes-tables">${filterSelect}${sectionHtml.join('\n')}</div>`;
 }
 
 export function renderDayComparison(day: string, today: DailyPoint | null, prev: DailyPoint | null): string {

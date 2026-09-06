@@ -1,14 +1,6 @@
 import type { Catalog, Variant } from '@ecommerce-sniffle/providers';
 import type { Snapshot, SnapshotWindow, VariantState } from './types.ts';
 
-export function currentWindow(at: Date = new Date()): SnapshotWindow {
-  const hour = at.getUTCHours();
-  if (hour < 12) {
-    return 'morning';
-  }
-  return 'evening';
-}
-
 function variantToState(product: { id: string; url: string; title: string }, variant: Variant): VariantState {
   return {
     productId: product.id,

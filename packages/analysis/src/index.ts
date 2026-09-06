@@ -15,6 +15,6 @@ export type { ShopBias, ShopSummary } from './summary.js';
 export { topSellingProducts } from './top.js';
 export type { TopProduct, TopProductsOptions } from './top.js';
 export { aggregateDaily, isSuspectEvent, maxAbsQuantity, mergeDailyStats } from './aggregate.js';
-export { catalogToSnapshot, currentWindow } from './snapshot.js';
+export { catalogToSnapshot } from './snapshot.js';
 export type { DailyStatsInput } from './aggregate.js';
 export type { Confidence, DailyStats, EventType, Snapshot, SnapshotWindow, StockEvent, VariantState } from './types.js';

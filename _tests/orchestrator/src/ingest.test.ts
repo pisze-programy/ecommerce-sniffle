@@ -76,10 +76,20 @@ describe('catalogToIngestSnapshot', () => {
         },
       ],
     };
-    const snapshot = catalogToIngestSnapshot(catalog);
+    const snapshot = catalogToIngestSnapshot(catalog, 'evening');
     expect(snapshot.shop).toBe('sklepskolim.pl');
     expect(snapshot.variants).toHaveLength(1);
     expect(snapshot.variants[0]?.quantity).toBe(13);
+  });
+
+  it('stamps the passed window on the snapshot', () => {
+    const catalog: Catalog = {
+      domain: 'sklepskolim.pl',
+      fetchedAt: '2026-08-24T06:00:00.000Z',
+      products: [],
+    };
+    const snapshot = catalogToIngestSnapshot(catalog, 'third-seed');
+    expect(snapshot.window).toBe('third-seed');
   });
 });
 
@@ -88,11 +98,14 @@ describe('sendSnapshot', () => {
     const capture = capturingLogger();
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, '{"ok":true}'));
     vi.stubGlobal('fetch', fetchMock);
-    const snapshot = catalogToIngestSnapshot({
-      domain: 'sklepskolim.pl',
-      fetchedAt: '2026-08-24T06:00:00.000Z',
-      products: [],
-    });
+    const snapshot = catalogToIngestSnapshot(
+      {
+        domain: 'sklepskolim.pl',
+        fetchedAt: '2026-08-24T06:00:00.000Z',
+        products: [],
+      },
+      'evening'
+    );
     const sent = await sendSnapshot(snapshot, CONFIG, capture.logger);
     expect(sent).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -105,11 +118,14 @@ describe('sendSnapshot', () => {
   it('logs and returns false when the backend rejects', async () => {
     const capture = capturingLogger();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(401, 'unauthorized')));
-    const snapshot = catalogToIngestSnapshot({
-      domain: 'sklepskolim.pl',
-      fetchedAt: '2026-08-24T06:00:00.000Z',
-      products: [],
-    });
+    const snapshot = catalogToIngestSnapshot(
+      {
+        domain: 'sklepskolim.pl',
+        fetchedAt: '2026-08-24T06:00:00.000Z',
+        products: [],
+      },
+      'evening'
+    );
     const sent = await sendSnapshot(snapshot, CONFIG, capture.logger);
     expect(sent).toBe(false);
     expect(capture.records.some((record) => record.message === 'ingest.rejected')).toBe(true);
@@ -118,11 +134,14 @@ describe('sendSnapshot', () => {
   it('logs and returns false on a network error', async () => {
     const capture = capturingLogger();
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-    const snapshot = catalogToIngestSnapshot({
-      domain: 'sklepskolim.pl',
-      fetchedAt: '2026-08-24T06:00:00.000Z',
-      products: [],
-    });
+    const snapshot = catalogToIngestSnapshot(
+      {
+        domain: 'sklepskolim.pl',
+        fetchedAt: '2026-08-24T06:00:00.000Z',
+        products: [],
+      },
+      'evening'
+    );
     const sent = await sendSnapshot(snapshot, CONFIG, capture.logger);
     expect(sent).toBe(false);
     expect(capture.records.some((record) => record.message === 'ingest.failed')).toBe(true);

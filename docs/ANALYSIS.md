@@ -6,10 +6,8 @@ It uses Simplified Technical English.
 ## Input
 
 A snapshot is the state of all variants of one shop at one moment.
-Snapshots happen on a schedule. The default is twice a day:
-
-- morning (06:00)
-- evening (20:00)
+Snapshots happen on a schedule. The schedule lives in
+`backend/src/services/schedule.ts`. The default has one evening window.
 
 Each variant in a snapshot has:
 

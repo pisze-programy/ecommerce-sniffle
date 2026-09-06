@@ -80,9 +80,9 @@ export async function runCronSummary(window: string, logger: Logger): Promise<vo
 
 function main(): void {
   const logger = createLogger(consoleSink);
-  const window = process.argv[2] ?? '';
-  if (window !== 'morning' && window !== 'evening') {
-    logger.error('usage: node dist/summary.js <morning|evening>');
+  const window = process.argv[2] === undefined ? '' : process.argv[2];
+  if (window === '') {
+    logger.error('usage: node dist/summary.js <window>');
     return;
   }
   runCronSummary(window, logger)

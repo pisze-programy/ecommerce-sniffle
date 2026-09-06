@@ -7,6 +7,7 @@ import { createStorage } from './services/storage.ts';
 import { runGetPipeline } from './services/run.ts';
 import { sendSnitchReport } from './services/snitch.ts';
 import { createTaskStore, enqueueProviders } from './services/queue.ts';
+import { findSeedWindow, findSummaryWindow } from './services/schedule.ts';
 import { runMetaAdsFetch } from './services/metaads/run.ts';
 import { runGoogleAdsFetch } from './services/googleads/run.ts';
 
@@ -50,7 +51,6 @@ export default {
     const logger = createLogger(consoleSink);
     const now = Date.now();
     const day = new Date(now).toISOString().slice(0, 10);
-    const window = new Date(now).getUTCHours() < 12 ? 'morning' : 'evening';
     if (controller.cron === '0 18 * * *' || controller.cron === '0 19 * * *') {
       const offset = warsawUtcOffsetHours(new Date(now));
       // The collection runs at 20:00 Warsaw time. Warsaw uses UTC+2 in
@@ -182,20 +182,27 @@ export default {
       ctx.waitUntil(Promise.resolve());
       return;
     }
-    if (controller.cron === '10 10 * * *' || controller.cron === '10 22 * * *') {
-      logger.info('cf summary cron', { window, day, cron: controller.cron });
+    const summaryWindow = findSummaryWindow(controller.cron);
+    if (summaryWindow !== null) {
+      logger.info('cf summary cron', { window: summaryWindow.id, day, cron: controller.cron });
       const store = createTaskStore(env.DB, logger);
       await store.reapExpired(now, 3);
-      const sent = await sendCfSummary(env, window, day);
-      logger.info('cf summary sent', { window, day, ok: sent });
+      const sent = await sendCfSummary(env, summaryWindow.id, day);
+      logger.info('cf summary sent', { window: summaryWindow.id, day, ok: sent });
+      ctx.waitUntil(Promise.resolve());
+      return;
+    }
+    const seedWindow = findSeedWindow(controller.cron);
+    if (seedWindow === null) {
+      logger.warn('scheduled unhandled cron', { cron: controller.cron });
       ctx.waitUntil(Promise.resolve());
       return;
     }
     const store = createTaskStore(env.DB, logger);
     await store.reapExpired(now, 3);
     const queueModules = ALL_MODULES;
-    const enqueued = await enqueueProviders(env.DB, logger, queueModules, window, day, now);
-    logger.info('queue enqueued', { window, day, enqueued, cron: controller.cron });
+    const enqueued = await enqueueProviders(env.DB, logger, queueModules, seedWindow.id, day, now);
+    logger.info('queue enqueued', { window: seedWindow.id, day, enqueued, cron: controller.cron });
     const results = await runGetPipeline(env.DB, env, logger);
     for (const result of results) {
       logger.info('scheduled provider result', {
@@ -205,7 +212,7 @@ export default {
         events: result.result === null ? null : result.result.events,
       });
     }
-    // The summary sends only from the dedicated summary crons (10:10/22:10).
+    // The summary sends only from the dedicated summary crons.
     // Sending it here, right after the enqueue, flags the fresh tasks as
     // pending and sends a red mail.
     ctx.waitUntil(Promise.resolve());

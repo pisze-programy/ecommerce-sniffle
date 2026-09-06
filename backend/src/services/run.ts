@@ -57,7 +57,7 @@ async function runOneTask(
   registry: ReturnType<typeof createRegistry>,
   store: ReturnType<typeof createTaskStore>,
   storage: ReturnType<typeof createStorage>,
-  task: { taskId: string; providerId: string; durationSeconds: number }
+  task: { taskId: string; providerId: string; durationSeconds: number; window: string }
 ): Promise<RunGetPipelineResult> {
   const module = registry.findModule(task.providerId);
   const failed: RunGetPipelineResult = {
@@ -78,7 +78,7 @@ async function runOneTask(
   try {
     const provider = module.build({ logger });
     const result = await withTaskTimeout(
-      runShopPipeline(provider, storage, logger),
+      runShopPipeline(provider, storage, logger, task.window),
       cfTaskTimeoutMs(task.durationSeconds),
       task.taskId
     );
@@ -152,6 +152,7 @@ export async function runGetPipeline(
       taskId: task.taskId,
       providerId: task.providerId,
       durationSeconds: task.durationSeconds,
+      window: task.window,
     });
     results.push(result);
   }

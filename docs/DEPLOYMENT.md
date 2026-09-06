@@ -102,14 +102,21 @@ tasks and executes one task at a time. Each run is bounded by the
 after its lease expires and retried later.
 
 ```
-10,40 4-8 * * * flock -n /tmp/ecp-exec.lock timeout 1500 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
+#10,40 4-8 * * * flock -n /tmp/ecp-exec.lock timeout 1500 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
 10,40 16-20 * * * flock -n /tmp/ecp-exec2.lock timeout 1500 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
+#40 10 * * * flock -n /tmp/ecp-summary.lock /path/to/orchestrator/run-summary.sh morning >> /var/log/ecp-summary.log 2>&1
+0 20 * * * flock -n /tmp/ecp-summary2.lock /path/to/orchestrator/run-summary.sh evening >> /var/log/ecp-summary.log 2>&1
+0 22 * * * flock -n /tmp/ecp-exec2.lock timeout 1500 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
 ```
 
-The worker runs every 30 minutes inside the morning window
-(04:10-08:40) and the evening window (16:10-20:40). It drains the
-queue until it is empty or the timeout hits. The `flock` prevents two
-worker runs at once. The queue lives on the Cloudflare worker in D1.
+The worker runs every 30 minutes inside the evening window
+(16:10-20:40) and once more at 22:00. It drains the queue until it is
+empty or the timeout hits. The `flock` prevents two worker runs at
+once. The queue lives on the Cloudflare worker in D1.
+
+The morning lines are commented out. The default schedule has one
+evening window. To add a window, uncomment or add one executor line,
+one summary line, one CF seed cron and one CF summary cron.
 
 ### Cloudflare cron (queue broker)
 
@@ -119,12 +126,16 @@ dead letter queue.
 
 ```
 [triggers]
-crons = ["0 4 * * *", "0 16 * * *"]
+crons = ["0 16 * * *", "10 22 * * *", "0 18 * * *", "0 19 * * *"]
 ```
 
-The morning cron at 04:00 enqueues the morning tasks. The evening
-cron at 16:00 enqueues the evening tasks. The worker drains each
-window twice a day.
+The seed cron at 16:00 enqueues the evening tasks. The summary cron at
+22:10 sends the evening report. The crons at 18:00 and 19:00 run the
+meta and google ads jobs. The ads crons fire at 20:00 Warsaw time.
+
+The window names come from the schedule in
+`backend/src/services/schedule.ts`. One entry in the schedule means one
+window. The cron list here and the VPS crontab must match the schedule.
 
 A task that produces masked variants is NOT stored. The task fails and
 comes back to the queue after a 10 minute backoff. After three

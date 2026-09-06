@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createLogger } from '@ecommerce-sniffle/providers';
 import type { Logger, Provider, ProviderConfig, Catalog } from '@ecommerce-sniffle/providers';
 import { runShopPipeline } from '../../../../backend/src/services/pipeline.ts';
-import type { Storage, SeriesPoint } from '../../../../backend/src/services/storage.ts';
+import type { Storage, SeriesPoint, DayEvent } from '../../../../backend/src/services/storage.ts';
 import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
 
 class MemoryStorage implements Storage {
@@ -37,8 +37,8 @@ class MemoryStorage implements Storage {
     this.events.push(...events);
   }
 
-  async readEvents(_shop: string, _day: string): Promise<readonly StockEvent[]> {
-    return this.events;
+  async readEvents(_shop: string, _day: string): Promise<readonly DayEvent[]> {
+    return this.events.map((event) => ({ snapshotAt: '', event }));
   }
 
   async readSeries(_shop: string, _productId: string): Promise<readonly SeriesPoint[]> {
@@ -106,7 +106,7 @@ function silentLogger(): Logger {
 describe('runShopPipeline', () => {
   it('seeds when there is no previous snapshot', async () => {
     const storage = new MemoryStorage();
-    const result = await runShopPipeline(provider(catalog(10)), storage, silentLogger());
+    const result = await runShopPipeline(provider(catalog(10)), storage, silentLogger(), 'evening');
     expect(result.seeded).toBe(true);
     expect(result.events).toBe(0);
     expect(storage.snapshots).toHaveLength(1);
@@ -115,11 +115,17 @@ describe('runShopPipeline', () => {
 
   it('diffs and writes stats on the second run', async () => {
     const storage = new MemoryStorage();
-    await runShopPipeline(provider(catalog(12)), storage, silentLogger());
-    const result = await runShopPipeline(provider(catalog(7)), storage, silentLogger());
+    await runShopPipeline(provider(catalog(12)), storage, silentLogger(), 'evening');
+    const result = await runShopPipeline(provider(catalog(7)), storage, silentLogger(), 'evening');
     expect(result.seeded).toBe(false);
     expect(result.events).toBe(1);
     expect(storage.stats).toHaveLength(1);
     expect(storage.stats[0]?.unitsSold).toBe(5);
+  });
+
+  it('stamps the passed window on the snapshot', async () => {
+    const storage = new MemoryStorage();
+    await runShopPipeline(provider(catalog(10)), storage, silentLogger(), 'third-seed');
+    expect(storage.snapshots[0]?.window).toBe('third-seed');
   });
 });

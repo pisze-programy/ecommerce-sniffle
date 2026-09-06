@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import type { ProviderConfig } from '@ecommerce-sniffle/providers';
 import { calculateShopSummary, isCountdownShop, topSellingProducts } from '@ecommerce-sniffle/analysis';
+import type { StockEvent } from '@ecommerce-sniffle/analysis';
 import type { CpmRange } from '../entities.ts';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
 import { toPlnEvents, toPlnPoint, toPlnSnapshot } from '../services/currency.ts';
+import { SEED_WINDOWS } from '../services/schedule.ts';
 import {
   alert,
   badge,
@@ -307,14 +309,26 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       ]);
       return { cpm, googleCpmOverride: found.cpmOverride, metaAds, metaDays, googleAds, googleDays, financials };
     })();
-    const morningRaw = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'morning');
-    const eveningRaw = day === '' ? [] : await storage.readEventsByWindow(domain, day, 'evening');
-    const morningEvents = toPlnEvents(morningRaw, currency);
-    const eveningEvents = toPlnEvents(eveningRaw, currency);
+    const eventRows = day === '' ? [] : await storage.readEvents(domain, day);
     const from = day === '' ? undefined : addDays(day, -30);
     const to = day === '' ? undefined : addDays(day, 1);
     const snapshotsRaw = day === '' ? [] : await storage.readSnapshots(domain, from, to);
     const snapshots = snapshotsRaw.map((snapshot) => toPlnSnapshot(snapshot, currency));
+    const snapshotWindow = new Map<string, string>();
+    for (const snapshot of snapshots) {
+      snapshotWindow.set(snapshot.snapshotAt, snapshot.window);
+    }
+    const windowSections: readonly { label: string; events: readonly StockEvent[] }[] = SEED_WINDOWS.map(
+      (seedWindow) => {
+        const raw: StockEvent[] = [];
+        for (const row of eventRows) {
+          if (snapshotWindow.get(row.snapshotAt) === seedWindow.id) {
+            raw.push(row.event);
+          }
+        }
+        return { label: seedWindow.label, events: toPlnEvents(raw, currency) };
+      }
+    );
     const topRows = topSellingProducts(snapshots, { maxQuantity, limit: 10 });
 
     const seedDay = validDays.length === 0 ? null : (validDays[validDays.length - 1] ?? null);
@@ -497,7 +511,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       daySections.push(
         card({
           title: 'Zmiany',
-          body: renderChangesWindows(day, morningEvents, eveningEvents, names, config.platform, maxQuantity),
+          body: renderChangesWindows(day, windowSections, names, config.platform, maxQuantity),
           collapsed: true,
         })
       );

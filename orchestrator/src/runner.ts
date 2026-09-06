@@ -14,6 +14,7 @@ export interface VpsPassOptions {
   readonly checkMemoryFn?: () => boolean;
   readonly modules?: readonly ProviderModule[];
   readonly directFetch?: DirectFetch;
+  readonly window?: string;
 }
 
 export function isStockRevealer(provider: Provider): provider is StockRevealer {
@@ -113,7 +114,7 @@ export async function runVpsPass(logger: Logger, options: VpsPassOptions = {}): 
         });
         continue;
       }
-      const snapshot = catalogToIngestSnapshot(catalog);
+      const snapshot = catalogToIngestSnapshot(catalog, options.window === undefined ? 'unknown' : options.window);
       const sent = await sendSnapshot(snapshot, ingestConfig, logger);
       if (sent) {
         ingested += 1;

@@ -288,6 +288,7 @@ describe('createStorage', () => {
         return {
           results: [
             {
+              snapshot_at: '2026-08-24T20:00:00.000Z',
               type: 'sold',
               product_id: 'p1',
               variant_id: 'v1',
@@ -306,9 +307,10 @@ describe('createStorage', () => {
     const storage = createStorage(db, silentLogger());
     const events = await storage.readEvents('forcer.pl', '2026-08-24');
     expect(events).toHaveLength(1);
-    expect(events[0]?.type).toBe('sold');
-    expect(events[0]?.to?.price).toBe(100);
-    expect(events[0]?.from?.quantity).toBe(12);
+    expect(events[0]?.snapshotAt).toBe('2026-08-24T20:00:00.000Z');
+    expect(events[0]?.event.type).toBe('sold');
+    expect(events[0]?.event.to?.price).toBe(100);
+    expect(events[0]?.event.from?.quantity).toBe(12);
   });
 
   it('reads a series for a product', async () => {
@@ -488,6 +490,33 @@ describe('createStorage', () => {
     expect(snapshots[0]?.variants).toHaveLength(2);
     expect(snapshots[1]?.window).toBe('evening');
     expect(snapshots[1]?.variants).toHaveLength(1);
+  });
+
+  it('preserves any window name on snapshot reads', async () => {
+    const db = new MockD1((query) => {
+      if (query.startsWith('SELECT * FROM snapshots')) {
+        return {
+          results: [
+            {
+              shop: 'forcer.pl',
+              snapshot_at: '2026-08-24T20:00:00.000Z',
+              window: 'third-seed',
+              product_id: 'p1',
+              variant_id: 'v1',
+              quantity: 3,
+              price: 100,
+              regular_price: 100,
+              available: 1,
+            },
+          ],
+        };
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, silentLogger());
+    const snapshots = await storage.readSnapshots('forcer.pl');
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]?.window).toBe('third-seed');
   });
 
   it('logs an error and rethrows when the snapshot write fails', async () => {

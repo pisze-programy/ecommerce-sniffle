@@ -80,25 +80,37 @@ function change(
 const NAMES: ShopNames = { productUrls: new Map(), productTitles: new Map(), variantTitles: new Map() };
 
 describe('renderChangesWindows', () => {
-  it('shows type counts summed from both seeds', () => {
-    const morning = [
-      change('sold', variantState(100), variantState(99), 1),
-      change('sold', variantState(50), variantState(49), 1),
+  it('shows type counts summed from all sections', () => {
+    const sections = [
+      { label: 'Evening', events: [change('sold', variantState(100), variantState(99), 1)] },
+      { label: 'Night', events: [change('sold', variantState(50), variantState(49), 1)] },
+      { label: 'Dawn', events: [change('restock', variantState(0), variantState(5), 5)] },
     ];
-    const evening = [change('restock', variantState(0), variantState(5), 5)];
-    const html = renderChangesWindows('2026-08-28', morning, evening, NAMES, 'shopify', 1000);
+    const html = renderChangesWindows('2026-08-28', sections, NAMES, 'shopify', 1000);
     expect(html).toContain('sprzedane (2)');
     expect(html).toContain('dostawione (1)');
     expect(html).not.toContain('nowy (');
   });
 
-  it('renders each seed collapsed by default', () => {
-    const morning = [change('sold', variantState(100), variantState(99), 1)];
-    const evening = [change('restock', variantState(0), variantState(5), 5)];
-    const html = renderChangesWindows('2026-08-28', morning, evening, NAMES, 'shopify', 1000);
-    expect(html).toContain('Morning 06:00');
-    expect(html).toContain('Evening 18:00');
+  it('renders one collapsed section per window label', () => {
+    const sections = [
+      { label: 'Evening', events: [change('sold', variantState(100), variantState(99), 1)] },
+      { label: 'Night', events: [change('restock', variantState(0), variantState(5), 5)] },
+    ];
+    const html = renderChangesWindows('2026-08-28', sections, NAMES, 'shopify', 1000);
+    expect(html).toContain('Evening');
+    expect(html).toContain('Night');
     expect(html).toContain('class="collapse"');
     expect(html).not.toContain('class="collapse show"');
+  });
+
+  it('shows the empty state when every section has no events', () => {
+    const sections = [
+      { label: 'Evening', events: [] },
+      { label: 'Night', events: [] },
+    ];
+    const html = renderChangesWindows('2026-08-28', sections, NAMES, 'shopify', 1000);
+    expect(html).toContain('Brak zmian');
+    expect(html).not.toContain('Evening');
   });
 });

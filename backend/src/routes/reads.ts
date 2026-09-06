@@ -32,7 +32,7 @@ export function createReadsRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
   api.get('/changes/:shop/:day', async (c) => {
     const shop = c.req.param('shop');
     const day = c.req.param('day');
-    const events = await c.get('storage').readEvents(shop, day);
+    const events = (await c.get('storage').readEvents(shop, day)).map((entry) => entry.event);
     return c.json({ shop, day, events });
   });
 

@@ -83,7 +83,7 @@ async function executeTask(
     task.mode === 'vps-mutation' && isStockRevealer(provider)
       ? await provider.revealStock({ productIds: [] })
       : await provider.fetchCatalog();
-  const snapshot = catalogToIngestSnapshot(catalog);
+  const snapshot = catalogToIngestSnapshot(catalog, task.window);
   const masked = snapshot.variants.filter((variant) => variant.quantity === null).length;
   if (masked > 0) {
     logger.error('task masked', {

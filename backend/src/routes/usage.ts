@@ -227,7 +227,7 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
         const maxQuantity = await storage.readMaxObservedQuantity(shop);
         const availableDays = await storage.readAvailableDays(shop);
         for (const day of availableDays) {
-          const events = await storage.readEvents(shop, day);
+          const events = (await storage.readEvents(shop, day)).map((entry) => entry.event);
           const stats = aggregateDaily({ shop, day, events }, { maxQuantity });
           await storage.writeDailyStats(stats);
           days += 1;

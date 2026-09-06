@@ -6,7 +6,7 @@ import type { Logger } from '@ecommerce-sniffle/providers';
 import { createApi } from '../../../../backend/src/routes/api.ts';
 import type { AppVariables } from '../../../../backend/src/routes/api.ts';
 import type { Env } from '../../../../backend/src/env/types.ts';
-import type { D1Like, D1Statement, Storage, SeriesPoint } from '../../../../backend/src/services/storage.ts';
+import type { D1Like, D1Statement, Storage, SeriesPoint, DayEvent } from '../../../../backend/src/services/storage.ts';
 import { MemoryQueueDb } from '../services/memory-queue-db.ts';
 import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
 import { dayBefore } from '../../../../backend/src/services/report/format.ts';
@@ -14,7 +14,7 @@ import { dayBefore } from '../../../../backend/src/services/report/format.ts';
 class MemoryStorage implements Storage {
   snapshots: Snapshot[] = [];
   stats: DailyStats[] = [];
-  events: StockEvent[] = [];
+  events: DayEvent[] = [];
   seriesPoints: SeriesPoint[] = [];
   productUrls: Map<string, string> = new Map();
   productTitles: Map<string, string> = new Map();
@@ -100,14 +100,6 @@ class MemoryStorage implements Storage {
     return [{ shop: 'mock.pl', productId: query }];
   }
 
-  async readEventsByWindow(
-    _shop: string,
-    _day: string,
-    _window: 'morning' | 'evening'
-  ): Promise<readonly StockEvent[]> {
-    return this.events;
-  }
-
   async readAvailableDays(shop: string): Promise<readonly string[]> {
     const days = new Set<string>();
     for (const snapshot of this.snapshots) {
@@ -137,11 +129,13 @@ class MemoryStorage implements Storage {
     return found === undefined ? null : found;
   }
 
-  async writeEvents(_shop: string, _day: string, _snapshotAt: string, events: readonly StockEvent[]): Promise<void> {
-    this.events = [...this.events, ...events];
+  async writeEvents(_shop: string, _day: string, snapshotAt: string, events: readonly StockEvent[]): Promise<void> {
+    for (const event of events) {
+      this.events.push({ snapshotAt, event });
+    }
   }
 
-  async readEvents(_shop: string, _day: string): Promise<readonly StockEvent[]> {
+  async readEvents(_shop: string, _day: string): Promise<readonly DayEvent[]> {
     return this.events;
   }
 
@@ -562,16 +556,19 @@ describe('api /dashboard and /shop', () => {
         available: true,
       });
     }
-    storage.snapshots.push({ shop: 'mock.pl', snapshotAt: '2026-08-28T04:00:00.000Z', window: 'morning', variants });
+    storage.snapshots.push({ shop: 'mock.pl', snapshotAt: '2026-08-28T20:00:00.000Z', window: 'evening', variants });
     storage.productUrls.set('p1', 'https://mock.pl/p1');
     storage.events.push({
-      type: 'sold',
-      productId: 'p1',
-      variantId: 'v1',
-      from: { productId: 'p1', variantId: 'v1', quantity: 5, price: 100, regularPrice: null, available: true },
-      to: { productId: 'p1', variantId: 'v1', quantity: 4, price: 100, regularPrice: null, available: true },
-      units: 1,
-      confidence: 'exact',
+      snapshotAt: '2026-08-28T20:00:00.000Z',
+      event: {
+        type: 'sold',
+        productId: 'p1',
+        variantId: 'v1',
+        from: { productId: 'p1', variantId: 'v1', quantity: 5, price: 100, regularPrice: null, available: true },
+        to: { productId: 'p1', variantId: 'v1', quantity: 4, price: 100, regularPrice: null, available: true },
+        units: 1,
+        confidence: 'exact',
+      },
     });
     const app = buildApp(storage, [mockProviderModule()]);
     const response = await app.request('/shop/mock?day=2026-08-28');
@@ -582,7 +579,7 @@ describe('api /dashboard and /shop', () => {
     expect(html).toContain('chart-shop-trend');
     expect(html).toContain('data-sortable');
     expect(html).toContain('data-page-size="5"');
-    expect(html).toContain('Morning 06:00');
+    expect(html).toContain('Evening');
     expect(html).toContain('<a href="https://mock.pl/p1"');
   });
 

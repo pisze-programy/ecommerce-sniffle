@@ -244,6 +244,28 @@ describe('enqueueProviders', () => {
     expect(count).toBe(0);
   });
 
+  it('enqueues providers for any window name', async () => {
+    const capture = capturingLogger();
+    const db = new MemoryQueueDb();
+    const count = await enqueueProviders(db, capture.logger, [MODULE as never], 'night', '2026-08-24', NOW);
+    expect(count).toBe(1);
+    const store = createTaskStore(db, capture.logger);
+    const statuses = await store.statusCounts();
+    expect(statuses['pending']).toBe(1);
+  });
+
+  it('creates one task per window for the same day', async () => {
+    const capture = capturingLogger();
+    const db = new MemoryQueueDb();
+    const store = createTaskStore(db, capture.logger);
+    const morningCount = await enqueueProviders(db, capture.logger, [MODULE as never], 'morning', '2026-08-24', NOW);
+    const nightCount = await enqueueProviders(db, capture.logger, [MODULE as never], 'night', '2026-08-24', NOW);
+    expect(morningCount).toBe(1);
+    expect(nightCount).toBe(1);
+    const statuses = await store.statusCounts();
+    expect(statuses['pending']).toBe(2);
+  });
+
   it('enqueues cf-get providers', async () => {
     const capture = capturingLogger();
     const db = new MemoryQueueDb();

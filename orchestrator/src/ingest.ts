@@ -1,4 +1,4 @@
-import { catalogToSnapshot, currentWindow } from '@ecommerce-sniffle/analysis';
+import { catalogToSnapshot } from '@ecommerce-sniffle/analysis';
 import type { Snapshot } from '@ecommerce-sniffle/analysis';
 import { truncateMessage } from '@ecommerce-sniffle/providers';
 import type { Catalog, Logger } from '@ecommerce-sniffle/providers';
@@ -20,8 +20,8 @@ export function readIngestConfig(): IngestConfig | null {
   return { backendUrl, secret };
 }
 
-export function catalogToIngestSnapshot(catalog: Catalog): Snapshot {
-  return catalogToSnapshot(catalog, currentWindow(), new Date().toISOString());
+export function catalogToIngestSnapshot(catalog: Catalog, window: string): Snapshot {
+  return catalogToSnapshot(catalog, window, new Date().toISOString());
 }
 
 export async function sendSnapshot(snapshot: Snapshot, config: IngestConfig, logger: Logger): Promise<boolean> {

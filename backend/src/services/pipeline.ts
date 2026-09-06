@@ -2,7 +2,6 @@ import type { Provider } from '@ecommerce-sniffle/providers';
 import {
   aggregateDaily,
   catalogToSnapshot,
-  currentWindow,
   diffSnapshots,
   maxAbsQuantity,
   mergeDailyStats,
@@ -42,11 +41,16 @@ export async function storeSnapshot(storage: Storage, snapshot: Snapshot, logger
   return { shop: snapshot.shop, snapshotAt: snapshot.snapshotAt, seeded: false, events: events.length, stats };
 }
 
-export async function runShopPipeline(provider: Provider, storage: Storage, logger: Logger): Promise<PipelineResult> {
+export async function runShopPipeline(
+  provider: Provider,
+  storage: Storage,
+  logger: Logger,
+  window: string
+): Promise<PipelineResult> {
   const shop = provider.config.domain;
   logger.info('pipeline.fetchCatalog', { providerId: provider.config.id, shop });
   const catalog = await provider.fetchCatalog();
   const snapshotAt = new Date().toISOString();
-  const snapshot = catalogToSnapshot(catalog, currentWindow(), snapshotAt);
+  const snapshot = catalogToSnapshot(catalog, window, snapshotAt);
   return storeSnapshot(storage, snapshot, logger);
 }

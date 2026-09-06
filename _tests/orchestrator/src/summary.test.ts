@@ -116,4 +116,36 @@ describe('runCronSummary', () => {
     await runCronSummary('evening', capture.logger);
     expect(capture.records.some((record) => record.message === 'summary query failed')).toBe(true);
   });
+
+  it('queries any window name', async () => {
+    const capture = captureLogger();
+    vi.stubEnv('BACKEND_URL', 'https://backend.example');
+    vi.stubEnv('INGEST_SECRET', 'secret');
+    vi.stubEnv('SNITCH_URL', 'https://cf-snitch.example');
+    vi.stubEnv('SNITCH_TOKEN', 'token');
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push(String(url));
+        if (String(url).includes('/summary/')) {
+          return jsonResponse(200, {
+            window: 'third-seed',
+            day: '2026-08-25',
+            done: [],
+            failed: [],
+            pending: [],
+            transferBytes: 0,
+            perProvider: [],
+          });
+        }
+        if (String(url).includes('/v1/report')) {
+          return jsonResponse(200, {});
+        }
+        return jsonResponse(404, {});
+      })
+    );
+    await runCronSummary('third-seed', capture.logger);
+    expect(calls.some((url) => url.includes('/summary/third-seed/'))).toBe(true);
+  });
 });

@@ -49,12 +49,14 @@ This is why mutations run on the VPS.
   It has:
   - a dashboard with a shops table
   - a shop page with a summary, price chart, day picker
-  - changes for morning and evening (sortable, collapsible)
+  - changes per window (sortable, collapsible)
   - a stock table (search, filter, sort)
   - low-stock, price-drop, and top-seller views
 - Numeric columns sort by number, not by text.
-- The morning and evening changes are collapsed by default.
-- The type filter shows counts summed from both seeds.
+- The changes sections are collapsed by default. One section per window.
+- The window list comes from the schedule in
+  `backend/src/services/schedule.ts`. The type filter shows counts
+  summed from all windows.
 - Tests: 807 pass, 1 fails.
   The failure is a known date flake in a dashboard test.
 - Typecheck passes.

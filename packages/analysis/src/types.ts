@@ -3,7 +3,10 @@ export type Confidence = 'exact' | 'lower-bound' | 'masked' | 'low';
 export type EventType =
   'sold' | 'restock' | 'soldOut' | 'backInStock' | 'promoStart' | 'promoEnd' | 'productNew' | 'productRemoved';
 
-export type SnapshotWindow = 'morning' | 'evening' | 'unknown';
+// A snapshot window name. The value 'unknown' is the fallback when the
+// source did not declare a window. The code never branches on a fixed
+// window count.
+export type SnapshotWindow = string;
 
 export interface VariantState {
   readonly productId: string;

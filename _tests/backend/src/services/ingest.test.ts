@@ -31,8 +31,17 @@ describe('parseSnapshotBody', () => {
     expect(snapshot?.variants[0]?.available).toBe(false);
   });
 
-  it('rejects an invalid window', () => {
-    expect(parseSnapshotBody(validBody({ window: 'midday' }))).toBeNull();
+  it('accepts any non-empty window name', () => {
+    const snapshot = parseSnapshotBody(validBody({ window: 'third-seed' }));
+    expect(snapshot?.window).toBe('third-seed');
+  });
+
+  it('rejects an empty window', () => {
+    expect(parseSnapshotBody(validBody({ window: '' }))).toBeNull();
+  });
+
+  it('rejects a non-string window', () => {
+    expect(parseSnapshotBody(validBody({ window: 7 }))).toBeNull();
   });
 
   it('parses productUrl on a variant', () => {
