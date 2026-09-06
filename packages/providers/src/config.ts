@@ -381,6 +381,8 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     currency: 'PLN',
     entityId: '33mata',
   },
+  // Disabled: all 180 variants sold out (2026-09-06).
+  // Re-enable when the shop restocks.
   {
     id: 'mualasklep',
     domain: 'mualasklep.pl',
@@ -393,7 +395,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     durationSeconds: 30,
     requiresProxy: true,
     endpoint: 'https://mualasklep.pl/products.json',
-    enabled: true,
+    enabled: false,
     currency: 'PLN',
     entityId: 'mualasklep',
   },
@@ -461,6 +463,8 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     currency: 'PLN',
     entityId: 'fagata',
   },
+  // Disabled: the UCP cart accepts any quantity, no exact stock.
+  // Probe each category before re-enabling.
   {
     id: 'beaumont',
     domain: 'beaumont.eu',
@@ -473,7 +477,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     durationSeconds: 30,
     requiresProxy: true,
     endpoint: 'https://beaumont.eu/products.json',
-    enabled: true,
+    enabled: false,
     currency: 'EUR',
     entityId: 'beaumont',
   },
@@ -716,6 +720,8 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
       recoveryCount: 10,
     },
   },
+  // Disabled: the shop moved Shoper to Shopify, the old API is 404.
+  // Rewrite the provider as Shopify before re-enabling.
   {
     id: 'brokies',
     domain: 'brokies.store',
@@ -728,7 +734,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     durationSeconds: 20,
     requiresProxy: true,
     endpoint: 'https://brokies.store/webapi/front/pl_PL/products/PLN/list',
-    enabled: true,
+    enabled: false,
     currency: 'PLN',
     entityId: 'brokies',
   },
