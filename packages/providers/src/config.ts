@@ -108,6 +108,23 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     currency: 'PLN',
     entityId: 'misbhv',
   },
+  // IdoSell - sizes amount embedded (vps-get, direct, free)
+  {
+    id: 'foodsbyann',
+    domain: 'foodsbyann.com',
+    platform: 'custom',
+    schedule: '0 9 * * *',
+    window: 'both',
+    mode: 'vps-get',
+    stockSource: 'embedded-quantity',
+    ratePerSecond: 1,
+    durationSeconds: 300,
+    requiresProxy: false,
+    endpoint: 'https://foodsbyann.com/sitemap.xml.gz',
+    enabled: true,
+    currency: 'PLN',
+    entityId: 'foodsbyann',
+  },
   {
     id: 'royalwatch',
     domain: 'royalwatch.pl',
