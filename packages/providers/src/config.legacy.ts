@@ -310,4 +310,70 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     enabled: false,
     currency: 'PLN',
   },
+  // marlehome - PrestaShop 1.7, disabled. Integration unfinished.
+  // The stock semantics are not solved yet. Someone else will finish.
+  //
+  // The shop: https://marlehome.com, made-to-order furniture.
+  // Catalog: category "13-wszystkie-produkty" with pagination,
+  // 124 products (50+50+24). The sitemap is stale (14 urls).
+  // The sitemap-only urls redirect 301 to the canonical pages.
+  //
+  // Platform: PrestaShop 1.7, PHP 7.4.33 EOL, jQuery 1.7.1.
+  // No bot protection, no webshare needed. Webservice /api is 401
+  // (no public key). No products.json (that is Shopify, not here).
+  //
+  // Stock source: the "Wybierz wariant" block on the product page.
+  // Each entry is a buyable unit (a color/size combination, each with
+  // its own product url) and carries data-quantity, server-rendered:
+  //   <div class="cv-related-product-item cv-related-product-id-91"
+  //        data-quantity="2">...</div>
+  // A positive data-quantity is the exact stock (verified: 91 -> 2,
+  // the add-to-cart accepts 2 and rejects 3).
+  //
+  // The block appears on 44 of 124 products. The other 80 products
+  // have no block and no stock signal in the HTML.
+  //
+  // NOT solved:
+  // - data-quantity of 0 or negative (-1, -2) does NOT mean sold out.
+  //   Example: 158 (qty 0) is buyable, 165 (qty 0) is not (button
+  //   disabled). The shop is made to order, so 0 is "none in stock
+  //   now, order anyway". The negative values are undefined.
+  // - The buyable flag is the add-to-cart button disabled attribute.
+  // - The exact max quantity is confirmed by this read-only request
+  //   (fires on every qty change in the UI, no cart mutation):
+  //     POST /index.php?controller=product&token={static token}
+  //          &id_product={id}&id_customization=0&qty={X}
+  //     Content-Type: application/x-www-form-urlencoded
+  //     X-Requested-With: XMLHttpRequest
+  //     Body: ajax=1&action=refresh&quantity_wanted={X}
+  //   X above stock -> response contains "Nie ma wystarczajacej
+  //   ilosci". X at or below -> no such error. Token is the
+  //   static_token / form token on the page.
+  // - A future provider can read data-quantity for the block products
+  //   and binary search the rest through that endpoint. cf-get,
+  //   requiresProxy false.
+  //
+  // Entity (owner data, harvested 2026-09-07):
+  //   Marle Group sp. z o.o., ul. Stefana Zeromskiego 62/2,
+  //   50-312 Wroclaw. KRS 0000925154, NIP 8982269793,
+  //   REGON 520135170. Instagram: @marlehomecom.
+  //   Owner: Jakub Roskosz, Instagram @jakubroskosz.
+  //   Bizraport financials: assets 199k, revenue 473k, profit -48k,
+  //   valuation 337k (PLN).
+  {
+    id: 'marlehome',
+    domain: 'marlehome.com',
+    platform: 'prestashop',
+    schedule: '30 3 * * *',
+    window: 'both',
+    mode: 'cf-get',
+    stockSource: 'embedded-quantity',
+    ratePerSecond: 1,
+    durationSeconds: 240,
+    requiresProxy: false,
+    endpoint: 'https://marlehome.com/13-wszystkie-produkty',
+    enabled: false,
+    currency: 'PLN',
+    entityId: 'marlehome',
+  },
 ];
