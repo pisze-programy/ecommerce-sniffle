@@ -144,6 +144,7 @@ describe('createTaskStore', () => {
     expect(reaped).toBe(1);
     const counts = await store.statusCounts();
     expect(counts['dlq']).toBe(1);
+    expect(db.tasks.get('morning-forcer-2026-08-24')?.['error']).toBe('reaped: max attempts');
   });
 
   it('does not reap a task that is still in backoff', async () => {
@@ -167,6 +168,7 @@ describe('createTaskStore', () => {
     expect(reaped).toBe(1);
     const counts = await store.statusCounts();
     expect(counts['pending']).toBe(1);
+    expect(db.tasks.get('morning-forcer-2026-08-24')?.['error']).toBe('reaped: lease expired');
   });
 
   it('reaps an exhausted task to dlq', async () => {
@@ -178,6 +180,7 @@ describe('createTaskStore', () => {
     await store.reapExpired(NOW + 5000, 3);
     const counts = await store.statusCounts();
     expect(counts['dlq']).toBe(1);
+    expect(db.tasks.get('morning-forcer-2026-08-24')?.['error']).toBe('reaped: lease expired');
   });
 
   it('logs an error when createTask fails', async () => {

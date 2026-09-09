@@ -83,11 +83,18 @@ async function runOneTask(
       task.taskId
     );
     const latest = await storage.readLatestSnapshot(module.config.domain);
-    const masked = latest === null ? 0 : latest.variants.filter((variant) => variant.quantity === null).length;
+    const masked =
+      result.rejected === true
+        ? (result.maskedCount ?? 0)
+        : latest === null
+          ? 0
+          : latest.variants.filter((variant) => variant.quantity === null).length;
+    const variants = latest === null ? 0 : latest.variants.length;
     await store.completeTask(task.taskId, masked, Date.now());
     logger.info('cf task done', {
       providerId: task.providerId,
-      variants: latest === null ? 0 : latest.variants.length,
+      variants,
+      rejected: result.rejected === true,
     });
     if (masked > 0) {
       logger.warn('cf.get masked', { providerId: module.config.id, masked });
@@ -98,7 +105,7 @@ async function runOneTask(
         data: {
           providerId: module.config.id,
           shop: module.config.domain,
-          variants: latest === null ? 0 : latest.variants.length,
+          variants,
           masked,
         },
       });

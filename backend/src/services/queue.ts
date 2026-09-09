@@ -104,10 +104,12 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
   );
   const reap = db.prepare(
     "UPDATE tasks SET status = CASE WHEN attempts >= ? THEN 'dlq' ELSE 'pending' END, " +
-      "lease_until = NULL, worker_id = NULL WHERE status = 'claimed' AND lease_until < ?"
+      'lease_until = NULL, worker_id = NULL, ' +
+      "error = CASE WHEN error IS NULL THEN ? ELSE error END WHERE status = 'claimed' AND lease_until < ?"
   );
   const reapPending = db.prepare(
-    "UPDATE tasks SET status = 'dlq' WHERE status = 'pending' AND attempts >= ? " +
+    "UPDATE tasks SET status = 'dlq', error = CASE WHEN error IS NULL THEN ? ELSE error END " +
+      "WHERE status = 'pending' AND attempts >= ? " +
       'AND (lease_until IS NULL OR lease_until < ?)'
   );
   const counts = db.prepare('SELECT status, count(*) AS c FROM tasks GROUP BY status');
@@ -186,8 +188,12 @@ export function createTaskStore(db: QueueDb, logger: Logger): TaskStore {
 
     async reapExpired(now, maxAttempts): Promise<number> {
       try {
-        const first = (await reap.bind(maxAttempts, now).run()) as { meta: { changes: number } };
-        const second = (await reapPending.bind(maxAttempts, now).run()) as { meta: { changes: number } };
+        const first = (await reap.bind(maxAttempts, 'reaped: lease expired', now).run()) as {
+          meta: { changes: number };
+        };
+        const second = (await reapPending.bind('reaped: max attempts', maxAttempts, now).run()) as {
+          meta: { changes: number };
+        };
         return first.meta.changes + second.meta.changes;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

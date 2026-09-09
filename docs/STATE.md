@@ -72,6 +72,34 @@ This is why mutations run on the VPS.
 - Apply migrations with `wrangler d1 execute --file=...`.
   Do not use `d1 migrations apply`. It replays old steps and fails.
 
+## Incident log
+
+### 2026-09-05 proxy outage
+
+The residential proxy failed for about 1.5 days. Several shops lost
+seeds or stored masked snapshots.
+
+- `www.acewarsaw.pl`: both seeds failed. The full day 09-05 is missing.
+- `pl.godsavequeens.com`: the evening seed failed. Two morning seeds
+  stored fully masked snapshots (all variants had null quantities).
+- `e-daag.com.pl`, `sklepskolim.pl`: seeds ran about ten hours late.
+- `laboratoriumpanidomu.pl`: the morning seed failed.
+
+The fixes live in the worker:
+
+1. `storeSnapshot` rejects a snapshot where every available variant is
+   masked. It keeps the previous snapshot as the latest.
+2. A diff that spans more than one calendar day is aggregated as
+   suspect. The sold and restock totals stay zero for that day.
+3. The shop page shows a `N dni bez seeda` badge when days are missing.
+4. `Sprzedaż · N dni` counts the calendar span, not the number of rows.
+5. `reapExpired` writes a reason to the task error. Before, a reaped
+   task had `error = null` and the outage was invisible.
+
+Open question: the morning seed on 09-06 did not enqueue three shops
+(e-daag, sklepskolim, acewarsaw). The cause is unknown. It is likely a
+race with the schedule refactor deploy. No data was lost.
+
 ## What is next
 
 The entities pilot is built and live.

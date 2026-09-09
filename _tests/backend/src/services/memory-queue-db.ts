@@ -152,21 +152,26 @@ class FakeStatement implements QueueStatement, D1Statement {
     }
     if (q.includes('CASE WHEN attempts')) {
       const maxAttempts = this.args[0] as number;
-      const now = this.args[1] as number;
+      const reason = String(this.args[1]);
+      const now = this.args[2] as number;
       let changes = 0;
       for (const task of this.db.tasks.values()) {
         if (task['status'] === 'claimed' && (task['lease_until'] as number) < now) {
           task['status'] = (task['attempts'] as number) >= maxAttempts ? 'dlq' : 'pending';
           task['lease_until'] = null;
           task['worker_id'] = null;
+          if (task['error'] === null) {
+            task['error'] = reason;
+          }
           changes += 1;
         }
       }
       return changes > 0 ? [{}] : [];
     }
     if (q.includes("SET status = 'dlq'")) {
-      const maxAttempts = this.args[0] as number;
-      const now = this.args[1] as number;
+      const reason = String(this.args[0]);
+      const maxAttempts = this.args[1] as number;
+      const now = this.args[2] as number;
       let changes = 0;
       for (const task of this.db.tasks.values()) {
         if (
@@ -175,6 +180,9 @@ class FakeStatement implements QueueStatement, D1Statement {
           (task['lease_until'] === null || (task['lease_until'] as number) < now)
         ) {
           task['status'] = 'dlq';
+          if (task['error'] === null) {
+            task['error'] = reason;
+          }
           changes += 1;
         }
       }

@@ -689,6 +689,56 @@ describe('api /dashboard and /shop', () => {
     expect(html).toContain('Nieznany sklep');
   });
 
+  it('counts the calendar span, not the rows, when a seed is missing', async () => {
+    const storage = new MemoryStorage();
+    const snap = (snapshotAt: string): Snapshot => ({
+      shop: 'mock.pl',
+      snapshotAt,
+      window: 'evening',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    storage.snapshots.push(snap('2026-08-27T16:00:00.000Z'));
+    storage.snapshots.push(snap('2026-08-28T16:00:00.000Z'));
+    storage.snapshots.push(snap('2026-08-30T16:00:00.000Z'));
+    const stat = (day: string, unitsSold: number): DailyStats => ({
+      shop: 'mock.pl',
+      day,
+      unitsSold,
+      revenue: unitsSold * 100,
+      restocked: 0,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+      soldMinPrice: null,
+      soldMaxPrice: null,
+    });
+    storage.stats.push(stat('2026-08-27', 0));
+    storage.stats.push(stat('2026-08-28', 5));
+    storage.stats.push(stat('2026-08-30', 10));
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock?day=2026-08-30');
+    const html = await response.text();
+    expect(html).toContain('Sprzedaż · 3 dni');
+    expect(html).toContain('15 szt');
+    expect(html).toContain('~5 szt/dzień');
+    expect(html).toContain('bez seeda');
+  });
+
+  it('does not show the gap badge for a continuous history', async () => {
+    const storage = new MemoryStorage();
+    storage.snapshots.push({
+      shop: 'mock.pl',
+      snapshotAt: '2026-08-28T16:00:00.000Z',
+      window: 'evening',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/shop/mock');
+    const html = await response.text();
+    expect(html).not.toContain('bez seeda');
+  });
+
   it('renders dashboard kpis, charts and deltas', async () => {
     const today = new Date().toISOString().slice(0, 10);
     const prev = dayBefore(today);

@@ -51,6 +51,39 @@ export { shopifyVariantUrl };
 // The default CPM range for Poland, health and beauty. See docs/ENTITIES.md.
 const DEFAULT_CPM: CpmRange = { min: 15, max: 30 };
 
+// The calendar span of the points, oldest to newest, in days.
+// A missed seed leaves a gap; the span counts the empty day too.
+function calendarSpanDays(points: readonly { day: string }[]): number {
+  if (points.length === 0) {
+    return 0;
+  }
+  const first = points[0]?.day ?? '';
+  const last = points[points.length - 1]?.day ?? '';
+  if (first === '' || last === '') {
+    return points.length;
+  }
+  const start = new Date(`${first}T00:00:00Z`).getTime();
+  const end = new Date(`${last}T00:00:00Z`).getTime();
+  return Math.round((end - start) / 86400000) + 1;
+}
+
+// The days between the oldest and the newest seed that have no snapshot.
+function findMissingDays(validDays: readonly string[]): string[] {
+  if (validDays.length < 2) {
+    return [];
+  }
+  const present = new Set(validDays);
+  const oldest = validDays[validDays.length - 1] ?? '';
+  const newest = validDays[0] ?? '';
+  const missing: string[] = [];
+  for (let day = oldest; day < newest; day = dayAfter(day)) {
+    if (!present.has(day)) {
+      missing.push(day);
+    }
+  }
+  return missing;
+}
+
 export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -359,6 +392,11 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     if (isCountdownShop(domain)) {
       badges.push(badge('countdown', 'yellow'));
     }
+    const missingDays = findMissingDays(validDays);
+    if (missingDays.length > 0) {
+      const word = plural(missingDays.length, 'dzień', 'dni', 'dni');
+      badges.push(badge(`${missingDays.length} ${word} bez seeda`, 'yellow'));
+    }
     if (summary.bias.sentinelVariants > 0) {
       badges.push(badge(`${summary.bias.sentinelVariants} sentinel`, 'yellow'));
     }
@@ -376,7 +414,10 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     // predecessor, so its events are baseline noise, not sales.
     const seedOldest = validDays.length === 0 ? null : (validDays[validDays.length - 1] ?? null);
     const salesPoints = seedOldest === null ? dailyRange : dailyRange.filter((point) => point.day !== seedOldest);
-    const salesDays = salesPoints.length;
+    // The day count is the calendar span, not the number of rows. A
+    // missed seed leaves a gap; counting rows would collapse the gap
+    // into one day and inflate the average.
+    const salesDays = calendarSpanDays(salesPoints);
     const soldSum = salesPoints.reduce((acc, point) => acc + point.sold, 0);
     const valueSum = salesPoints.reduce((acc, point) => acc + point.soldValue, 0);
     const avgSold = salesDays === 0 ? 0 : soldSum / salesDays;

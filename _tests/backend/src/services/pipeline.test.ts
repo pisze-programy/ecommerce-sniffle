@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createLogger } from '@ecommerce-sniffle/providers';
 import type { Logger, Provider, ProviderConfig, Catalog } from '@ecommerce-sniffle/providers';
-import { runShopPipeline } from '../../../../backend/src/services/pipeline.ts';
+import { runShopPipeline, storeSnapshot } from '../../../../backend/src/services/pipeline.ts';
 import type { Storage, SeriesPoint, DayEvent } from '../../../../backend/src/services/storage.ts';
 import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
 
@@ -127,5 +127,58 @@ describe('runShopPipeline', () => {
     const storage = new MemoryStorage();
     await runShopPipeline(provider(catalog(10)), storage, silentLogger(), 'third-seed');
     expect(storage.snapshots[0]?.window).toBe('third-seed');
+  });
+});
+
+function snap(snapshotAt: string, quantity: number | null, available = true): Snapshot {
+  return {
+    shop: 'mock.pl',
+    snapshotAt,
+    window: 'evening',
+    variants: [{ productId: 'p1', variantId: 'v1', quantity, price: 100, regularPrice: null, available }],
+  };
+}
+
+describe('storeSnapshot guards', () => {
+  it('rejects a fully masked snapshot and keeps the previous one', async () => {
+    const storage = new MemoryStorage();
+    await storeSnapshot(storage, snap('2026-09-04T16:00:00Z', 100), silentLogger());
+    const result = await storeSnapshot(storage, snap('2026-09-05T16:00:00Z', null), silentLogger());
+    expect(result.rejected).toBe(true);
+    expect(result.maskedCount).toBe(1);
+    expect(storage.snapshots).toHaveLength(1);
+    const latest = await storage.readLatestSnapshot('mock.pl');
+    expect(latest?.variants[0]?.quantity).toBe(100);
+  });
+
+  it('keeps a legit sold out snapshot (all zero, unavailable)', async () => {
+    const storage = new MemoryStorage();
+    await storeSnapshot(storage, snap('2026-09-04T16:00:00Z', 100), silentLogger());
+    const result = await storeSnapshot(storage, snap('2026-09-05T16:00:00Z', 0, false), silentLogger());
+    expect(result.rejected).toBeUndefined();
+    expect(storage.snapshots).toHaveLength(2);
+    expect(result.stats?.unitsSold).toBe(100);
+  });
+
+  it('marks a multi day gap diff as suspect and writes no events', async () => {
+    const storage = new MemoryStorage();
+    await storeSnapshot(storage, snap('2026-09-04T16:00:00Z', 100), silentLogger());
+    const result = await storeSnapshot(storage, snap('2026-09-06T16:00:00Z', 40), silentLogger());
+    expect(result.gapped).toBe(true);
+    expect(result.stats?.suspectCount).toBeGreaterThan(0);
+    expect(result.stats?.unitsSold).toBe(0);
+    expect(result.stats?.restocked).toBe(0);
+    expect(storage.events).toHaveLength(0);
+    expect(storage.stats).toHaveLength(1);
+  });
+
+  it('writes events for a one day diff', async () => {
+    const storage = new MemoryStorage();
+    await storeSnapshot(storage, snap('2026-09-04T16:00:00Z', 100), silentLogger());
+    const result = await storeSnapshot(storage, snap('2026-09-05T16:00:00Z', 80), silentLogger());
+    expect(result.gapped).toBeUndefined();
+    expect(result.events).toBe(1);
+    expect(storage.events).toHaveLength(1);
+    expect(result.stats?.unitsSold).toBe(20);
   });
 });
