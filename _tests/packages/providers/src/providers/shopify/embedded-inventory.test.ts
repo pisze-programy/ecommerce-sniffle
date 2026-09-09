@@ -5,6 +5,7 @@ import {
   parseBisVariantData,
   parseRestockRocketQuantity,
   parseShopifyJsInventory,
+  parseShopifyXmlInventory,
   parseVariantInventoryData,
 } from '../../../../../../packages/providers/src/providers/shopify/implementations/embedded-inventory.ts';
 import { createLogger } from '../../../../../../packages/providers/src/logger.ts';
@@ -50,6 +51,40 @@ describe('parseVariantInventoryData', () => {
 
   it('returns an empty map for a page without the script', () => {
     expect(parseVariantInventoryData('<html></html>').size).toBe(0);
+  });
+});
+
+describe('parseShopifyXmlInventory', () => {
+  const XML =
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<hash>' +
+    '<variant><id type="integer">111</id><title>Small</title><inventory-quantity type="integer">42</inventory-quantity></variant>' +
+    '<variant><id type="integer">222</id><title>Medium</title><inventory-quantity type="integer">78</inventory-quantity></variant>' +
+    '<variant><id type="integer">333</id><title>Large</title><inventory-quantity type="integer">195</inventory-quantity></variant>' +
+    '</hash>';
+
+  it('extracts the exact quantity per variant', () => {
+    const inv = parseShopifyXmlInventory(XML);
+    expect(inv.get('111')).toBe(42);
+    expect(inv.get('222')).toBe(78);
+    expect(inv.get('333')).toBe(195);
+    expect(inv.size).toBe(3);
+  });
+
+  it('reads a sold out variant as zero', () => {
+    const inv = parseShopifyXmlInventory(
+      '<hash><variant><id type="integer">1</id><inventory-quantity type="integer">0</inventory-quantity></variant></hash>'
+    );
+    expect(inv.get('1')).toBe(0);
+  });
+
+  it('skips a variant without a quantity', () => {
+    const inv = parseShopifyXmlInventory('<hash><variant><id type="integer">1</id><title>X</title></variant></hash>');
+    expect(inv.size).toBe(0);
+  });
+
+  it('returns an empty map for a page without variants', () => {
+    expect(parseShopifyXmlInventory('<html></html>').size).toBe(0);
   });
 });
 
@@ -207,6 +242,9 @@ describe('buildEmbeddedInventoryProvider', () => {
     expect(catalog.products[0]?.variants[0]?.quantity).toBe(5);
     expect(catalog.products[1]?.variants[0]?.quantity).toBeNull();
     expect(catalog.products[2]?.variants[0]?.quantity).toBe(7);
+    const warn = records.find((record) => record.message === 'embedded.product no script');
+    expect(warn?.level).toBe('warn');
+    expect(warn?.context['productId']).toBe('2');
   });
 
   it('keeps a product unchanged and logs when the page fetch fails', async () => {

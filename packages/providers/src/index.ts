@@ -5,6 +5,7 @@ import { createLogger, consoleSink } from './logger.ts';
 
 import { forcerModule } from './providers/shopify/forcer.ts';
 import { misbhvModule } from './providers/shopify/misbhv.ts';
+import { momentousModule } from './providers/shopify/momentous.ts';
 import { montielModule } from './providers/shopify/montiel.ts';
 import { nooMaModule } from './providers/shopify/noo-ma.ts';
 import { magdabutrymModule } from './providers/shopify/magdabutrym.ts';
@@ -64,6 +65,7 @@ import { lexonModule } from './providers/magento/lexon.ts';
 export const ALL_MODULES: readonly ProviderModule[] = [
   forcerModule,
   misbhvModule,
+  momentousModule,
   montielModule,
   nooMaModule,
   magdabutrymModule,

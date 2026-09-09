@@ -42,6 +42,9 @@ export function validateConfig(config: ProviderConfig): ProviderConfig {
 
 const RAW_CONFIGS: readonly ProviderConfig[] = [
   // Web - exact stock via HTML/JSON (GET), no mutation, no proxy
+  // The rever run fetches about 500 product pages. It takes about four
+  // minutes. The task timeout is three times durationSeconds. The old
+  // value 40 timed out on every run and wrote duplicate seeds.
   {
     id: 'rever',
     domain: 'rever.com.pl',
@@ -51,7 +54,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     mode: 'cf-get',
     stockSource: 'html',
     ratePerSecond: 1,
-    durationSeconds: 40,
+    durationSeconds: 300,
     requiresProxy: false,
     endpoint: 'https://rever.com.pl/product-sitemap.xml',
     enabled: true,
@@ -124,6 +127,25 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     enabled: true,
     currency: 'PLN',
     entityId: 'foodsbyann',
+  },
+  // Shopify - product page XML inventory (cf-get, direct, free)
+  // products.json hides the count. The .js endpoint clamps at 60.
+  // The product .xml reveals the exact count per variant.
+  {
+    id: 'momentous',
+    domain: 'www.livemomentous.com',
+    platform: 'shopify',
+    schedule: '45 3 * * *',
+    window: 'both',
+    mode: 'cf-get',
+    stockSource: 'xml-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 180,
+    requiresProxy: false,
+    endpoint: 'https://www.livemomentous.com/products.json',
+    enabled: true,
+    currency: 'USD',
+    entityId: 'momentous',
   },
   {
     id: 'royalwatch',

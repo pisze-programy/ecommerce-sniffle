@@ -64,6 +64,7 @@ Legend:
 | lecollet             | LECOLLET MAYA BOHOSIEWICZ SKA                | 0000961736                          | TheLeCollet                 | lecollet (+TikTok @lecollet, LinkedIn lecolletbrand)       | DONE   |
 | misbhv               | MISBHV Sp. z o.o.                            | 0000843876                          | -                           | misbhv                                                     | DONE   |
 | foodsbyann           | Levann Sp. z o.o.                            | 0000897526                          | FoodsByAnn                  | foods_by_ann                                               | DONE   |
+| momentous            | Momentous (foreign, USA)                     | -                                   | livemomentous               | live.momentous (+YT @live.momentous)                       | DONE   |
 
 ## Persons (in D1, migration 0020)
 
@@ -129,7 +130,8 @@ It is a loose brand and stays an empty node.
 1. KRS and firm name for marionis.
 2. Profiles for berecords (shop disabled, no profiles found).
 3. Firms without an owner: derichgallery, monartofficial,
-   berecords, dobrerzeczy (fundacja, board to confirm).
+   berecords, dobrerzeczy (fundacja, board to confirm),
+   momentous (foreign brand).
 4. Person profiles for Daniel Walendziak, Krzysztof Sawicki,
    Wojciech Maciej Gola, Sabina Hajdo-Piórek, Paweł Piórek.
 5. Confirm risky owners isamupt and d3tailer.

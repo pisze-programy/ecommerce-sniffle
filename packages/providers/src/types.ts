@@ -9,7 +9,8 @@ export type StockSource =
   | 'boolean'
   | 'storefront-availability'
   | 'mcp-inventory'
-  | 'ucp-inventory';
+  | 'ucp-inventory'
+  | 'xml-inventory';
 
 export type ExecutionMode = 'cf-get' | 'vps-get' | 'vps-mutation';
 

@@ -139,6 +139,23 @@ async function fetchText(url: string, fetchFn: CatalogFetch, cookie: string | nu
   }
 }
 
+export function parseShopifyXmlInventory(xml: string): ReadonlyMap<string, number> {
+  const map = new Map<string, number>();
+  for (const match of xml.matchAll(/<variant>[\s\S]*?<\/variant>/g)) {
+    const body = match[0];
+    if (body === undefined) {
+      continue;
+    }
+    const id = /<id type="integer">(-?\d+)<\/id>/.exec(body)?.[1];
+    const quantity = /<inventory-quantity[^>]*>(-?\d+)<\/inventory-quantity>/.exec(body)?.[1];
+    if (id === undefined || quantity === undefined) {
+      continue;
+    }
+    map.set(id, Number(quantity));
+  }
+  return map;
+}
+
 export function parseShopifyJsInventory(body: string): ReadonlyMap<string, number> {
   const map = new Map<string, number>();
   let data: unknown;
@@ -198,6 +215,7 @@ async function enrichProducts(
       const html = await fetchText(url, fetchFn, cookie);
       const inventory = parseFn(html);
       if (inventory.size === 0) {
+        logger.warn('embedded.product no script', { productId: product.id, url });
         result.push(product);
         continue;
       }

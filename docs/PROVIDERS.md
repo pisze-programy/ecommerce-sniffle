@@ -35,6 +35,7 @@ Every provider has a config. The config controls the provider.
 - `html`: stock in HTML (GET).
 - `boolean`: availability only (1 or 0).
 - `mcp-inventory`: Shopify MCP server cart clamp (mutation, proxy).
+- `xml-inventory`: Shopify product XML count (GET).
 
 ## The active providers
 
@@ -124,6 +125,17 @@ The catalog comes from products.json (124 products). The shop
 rate-limits bursts, so the run paces at `ratePerSecond: 2`. One product
 (`knitted-beanie-251a518`) has no script. Its variant stays masked.
 The UCP cart clamps to the exact stock without a fixed cap.
+
+### Shopify - product XML inventory (cf-get)
+
+| id        | domain                | stock source  | mode   |
+| --------- | --------------------- | ------------- | ------ |
+| momentous | www.livemomentous.com | xml-inventory | cf-get |
+
+The catalog comes from products.json (89 products). The shop hides the
+count in products.json. The product `.js` endpoint clamps the count at 60. The product `.xml` endpoint reveals the exact count per variant.
+One GET per product adds the count. The run is free and direct.
+See [LIVEMOMENTOUS-PROBE.md](./LIVEMOMENTOUS-PROBE.md).
 
 ### Web - exact stock notes
 

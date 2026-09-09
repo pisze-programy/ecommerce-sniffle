@@ -41,6 +41,11 @@ GET https://{domain}/products/{handle}.xml
 - If the response has `<inventory-quantity>` -> exact stock, cf-get, free.
 - The endpoint exists (HTTP 200) but most shops hide the count.
 
+livemomentous.com hides the count in products.json, and the product
+`.js` endpoint clamps every stock above 60 to 60. The `.xml` endpoint
+reveals the exact count. The catalog is 89 products, one XML GET each.
+See [LIVEMOMENTOUS-PROBE.md](./LIVEMOMENTOUS-PROBE.md).
+
 ### 4. Embedded inventory scripts on the product page
 
 ```
