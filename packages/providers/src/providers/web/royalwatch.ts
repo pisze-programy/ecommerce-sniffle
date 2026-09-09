@@ -13,9 +13,9 @@ const config = requireValue(
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
-const CONCURRENCY = 6;
-const RETRY_LIMIT = 40;
-const RETRY_DELAY_MS = 300;
+const CONCURRENCY = 4;
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 400;
 
 export function decodeHtml(input: string): string {
   return input
@@ -88,7 +88,10 @@ export function parseProduct(html: string, url: string): Product | null {
   const titleMatch = /<title>(.*?)<\/title>/.exec(html);
   const title = titleMatch === null ? url : decodeHtml(titleMatch[1] ?? '').trim();
   const available = stock.available ? true : offer.available === true;
-  const quantity = stock.quantity !== null ? stock.quantity : available ? 1 : 0;
+  // The stock number on the page is the exact count. Without a number the
+  // count is unknown. Never guess one for a buyable product; the variant
+  // stays masked so the dashboard does not show fake stock.
+  const quantity = stock.quantity !== null ? stock.quantity : available ? null : 0;
   const variants: Variant[] = [
     {
       id: `${url}#default`,
@@ -103,12 +106,26 @@ export function parseProduct(html: string, url: string): Product | null {
   return { id: url, title, url, variants };
 }
 
+function delayMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
-  if (!response.ok) {
+  let attempt = 0;
+  while (true) {
+    attempt += 1;
+    const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+    if (response.ok) {
+      return response.text();
+    }
+    if ((response.status === 429 || response.status === 403 || response.status >= 500) && attempt < MAX_ATTEMPTS) {
+      // The shop throttles bursts. Back off and retry the same url so a
+      // temporary 429 cannot drop a product from the catalog.
+      await delayMs(RETRY_DELAY_MS * attempt);
+      continue;
+    }
     throw new Error(`GET ${url} failed with status ${response.status}`);
   }
-  return response.text();
 }
 
 async function fetchAllProducts(urls: readonly string[], logger: Logger): Promise<Product[]> {
@@ -147,27 +164,8 @@ async function fetchAllProducts(urls: readonly string[], logger: Logger): Promis
     workers.push(worker());
   }
   await Promise.all(workers);
-  let retried = 0;
-  for (const url of failed) {
-    if (retried >= RETRY_LIMIT) {
-      logger.warn('royalwatch.retry limit reached', { skipped: failed.length - retried });
-      break;
-    }
-    retried += 1;
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    try {
-      const html = await fetchText(url);
-      const product = parseProduct(html, url);
-      if (product !== null) {
-        products.push(product);
-        continue;
-      }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn('royalwatch.product retry failed', { url, error: message });
-      continue;
-    }
-    logger.warn('royalwatch.product retry failed', { url });
+  if (failed.length > 0) {
+    logger.warn('royalwatch.catalog incomplete', { captured: products.length, failed: failed.length });
   }
   return products;
 }

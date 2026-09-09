@@ -86,7 +86,7 @@ describe('parseVariationJson', () => {
 });
 
 describe('parseProduct', () => {
-  it('parses a simple available product with quantity 1', () => {
+  it('parses a simple available product with masked quantity', () => {
     const html =
       '<html><head><title>Bluza testowa – rêver Sabina Hajdo - Piórek</title></head>' +
       '<body><input type="hidden" name="product_id" value="123"><span class="woocommerce-Price-amount amount"><bdi>299&nbsp;zł</bdi></span></body></html>';
@@ -95,7 +95,7 @@ describe('parseProduct', () => {
     expect(product.title).toBe('Bluza testowa');
     expect(product.variants).toHaveLength(1);
     expect(product.variants[0]?.available).toBe(true);
-    expect(product.variants[0]?.quantity).toBe(1);
+    expect(product.variants[0]?.quantity).toBeNull();
     expect(product.variants[0]?.price.amount).toBe(299);
   });
 
@@ -129,8 +129,8 @@ describe('resolveQuantity', () => {
     expect(resolveQuantity(null, false)).toBe(0);
   });
 
-  it('returns one when the shop does not track and the product is in stock', () => {
-    expect(resolveQuantity(null, true)).toBe(1);
+  it('returns masked when the shop does not track and the product is in stock', () => {
+    expect(resolveQuantity(null, true)).toBeNull();
   });
 
   it('returns null when neither the quantity nor the availability is known', () => {

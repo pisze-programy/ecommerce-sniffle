@@ -156,7 +156,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     mode: 'cf-get',
     stockSource: 'html',
     ratePerSecond: 1,
-    durationSeconds: 65,
+    durationSeconds: 240,
     requiresProxy: false,
     endpoint: 'https://www.royalwatch.pl/product-sitemap.xml',
     enabled: true,

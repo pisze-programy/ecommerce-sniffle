@@ -138,6 +138,17 @@ describe('parseProduct', () => {
     expect(variant?.price.amount).toBe(34900);
   });
 
+  it('masks an in stock product with no stock number', () => {
+    const product = parseProduct(
+      productHtml('in-stock', 'Na stanie', 'InStock'),
+      'https://www.royalwatch.pl/produkt/x/'
+    );
+    expect(product).not.toBeNull();
+    const variant = product?.variants[0];
+    expect(variant?.available).toBe(true);
+    expect(variant?.quantity).toBeNull();
+  });
+
   it('parses a sold out product with quantity 0', () => {
     const product = parseProduct(
       productHtml('out-of-stock', 'out of stock', 'OutOfStock'),
@@ -159,7 +170,15 @@ describe('royalwatchModule', () => {
     '<urlset><url><loc>https://www.royalwatch.pl/produkt/a/</loc></url>' +
     '<url><loc>https://www.royalwatch.pl/produkt/b/</loc></url></urlset>';
 
-  it('fetches the catalog and skips failing products with a warn log', async () => {
+  function stubTimers(): void {
+    const realSetTimeout = globalThis.setTimeout.bind(globalThis);
+    vi.stubGlobal('setTimeout', ((callback: () => void): ReturnType<typeof setTimeout> => {
+      return realSetTimeout(callback, 0);
+    }) as typeof setTimeout);
+  }
+
+  it('fetches the catalog and logs a product that keeps failing', async () => {
+    stubTimers();
     const capture = capturingLogger();
     vi.stubGlobal(
       'fetch',
@@ -178,12 +197,13 @@ describe('royalwatchModule', () => {
     expect(catalog.products).toHaveLength(1);
     expect(catalog.products[0]?.url).toBe('https://www.royalwatch.pl/produkt/a/');
     const warns = capture.records.filter((record) => record.message === 'royalwatch.product fetch failed');
-    expect(warns.length).toBeGreaterThan(0);
-    const retryFailed = capture.records.filter((record) => record.message === 'royalwatch.product retry failed');
-    expect(retryFailed.length).toBeGreaterThan(0);
+    expect(warns.length).toBe(1);
+    const incomplete = capture.records.find((record) => record.message === 'royalwatch.catalog incomplete');
+    expect(incomplete?.context['failed']).toBe(1);
   });
 
-  it('recovers a failed product on the retry pass', async () => {
+  it('retries a transient 429 and captures the product', async () => {
+    stubTimers();
     const capture = capturingLogger();
     const attempts: Record<string, number> = {};
     vi.stubGlobal(
@@ -197,7 +217,7 @@ describe('royalwatchModule', () => {
         }
         attempts[String(url)] = (attempts[String(url)] ?? 0) + 1;
         if (attempts[String(url)] === 1) {
-          return response(false, 500, 'error');
+          return response(false, 429, 'slow down');
         }
         return response(true, 200, productHtml('in-stock', '1 in stock', 'InStock'));
       })
@@ -205,7 +225,7 @@ describe('royalwatchModule', () => {
     const provider = royalwatchModule.build({ logger: capture.logger });
     const catalog = await provider.fetchCatalog();
     expect(catalog.products).toHaveLength(2);
-    const retryFailed = capture.records.filter((record) => record.message === 'royalwatch.product retry failed');
-    expect(retryFailed).toHaveLength(0);
+    const warns = capture.records.filter((record) => record.message === 'royalwatch.product fetch failed');
+    expect(warns).toHaveLength(0);
   });
 });

@@ -141,7 +141,7 @@ export function parseProductFromPayload(
         price: money(price),
         regularPrice: null,
         available,
-        quantity: forSale ? (isPreorder ? 1 : stock) : 0,
+        quantity: forSale ? (isPreorder ? null : stock) : 0,
       });
     }
   }

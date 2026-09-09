@@ -152,11 +152,11 @@ describe('parseProductFromPayload', () => {
     expect(sizeM?.available).toBe(false);
   });
 
-  it('marks a preorder product as buyable with quantity 1', () => {
+  it('marks a preorder product as buyable with masked quantity', () => {
     const data = payload();
     data[11] = true;
     const product = parseProductFromPayload(data, data[5] as Record<string, unknown>, 'dobrerzeczy.pl', silentLogger());
-    expect(product?.variants[0]?.quantity).toBe(1);
+    expect(product?.variants[0]?.quantity).toBeNull();
     expect(product?.variants[0]?.available).toBe(true);
   });
 

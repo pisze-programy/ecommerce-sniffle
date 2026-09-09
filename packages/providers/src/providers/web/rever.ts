@@ -106,17 +106,14 @@ function money(amount: number): Money {
 }
 
 // The shop sends an empty max_qty when it does not track the exact stock.
-// The stock is then the availability (is_in_stock).
-// The result mirrors what the shop displays on the page.
+// The count is then unknown. Never guess one for a buyable variant; the
+// variant stays masked instead. Sold out still reads zero.
 export function resolveQuantity(maxQty: number | null, isInStock: boolean | null): number | null {
   if (maxQty !== null) {
     return maxQty;
   }
   if (isInStock === false) {
     return 0;
-  }
-  if (isInStock === true) {
-    return 1;
   }
   return null;
 }
@@ -145,7 +142,7 @@ export function parseProduct(html: string, url: string, logger?: Logger): Produc
         price: money(price === null ? 0 : price),
         regularPrice: null,
         available: !soldOut,
-        quantity: soldOut ? 0 : 1,
+        quantity: soldOut ? 0 : null,
       },
     ];
     return { id: productId, title, url, variants };
