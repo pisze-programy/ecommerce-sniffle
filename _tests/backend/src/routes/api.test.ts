@@ -735,4 +735,35 @@ describe('api /dashboard and /shop', () => {
     expect(html).toContain('▲ 67%');
     expect(html).toContain('Alerty');
   });
+
+  it('falls back to the latest day when today has no seed yet', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const prev = dayBefore(today);
+    const storage = new MemoryStorage();
+    storage.snapshots.push({
+      shop: 'mock.pl',
+      snapshotAt: `${prev}T16:00:00.000Z`,
+      window: 'evening',
+      variants: [{ productId: 'p1', variantId: 'v1', quantity: 10, price: 100, regularPrice: 100, available: true }],
+    });
+    storage.stats.push({
+      shop: 'mock.pl',
+      day: prev,
+      unitsSold: 6,
+      revenue: 600,
+      restocked: 2,
+      soldOutCount: 0,
+      promotionCount: 0,
+      maskedCount: 0,
+      suspectCount: 0,
+    });
+    const app = buildApp(storage, [mockProviderModule()]);
+    const response = await app.request('/');
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('Sprzedane 24h');
+    expect(html).toContain('6 szt');
+    expect(html).toContain('600,00 zł');
+    expect(html).toContain('chart-top-sold');
+  });
 });

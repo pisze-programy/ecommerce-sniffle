@@ -73,8 +73,9 @@ export function createReportRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
         const dailyRange = dailyRangeRaw.map((point) => toPlnPoint(point, currency));
         const summary = calculateShopSummary(latest === null ? [] : [latest]);
         const latestDay = latest === null ? null : latest.snapshotAt.slice(0, 10);
-        const todayPoint = dailyRange.find((point) => point.day === today) ?? null;
-        const prevPoint = dailyRange.find((point) => point.day === dayBefore(today)) ?? null;
+        const todayPoint = dailyRange.find((point) => point.day === today) ?? dailyRange[dailyRange.length - 1] ?? null;
+        const prevDay = todayPoint === null ? null : dayBefore(todayPoint.day);
+        const prevPoint = prevDay === null ? null : (dailyRange.find((point) => point.day === prevDay) ?? null);
         const fresh =
           latest === null ? false : dayBefore(now.toISOString().slice(0, 10)) <= latest.snapshotAt.slice(0, 10);
         const countdown = isCountdownShop(config.domain);
