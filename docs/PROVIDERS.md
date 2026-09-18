@@ -59,6 +59,7 @@ server does not. One request holds 10 variants. The transfer is about
 | icon-amsterdam | icon-amsterdam.com   | mcp-inventory | ~622 KB      |
 | booso          | booso.pl             | mcp-inventory | ~650 KB      |
 | gymglamour     | gymglamour.com       | mcp-inventory | ~898 KB      |
+| dawidpodsiadlo | dawidpodsiadlo.pl    | ucp-inventory | ~4 KB        |
 
 All eleven shops give masked 0 on a full run. Shapellx did not pass
 the 1 MB webshare rule (about 1.6 MB per run). It stays disabled.
@@ -216,6 +217,11 @@ Each variant gets an id like `{productId}-Rozmiar: XL`.
   inventory source. The MCP server does not challenge.
 - misbhv.com product `knitted-beanie-251a518` has no embedded script.
   The shop does not emit it for this product. The variant stays masked.
+- dawidpodsiadlo.pl tracks stock but hides the count in every GET
+  source. The UCP cart clamp reveals the exact count below 50.
+  Shopify caps the cart line at 50, so a stock of 50 or more is
+  masked as 50. The provider writes the clamp (50). Sales above 50
+  are invisible. The 50 to 49 crossing is exact.
 - Catalog fetches run direct from the VPS (no proxy). Only the mutations
   go through the webshare proxy. This keeps the proxy data low.
 

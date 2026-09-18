@@ -617,6 +617,27 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     enabled: true,
     currency: 'PLN',
   },
+  // Shopify - UCP inventory (vps-mutation, proxy).
+  // The shop tracks stock but hides the count in every GET source.
+  // The UCP cart clamp reveals the exact count below 50.
+  // Shopify caps the cart line at 50, so a stock of 50 or more is
+  // masked as 50. See docs/PROVIDERS.md known coverage limits.
+  {
+    id: 'dawidpodsiadlo',
+    domain: 'dawidpodsiadlo.pl',
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'ucp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 30,
+    requiresProxy: true,
+    endpoint: 'https://dawidpodsiadlo.pl/products.json',
+    entityId: 'dawidpodsiadlo',
+    enabled: true,
+    currency: 'PLN',
+  },
   // Prestashop - cart-reveal (mutation, proxy). Worked well in the runs.
   {
     id: 'laboratoriumpanidomu',

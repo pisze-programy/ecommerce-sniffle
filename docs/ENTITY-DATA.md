@@ -65,6 +65,7 @@ Legend:
 | misbhv               | MISBHV Sp. z o.o.                            | 0000843876                          | -                           | misbhv                                                     | DONE   |
 | foodsbyann           | Levann Sp. z o.o.                            | 0000897526                          | FoodsByAnn                  | foods_by_ann                                               | DONE   |
 | momentous            | Momentous (foreign, USA)                     | -                                   | livemomentous               | live.momentous (+YT @live.momentous)                       | DONE   |
+| dawidpodsiadlo       | Merchbox Maciej Rabeko Piotr Zawadzki sp.j.  | - (NIP 5223252333)                  | podsiadlo.dawid             | dylanwishop (+YT @official_dawid_podsiadlo)                | DONE   |
 
 ## Persons (in D1, migration 0020)
 
