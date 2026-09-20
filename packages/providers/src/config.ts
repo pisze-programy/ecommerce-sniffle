@@ -638,6 +638,50 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     enabled: true,
     currency: 'PLN',
   },
+  // Shopify headless (Hydrogen). The storefront routes every path, so
+  // https://wasalaa.com/products.json returns 404. The origin
+  // https://wasalaa.myshopify.com/products.json lists the catalog.
+  // The UCP cart clamp at https://wasalaa.com/api/ucp/mcp reveals the
+  // exact count. Shopify caps a cart line at 50, but this shop caps it
+  // at 25. The full run of 2026-09-20 reads max 25. A stock of 25 or
+  // more is masked as 25.
+  // The /api/mcp endpoint serves only search_shop_policies_and_faqs.
+  {
+    id: 'wasalaa',
+    domain: 'wasalaa.com',
+    platform: 'shopify',
+    schedule: '45 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'ucp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 30,
+    requiresProxy: true,
+    endpoint: 'https://wasalaa.myshopify.com/products.json',
+    entityId: 'wasalaa',
+    enabled: true,
+    currency: 'PLN',
+  },
+  // Shopify standard. The catalog is public on the domain. The UCP cart
+  // clamp at https://ooponka.com/api/ucp/mcp reveals the exact count.
+  // Shopify caps the cart line at 50. A stock of 50 or more is masked
+  // as 50. The owner is Patrycja Wasala-Oponowicz (wiceprezes zarzadu).
+  {
+    id: 'ooponka',
+    domain: 'ooponka.com',
+    platform: 'shopify',
+    schedule: '30 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'ucp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 30,
+    requiresProxy: true,
+    endpoint: 'https://ooponka.com/products.json',
+    entityId: 'ooponka',
+    enabled: true,
+    currency: 'PLN',
+  },
   // Prestashop - cart-reveal (mutation, proxy). Worked well in the runs.
   {
     id: 'laboratoriumpanidomu',
