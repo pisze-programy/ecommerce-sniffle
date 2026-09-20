@@ -1,5 +1,6 @@
 import { ALL_MODULES, createRegistry } from '@ecommerce-sniffle/providers';
 import type { Logger, ProviderModule } from '@ecommerce-sniffle/providers';
+import { countMaskedVariants } from '@ecommerce-sniffle/analysis';
 import { checkMemory, MIN_AVAILABLE_MB, readProcessRss } from './guard.ts';
 import { catalogToIngestSnapshot, readIngestConfig, sendSnapshot } from './ingest.ts';
 import type { IngestConfig } from './ingest.ts';
@@ -84,7 +85,7 @@ async function executeTask(
       ? await provider.revealStock({ productIds: [] })
       : await provider.fetchCatalog();
   const snapshot = catalogToIngestSnapshot(catalog, task.window);
-  const masked = snapshot.variants.filter((variant) => variant.quantity === null).length;
+  const masked = countMaskedVariants(snapshot.variants, module.config.expectedMaskedVariantIds);
   if (masked > 0) {
     logger.error('task masked', {
       taskId: task.taskId,

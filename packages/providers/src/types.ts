@@ -54,6 +54,10 @@ export interface ProviderConfig {
   // variant under two products. The clone breaks the snapshot insert.
   // See providers/shopify/duplicate-products.ts.
   readonly duplicateProductIds?: readonly number[];
+  // Variant ids that stay masked on purpose. The shop does not track the
+  // exact stock. The failure report skips them. The data keeps the mask.
+  // See providers/expected-masked.ts.
+  readonly expectedMaskedVariantIds?: readonly string[];
   readonly adaptiveRate?: AdaptiveRateConfig;
 }
 

@@ -179,6 +179,19 @@ describe('PROVIDERS config', () => {
       }
     }
   });
+
+  it('adds expected masked variant ids only to the untracked shops', () => {
+    for (const provider of PROVIDERS) {
+      const ids = provider.expectedMaskedVariantIds;
+      if (provider.id === 'rever') {
+        expect(ids, provider.id).toHaveLength(28);
+      } else if (provider.id === 'misbhv') {
+        expect(ids, provider.id).toEqual(['53573630099795']);
+      } else {
+        expect(ids, provider.id).toBeUndefined();
+      }
+    }
+  });
 });
 
 describe('validateConfig adaptive rate', () => {

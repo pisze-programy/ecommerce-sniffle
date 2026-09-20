@@ -1,5 +1,6 @@
 import { ALL_MODULES, createRegistry } from '@ecommerce-sniffle/providers';
 import type { Logger, ProviderModule } from '@ecommerce-sniffle/providers';
+import { countMaskedVariants } from '@ecommerce-sniffle/analysis';
 import { runShopPipeline } from './pipeline.ts';
 import type { PipelineResult } from './pipeline.ts';
 import type { D1Like } from './storage.ts';
@@ -88,7 +89,7 @@ async function runOneTask(
         ? (result.maskedCount ?? 0)
         : latest === null
           ? 0
-          : latest.variants.filter((variant) => variant.quantity === null).length;
+          : countMaskedVariants(latest.variants, module.config.expectedMaskedVariantIds);
     const variants = latest === null ? 0 : latest.variants.length;
     await store.completeTask(task.taskId, masked, Date.now());
     logger.info('cf task done', {

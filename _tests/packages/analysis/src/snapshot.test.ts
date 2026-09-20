@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Catalog, Variant } from '@ecommerce-sniffle/providers';
-import { catalogToSnapshot } from '../../../../packages/analysis/src/snapshot.ts';
+import { catalogToSnapshot, countMaskedVariants } from '../../../../packages/analysis/src/snapshot.ts';
 
 function variant(overrides: Partial<Variant> = {}): Variant {
   return {
@@ -73,5 +73,48 @@ describe('catalogToSnapshot', () => {
   it('stamps any window name, not only morning or evening', () => {
     const snapshot = catalogToSnapshot(catalog(), 'third-seed', '2026-08-24T06:00:00.000Z');
     expect(snapshot.window).toBe('third-seed');
+  });
+});
+
+describe('countMaskedVariants', () => {
+  it('counts every null quantity', () => {
+    const snapshot = catalogToSnapshot(
+      {
+        domain: 'rever.com.pl',
+        fetchedAt: '2026-08-24T06:00:00.000Z',
+        products: [
+          {
+            id: 'p1',
+            title: 'A',
+            url: 'https://rever.com.pl/produkt/a/',
+            variants: [variant({ id: 'v1', quantity: null }), variant({ id: 'v2', quantity: 5 })],
+          },
+        ],
+      },
+      'morning',
+      '2026-08-24T06:00:00.000Z'
+    );
+    expect(countMaskedVariants(snapshot.variants)).toBe(1);
+  });
+
+  it('skips the expected masked ids', () => {
+    const snapshot = catalogToSnapshot(
+      {
+        domain: 'rever.com.pl',
+        fetchedAt: '2026-08-24T06:00:00.000Z',
+        products: [
+          {
+            id: 'p1',
+            title: 'A',
+            url: 'https://rever.com.pl/produkt/a/',
+            variants: [variant({ id: 'v1', quantity: null }), variant({ id: 'v2', quantity: null })],
+          },
+        ],
+      },
+      'morning',
+      '2026-08-24T06:00:00.000Z'
+    );
+    expect(countMaskedVariants(snapshot.variants, ['v1'])).toBe(1);
+    expect(countMaskedVariants(snapshot.variants, ['v1', 'v2'])).toBe(0);
   });
 });

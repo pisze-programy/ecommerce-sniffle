@@ -204,6 +204,49 @@ describe('runExecutorPass', () => {
     expect(record?.context['masked']).toBe(1);
   });
 
+  it('does not report a masked variant that is expected to be masked', async () => {
+    vi.stubEnv('BACKEND_URL', 'https://backend.example.com');
+    vi.stubEnv('INGEST_SECRET', 's3cret');
+    const capture = capturingLogger();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => '{}' });
+    vi.stubGlobal('fetch', fetchMock);
+    const catalog = {
+      domain: 'fake.pl',
+      fetchedAt: '2026-08-24T06:00:00.000Z',
+      products: [
+        {
+          id: '1',
+          title: 'X',
+          url: 'https://fake.pl/p/x',
+          variants: [
+            {
+              id: '1',
+              title: 'S',
+              sku: null,
+              price: { amount: 1, currency: 'PLN' },
+              regularPrice: null,
+              available: true,
+              quantity: null,
+            },
+          ],
+        },
+      ],
+    };
+    const base = fakeGetModule(catalog);
+    const module: ProviderModule = {
+      ...base,
+      config: { ...base.config, expectedMaskedVariantIds: ['1'] },
+    };
+    const queue = fakeQueue([task()]);
+    const result = await runExecutorPass(capture.logger, {
+      queueClient: queue,
+      modules: [module],
+    });
+    expect(result.failed).toBe(0);
+    expect(queue.calls.some((call) => call.startsWith('complete:morning-forcer-2026-08-24:0'))).toBe(true);
+    expect(capture.records.some((r) => r.message === 'task masked')).toBe(false);
+  });
+
   it('fails a task when the provider is unknown', async () => {
     vi.stubEnv('BACKEND_URL', 'https://backend.example.com');
     vi.stubEnv('INGEST_SECRET', 's3cret');

@@ -54,6 +54,57 @@ export function parseSitemapUrls(xml: string): string[] {
   return urls;
 }
 
+// The simple product pages embed the product data for Google Tag Manager.
+// The data holds the product id and the exact stock level. The variable
+// product pages do not carry a stock level here.
+export interface GtmProductData {
+  readonly internalId: number | null;
+  readonly stockLevel: number | null;
+  readonly stockStatus: string | null;
+}
+
+export function parseGtmProductData(html: string): GtmProductData | null {
+  const match = /name="gtm4wp_product_data"\s+value="([^"]*)"/.exec(html);
+  if (match === null) {
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(decodeHtml(match[1] ?? ''));
+  } catch {
+    return null;
+  }
+  if (typeof data !== 'object' || data === null) {
+    return null;
+  }
+  const obj = data as Readonly<Record<string, unknown>>;
+  return {
+    internalId: typeof obj['internal_id'] === 'number' ? obj['internal_id'] : null,
+    stockLevel: typeof obj['stocklevel'] === 'number' ? obj['stocklevel'] : null,
+    stockStatus: typeof obj['stockstatus'] === 'string' ? obj['stockstatus'] : null,
+  };
+}
+
+// The product id lives in different places per template.
+// A variable product uses the hidden product_id input.
+// A simple product uses the add-to-cart button value.
+// The gtm data holds the id in every case. It is the last fallback.
+export function parseProductId(html: string): string | null {
+  const hidden = /name="product_id"[^>]*value="(\d+)"/.exec(html);
+  if (hidden !== null && hidden[1] !== undefined) {
+    return hidden[1];
+  }
+  const button = /<button[^>]*name="add-to-cart"[^>]*value="(\d+)"/.exec(html);
+  if (button !== null && button[1] !== undefined) {
+    return button[1];
+  }
+  const gtm = parseGtmProductData(html);
+  if (gtm !== null && gtm.internalId !== null) {
+    return String(gtm.internalId);
+  }
+  return null;
+}
+
 export function parseVariationJson(html: string, logger?: Logger): VariationJson[] {
   const match = /data-product_variations="([^"]+)"/.exec(html);
   if (match === null) {
@@ -119,8 +170,7 @@ export function resolveQuantity(maxQty: number | null, isInStock: boolean | null
 }
 
 export function parseProduct(html: string, url: string, logger?: Logger): Product {
-  const idMatch = /name="product_id"[^>]*value="(\d+)"/.exec(html);
-  const productId = idMatch === null ? url : (idMatch[1] ?? url);
+  const productId = parseProductId(html) ?? url;
   const titleMatch = /<title>(.*?)<\/title>/.exec(html);
   const title =
     titleMatch === null
@@ -128,12 +178,17 @@ export function parseProduct(html: string, url: string, logger?: Logger): Produc
       : decodeHtml(titleMatch[1] ?? '')
           .replace(' – rêver Sabina Hajdo - Piórek', '')
           .trim();
-  const soldOut = html.includes('Wyprzedane');
+  const gtm = parseGtmProductData(html);
+  const soldOut = html.includes('Wyprzedane') || gtm?.stockStatus === 'outofstock';
   const priceRaw = /woocommerce-Price-amount[^>]*>(.*?)<\/span>/.exec(html)?.[1];
   const price = priceRaw === undefined ? null : parsePrice(priceRaw);
 
   const variations = parseVariationJson(html, logger);
   if (variations.length === 0) {
+    // A simple product. The gtm data holds the exact stock level.
+    // A missing stock level means the shop does not track the stock.
+    const stockLevel = gtm === null ? null : gtm.stockLevel;
+    const quantity = stockLevel !== null ? stockLevel : soldOut ? 0 : null;
     const variants: Variant[] = [
       {
         id: productId,
@@ -142,7 +197,7 @@ export function parseProduct(html: string, url: string, logger?: Logger): Produc
         price: money(price === null ? 0 : price),
         regularPrice: null,
         available: !soldOut,
-        quantity: soldOut ? 0 : null,
+        quantity,
       },
     ];
     return { id: productId, title, url, variants };

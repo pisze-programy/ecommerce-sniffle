@@ -3,8 +3,10 @@ import { createLogger } from '../../../../../../packages/providers/src/logger.ts
 import type { Logger, LogRecord } from '../../../../../../packages/providers/src/logger.ts';
 import {
   decodeHtml,
+  parseGtmProductData,
   parsePrice,
   parseProduct,
+  parseProductId,
   parseSitemapUrls,
   parseVariationJson,
   resolveQuantity,
@@ -99,6 +101,29 @@ describe('parseProduct', () => {
     expect(product.variants[0]?.price.amount).toBe(299);
   });
 
+  it('reads the exact stock of a simple product from the gtm data', () => {
+    const html =
+      '<html><head><title>Peleryna testowa – rêver Sabina Hajdo - Piórek</title></head>' +
+      '<body><form class="cart"><button type="submit" name="add-to-cart" value="95079">Kup</button></form>' +
+      '<input type="hidden" name="gtm4wp_product_data" value="{&quot;internal_id&quot;:95079,&quot;price&quot;:549,&quot;stocklevel&quot;:7,&quot;stockstatus&quot;:&quot;instock&quot;}"/></body></html>';
+    const product = parseProduct(html, 'https://rever.com.pl/produkt/peleryna-testowa/');
+    expect(product.id).toBe('95079');
+    expect(product.variants[0]?.id).toBe('95079');
+    expect(product.variants[0]?.available).toBe(true);
+    expect(product.variants[0]?.quantity).toBe(7);
+  });
+
+  it('reads a simple product with no stock level as masked', () => {
+    const html =
+      '<html><head><title>Gumka testowa – rêver Sabina Hajdo - Piórek</title></head>' +
+      '<body><form class="cart"><button type="submit" name="add-to-cart" value="95439">Kup</button></form>' +
+      '<input type="hidden" name="gtm4wp_product_data" value="{&quot;internal_id&quot;:95439,&quot;stockstatus&quot;:&quot;instock&quot;}"/></body></html>';
+    const product = parseProduct(html, 'https://rever.com.pl/produkt/gumka-testowa/');
+    expect(product.id).toBe('95439');
+    expect(product.variants[0]?.available).toBe(true);
+    expect(product.variants[0]?.quantity).toBeNull();
+  });
+
   it('parses a sold out simple product with quantity 0', () => {
     const html =
       '<html><head><title>Marynarka testowa – rêver Sabina Hajdo - Piórek</title></head>' +
@@ -116,6 +141,51 @@ describe('parseProduct', () => {
     expect(product.variants).toHaveLength(1);
     expect(product.variants[0]?.title).toBe('m');
     expect(product.variants[0]?.quantity).toBe(4);
+  });
+});
+
+describe('parseGtmProductData', () => {
+  it('reads the id, the stock level and the status', () => {
+    const html =
+      '<input type="hidden" name="gtm4wp_product_data" value="{&quot;internal_id&quot;:95079,&quot;stocklevel&quot;:7,&quot;stockstatus&quot;:&quot;instock&quot;}"/>';
+    const data = parseGtmProductData(html);
+    expect(data?.internalId).toBe(95079);
+    expect(data?.stockLevel).toBe(7);
+    expect(data?.stockStatus).toBe('instock');
+  });
+
+  it('keeps the stock level null when the shop does not send it', () => {
+    const html =
+      '<input type="hidden" name="gtm4wp_product_data" value="{&quot;internal_id&quot;:95439,&quot;stockstatus&quot;:&quot;instock&quot;}"/>';
+    const data = parseGtmProductData(html);
+    expect(data?.internalId).toBe(95439);
+    expect(data?.stockLevel).toBeNull();
+  });
+
+  it('returns null for a missing or invalid block', () => {
+    expect(parseGtmProductData('<div></div>')).toBeNull();
+    expect(parseGtmProductData('<input name="gtm4wp_product_data" value="not-json"/>')).toBeNull();
+  });
+});
+
+describe('parseProductId', () => {
+  it('reads the hidden product_id input first', () => {
+    const html = '<input type="hidden" name="product_id" value="123"/>';
+    expect(parseProductId(html)).toBe('123');
+  });
+
+  it('reads the add-to-cart button value for a simple product', () => {
+    const html = '<button type="submit" name="add-to-cart" value="95079">Kup</button>';
+    expect(parseProductId(html)).toBe('95079');
+  });
+
+  it('falls back to the gtm internal id', () => {
+    const html = '<input name="gtm4wp_product_data" value="{&quot;internal_id&quot;:95079}"/>';
+    expect(parseProductId(html)).toBe('95079');
+  });
+
+  it('returns null when no id exists', () => {
+    expect(parseProductId('<div></div>')).toBeNull();
   });
 });
 

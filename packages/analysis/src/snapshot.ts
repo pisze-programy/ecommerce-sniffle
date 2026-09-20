@@ -29,3 +29,20 @@ export function catalogToSnapshot(catalog: Catalog, window: SnapshotWindow, snap
     variants,
   };
 }
+
+// A masked variant has no quantity. The report must see it. Some
+// variants stay masked on purpose (the shop does not track the stock).
+// The config holds those ids. The count skips them.
+export function countMaskedVariants(
+  variants: readonly VariantState[],
+  expectedMaskedVariantIds?: readonly string[]
+): number {
+  const expected = new Set<string>(expectedMaskedVariantIds ?? []);
+  let masked = 0;
+  for (const variant of variants) {
+    if (variant.quantity === null && !expected.has(variant.variantId)) {
+      masked += 1;
+    }
+  }
+  return masked;
+}

@@ -2,6 +2,7 @@ import type { AdaptiveRateConfig, ProviderConfig } from './types.ts';
 import { assertNonEmptyString, assertPositiveFinite, assertPositiveInteger } from './helpers.ts';
 import { EXCLUDED_STOCK_IDS } from './providers/shoper/excluded-stock-ids.ts';
 import { DUPLICATE_PRODUCT_IDS } from './providers/shopify/duplicate-products.ts';
+import { EXPECTED_MASKED_VARIANT_IDS } from './providers/expected-masked.ts';
 import { LEGACY_PROVIDERS } from './config.legacy.ts';
 
 // Run recon before you add a provider. Recon checks the bot vendor,
@@ -897,10 +898,13 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
 export const PROVIDERS: readonly ProviderConfig[] = RAW_CONFIGS.map((config) => {
   const excluded = EXCLUDED_STOCK_IDS[config.id];
   const duplicates = DUPLICATE_PRODUCT_IDS[config.id];
-  if (excluded === undefined && duplicates === undefined) {
+  const expectedMasked = EXPECTED_MASKED_VARIANT_IDS[config.id];
+  if (excluded === undefined && duplicates === undefined && expectedMasked === undefined) {
     return validateConfig(config);
   }
   const withExcluded = excluded === undefined ? config : { ...config, excludedStockIds: excluded };
   const withDuplicates = duplicates === undefined ? withExcluded : { ...withExcluded, duplicateProductIds: duplicates };
-  return validateConfig(withDuplicates);
+  const withExpectedMasked =
+    expectedMasked === undefined ? withDuplicates : { ...withDuplicates, expectedMaskedVariantIds: expectedMasked };
+  return validateConfig(withExpectedMasked);
 });
