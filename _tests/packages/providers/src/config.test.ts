@@ -166,6 +166,19 @@ describe('PROVIDERS config', () => {
       }
     }
   });
+
+  it('adds duplicate product ids only to the two shops with clones', () => {
+    for (const provider of PROVIDERS) {
+      const ids = provider.duplicateProductIds;
+      if (provider.id === 'wasalaa') {
+        expect(ids, provider.id).toHaveLength(81);
+      } else if (provider.id === 'ooponka') {
+        expect(ids, provider.id).toHaveLength(30);
+      } else {
+        expect(ids, provider.id).toBeUndefined();
+      }
+    }
+  });
 });
 
 describe('validateConfig adaptive rate', () => {

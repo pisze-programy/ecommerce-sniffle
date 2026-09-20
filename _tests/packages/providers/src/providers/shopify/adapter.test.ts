@@ -1,12 +1,54 @@
 import { describe, expect, it } from 'vitest';
 import {
+  duplicateProductSet,
+  fetchShopifyCatalog,
   parsePrice,
   parseShopifyCatalog,
   parseShopifyProduct,
   parseShopifyVariant,
 } from '../../../../../../packages/providers/src/providers/shopify/implementations/adapter.ts';
+import { createLogger } from '../../../../../../packages/providers/src/logger.ts';
+import type { LogRecord } from '../../../../../../packages/providers/src/logger.ts';
+import type { ProviderConfig } from '../../../../../../packages/providers/src/types.ts';
 
 const DOMAIN = 'forcer.pl';
+
+function configWithDuplicates(ids: readonly number[] | undefined): ProviderConfig {
+  return {
+    id: 'test',
+    domain: DOMAIN,
+    platform: 'shopify',
+    schedule: '0 2 * * *',
+    window: 'both',
+    mode: 'vps-mutation',
+    stockSource: 'ucp-inventory',
+    ratePerSecond: 1,
+    durationSeconds: 30,
+    requiresProxy: true,
+    endpoint: `https://${DOMAIN}/products.json`,
+    enabled: true,
+    ...(ids === undefined ? {} : { duplicateProductIds: ids }),
+  };
+}
+
+function catalogResponse(): { ok: boolean; status: number; json(): Promise<unknown> } {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      products: [
+        {
+          id: 1,
+          title: 'Original',
+          handle: 'original',
+          variants: [{ id: 11, title: 'OS', price: '1', available: true }],
+        },
+        { id: 2, title: 'Clone', handle: 'clone', variants: [{ id: 11, title: 'OS', price: '1', available: true }] },
+        { id: 3, title: 'Solo', handle: 'solo', variants: [{ id: 31, title: 'OS', price: '2', available: true }] },
+      ],
+    }),
+  };
+}
 
 describe('parsePrice', () => {
   it('parses a PLN price', () => {
@@ -141,5 +183,53 @@ describe('parseShopifyCatalog', () => {
     expect(parseShopifyCatalog(null, DOMAIN)).toEqual([]);
     expect(parseShopifyCatalog({ notProducts: [] }, DOMAIN)).toEqual([]);
     expect(parseShopifyCatalog('nope', DOMAIN)).toEqual([]);
+  });
+});
+
+describe('duplicateProductSet', () => {
+  it('returns an empty set when the config has no list', () => {
+    expect(duplicateProductSet(configWithDuplicates(undefined)).size).toBe(0);
+  });
+
+  it('returns the product ids as strings', () => {
+    const set = duplicateProductSet(configWithDuplicates([2, 5]));
+    expect(set.has('2')).toBe(true);
+    expect(set.has('5')).toBe(true);
+    expect(set.has('1')).toBe(false);
+  });
+});
+
+describe('fetchShopifyCatalog with exclusions', () => {
+  it('keeps every product when the exclude set is empty', async () => {
+    const catalog = await fetchShopifyCatalog(
+      DOMAIN + '/products.json',
+      DOMAIN,
+      createLogger(() => {}),
+      catalogResponse,
+      new Set()
+    );
+    expect(catalog.products.map((p) => p.id)).toEqual(['1', '2', '3']);
+  });
+
+  it('skips the excluded product', async () => {
+    const catalog = await fetchShopifyCatalog(
+      DOMAIN + '/products.json',
+      DOMAIN,
+      createLogger(() => {}),
+      catalogResponse,
+      new Set(['2'])
+    );
+    expect(catalog.products.map((p) => p.id)).toEqual(['1', '3']);
+  });
+
+  it('logs a warning for every skipped duplicate product', async () => {
+    const records: LogRecord[] = [];
+    const logger = createLogger((record) => {
+      records.push(record);
+    });
+    await fetchShopifyCatalog(DOMAIN + '/products.json', DOMAIN, logger, catalogResponse, new Set(['2']));
+    const skip = records.filter((record) => record.message === 'shopify.duplicate product skipped');
+    expect(skip).toHaveLength(1);
+    expect(skip[0]?.context['productId']).toBe('2');
   });
 });

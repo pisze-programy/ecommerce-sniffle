@@ -1,5 +1,5 @@
 import type { Logger } from '../../../logger.ts';
-import type { Catalog, Money, Product, Variant } from '../../../types.ts';
+import type { Catalog, Money, Product, ProviderConfig, Variant } from '../../../types.ts';
 
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -96,6 +96,24 @@ type CatalogFetch = (
   init?: RequestInit
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
+// The skip set for a provider. The config holds the duplicate product ids.
+export function duplicateProductSet(config: ProviderConfig): ReadonlySet<string> {
+  const ids = config.duplicateProductIds;
+  if (ids === undefined) {
+    return new Set<string>();
+  }
+  return new Set<string>(ids.map((id) => String(id)));
+}
+
+// Fetch the catalog and skip the duplicate products from the config.
+export function fetchCatalogForConfig(
+  config: ProviderConfig,
+  logger: Logger,
+  fetchFn: CatalogFetch = fetch
+): Promise<Catalog> {
+  return fetchShopifyCatalog(config.endpoint, config.domain, logger, fetchFn, duplicateProductSet(config));
+}
+
 async function fetchPage(endpoint: string, page: number, fetchFn: CatalogFetch): Promise<unknown> {
   const separator = endpoint.includes('?') ? '&' : '?';
   const url = `${endpoint}${separator}limit=${PAGE_SIZE}&page=${page}`;
@@ -118,9 +136,11 @@ export async function fetchShopifyCatalog(
   endpoint: string,
   domain: string,
   logger: Logger,
-  fetchFn: CatalogFetch = fetch
+  fetchFn: CatalogFetch = fetch,
+  excludeProductIds: ReadonlySet<string> = new Set<string>()
 ): Promise<Catalog> {
   const products: Product[] = [];
+  let skipped = 0;
   let page = 1;
   let pageCount = 0;
   while (true) {
@@ -129,13 +149,20 @@ export async function fetchShopifyCatalog(
     }
     const data = await fetchPage(endpoint, page, fetchFn);
     const parsed = parseShopifyCatalog(data, domain);
-    products.push(...parsed);
+    for (const product of parsed) {
+      if (excludeProductIds.has(product.id)) {
+        skipped += 1;
+        logger.warn('shopify.duplicate product skipped', { domain, productId: product.id });
+        continue;
+      }
+      products.push(product);
+    }
     pageCount += 1;
     if (parsed.length < PAGE_SIZE) {
       break;
     }
     page += 1;
   }
-  logger.debug('shopify catalog fetched', { domain, pages: pageCount, products: products.length });
+  logger.debug('shopify catalog fetched', { domain, pages: pageCount, products: products.length, skipped });
   return { domain, fetchedAt: new Date().toISOString(), products };
 }

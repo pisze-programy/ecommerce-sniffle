@@ -4,7 +4,7 @@ import type { WrappedFetch } from '../../../network/manager.ts';
 import type { DirectFetch } from '../../../module.ts';
 import type { Logger } from '../../../logger.ts';
 import type { Catalog, Product, ProviderConfig, StockRevealTarget, StockRevealer, Variant } from '../../../types.ts';
-import { fetchShopifyCatalog } from './adapter.ts';
+import { fetchCatalogForConfig } from './adapter.ts';
 import { createProbeFetch } from './cart-probe.ts';
 import { buildBatches, mcpVariantTitle, toMcpGid } from './mcp-inventory.ts';
 
@@ -320,7 +320,7 @@ async function revealStockImpl(
   catalogFetch: WrappedFetch,
   probeFetch: WrappedFetch
 ): Promise<Catalog> {
-  const catalog = await fetchShopifyCatalog(config.endpoint, config.domain, logger, catalogFetch);
+  const catalog = await fetchCatalogForConfig(config, logger, catalogFetch);
   const wanted = new Set<string>(target.productIds);
   const entries = buildEntries(catalog, wanted);
   const batches = buildBatches(entries, UCP_BATCH);
@@ -405,7 +405,7 @@ export function buildUcpInventoryProvider(
   return buildStockRevealer(
     config,
     logger,
-    async (): Promise<Catalog> => fetchShopifyCatalog(config.endpoint, config.domain, logger, catalogFetch),
+    async (): Promise<Catalog> => fetchCatalogForConfig(config, logger, catalogFetch),
     async (target: StockRevealTarget): Promise<Catalog> =>
       revealStockImpl(target, config, logger, catalogFetch, probeFetch)
   );

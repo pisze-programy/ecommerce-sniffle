@@ -50,6 +50,10 @@ export interface ProviderConfig {
   // report layer to draw the entity graph. The VPS does not use it.
   readonly entityId?: string;
   readonly excludedStockIds?: readonly number[];
+  // Product ids the shopify catalog fetch skips. The shop lists the same
+  // variant under two products. The clone breaks the snapshot insert.
+  // See providers/shopify/duplicate-products.ts.
+  readonly duplicateProductIds?: readonly number[];
   readonly adaptiveRate?: AdaptiveRateConfig;
 }
 
