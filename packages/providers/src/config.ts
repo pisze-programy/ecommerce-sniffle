@@ -663,6 +663,10 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     entityId: 'wasalaa',
     enabled: true,
     currency: 'PLN',
+    // The combined-products app lists a shell product twice. The shell
+    // carries this tag and shares the variant ids with the source. The
+    // catalog dedupe drops the shell.
+    combinedProductTag: 'combinedParentProduct',
   },
   // Shopify standard. The catalog is public on the domain. The UCP cart
   // clamp at https://ooponka.com/api/ucp/mcp reveals the exact count.
@@ -683,6 +687,10 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     entityId: 'ooponka',
     enabled: true,
     currency: 'PLN',
+    // The combined-products app lists a shell product twice. The shell
+    // carries this tag and shares the variant ids with the source. The
+    // catalog dedupe drops the shell.
+    combinedProductTag: 'combinedParentProduct',
   },
   // Prestashop - cart-reveal (mutation, proxy). Worked well in the runs.
   {

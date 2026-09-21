@@ -48,6 +48,19 @@ export function parseShopifyVariant(raw: unknown): Variant | null {
   };
 }
 
+function parseTags(raw: unknown): readonly string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((tag): tag is string => typeof tag === 'string');
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+  }
+  return [];
+}
+
 export function parseShopifyProduct(raw: unknown, domain: string): Product | null {
   if (typeof raw !== 'object' || raw === null) {
     return null;
@@ -72,6 +85,7 @@ export function parseShopifyProduct(raw: unknown, domain: string): Product | nul
     title,
     url: `https://${domain}/products/${handle}`,
     variants,
+    tags: parseTags(obj['tags']),
   };
 }
 
@@ -105,13 +119,87 @@ export function duplicateProductSet(config: ProviderConfig): ReadonlySet<string>
   return new Set<string>(ids.map((id) => String(id)));
 }
 
-// Fetch the catalog and skip the duplicate products from the config.
-export function fetchCatalogForConfig(
+// The shop's combined-products app lists one product twice: a shell and
+// its source. Both carry the same variant ids. The snapshots table holds
+// one row per (shop, time, variant). The second product breaks the
+// insert. Drop the tagged shell. Never drop a product without the tag.
+// A tagged product that shares no variant stays.
+export function dedupeCombinedProducts(catalog: Catalog, tag: string, logger: Logger): Catalog {
+  const owners = new Map<string, number[]>();
+  catalog.products.forEach((product, index) => {
+    for (const variant of product.variants) {
+      const list = owners.get(variant.id);
+      if (list === undefined) {
+        owners.set(variant.id, [index]);
+      } else {
+        list.push(index);
+      }
+    }
+  });
+  const dropped = new Map<number, Set<string>>();
+  for (const [variantId, indexes] of owners) {
+    if (indexes.length < 2) {
+      continue;
+    }
+    const tagged = indexes.filter((index) => {
+      const product = catalog.products[index];
+      return product !== undefined && (product.tags ?? []).includes(tag);
+    });
+    const untagged = indexes.filter((index) => !tagged.includes(index));
+    // A real product owns the variant. Drop it from the tagged shells only.
+    // When every owner is tagged, or none is, keep the first and drop the
+    // rest. Exactly one owner always remains. The insert cannot collide.
+    const losers = tagged.length > 0 && untagged.length > 0 ? tagged : indexes.slice(1);
+    for (const index of losers) {
+      const set = dropped.get(index);
+      if (set === undefined) {
+        dropped.set(index, new Set([variantId]));
+      } else {
+        set.add(variantId);
+      }
+    }
+  }
+  const products: Product[] = [];
+  let skipped = 0;
+  catalog.products.forEach((product, index) => {
+    const drop = dropped.get(index);
+    if (drop === undefined) {
+      products.push(product);
+      return;
+    }
+    const variants = product.variants.filter((variant) => !drop.has(variant.id));
+    if (variants.length === 0) {
+      skipped += 1;
+      logger.warn('shopify.combined product skipped', { domain: catalog.domain, productId: product.id });
+      return;
+    }
+    products.push({ ...product, variants });
+  });
+  if (skipped > 0) {
+    logger.debug('shopify combined dedupe', { domain: catalog.domain, skipped });
+  }
+  return { ...catalog, products };
+}
+
+// Fetch the catalog. Skip the known duplicate products from the config.
+// Then drop the combined-product shells that are not on the list.
+export async function fetchCatalogForConfig(
   config: ProviderConfig,
   logger: Logger,
   fetchFn: CatalogFetch = fetch
 ): Promise<Catalog> {
-  return fetchShopifyCatalog(config.endpoint, config.domain, logger, fetchFn, duplicateProductSet(config));
+  const catalog = await fetchShopifyCatalog(
+    config.endpoint,
+    config.domain,
+    logger,
+    fetchFn,
+    duplicateProductSet(config)
+  );
+  const tag = config.combinedProductTag;
+  if (tag === undefined) {
+    return catalog;
+  }
+  return dedupeCombinedProducts(catalog, tag, logger);
 }
 
 async function fetchPage(endpoint: string, page: number, fetchFn: CatalogFetch): Promise<unknown> {

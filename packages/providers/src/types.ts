@@ -52,8 +52,15 @@ export interface ProviderConfig {
   readonly excludedStockIds?: readonly number[];
   // Product ids the shopify catalog fetch skips. The shop lists the same
   // variant under two products. The clone breaks the snapshot insert.
-  // See providers/shopify/duplicate-products.ts.
+  // See providers/shopify/duplicate-products.ts. The combinedProductTag
+  // dedupe is the safety net for a new clone that is not on this list.
   readonly duplicateProductIds?: readonly number[];
+  // The shop's combined-products app lists one product twice: a shell and
+  // its source. Both carry the same variant ids. The shell holds this tag.
+  // The catalog dedupe runs after the duplicateProductIds filter. It keeps
+  // the source and drops the shell. Unset means no dedupe.
+  // See providers/shopify/implementations/adapter.ts.
+  readonly combinedProductTag?: string;
   // Variant ids that stay masked on purpose. The shop does not track the
   // exact stock. The failure report skips them. The data keeps the mask.
   // See providers/expected-masked.ts.
@@ -81,6 +88,8 @@ export interface Product {
   readonly title: string;
   readonly url: string;
   readonly variants: readonly Variant[];
+  // The shop tags. The combined-product dedupe reads them.
+  readonly tags?: readonly string[];
 }
 
 export interface Catalog {

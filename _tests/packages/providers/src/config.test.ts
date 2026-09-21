@@ -171,11 +171,22 @@ describe('PROVIDERS config', () => {
     for (const provider of PROVIDERS) {
       const ids = provider.duplicateProductIds;
       if (provider.id === 'wasalaa') {
-        expect(ids, provider.id).toHaveLength(81);
+        expect(ids, provider.id).toHaveLength(82);
       } else if (provider.id === 'ooponka') {
         expect(ids, provider.id).toHaveLength(30);
       } else {
         expect(ids, provider.id).toBeUndefined();
+      }
+    }
+  });
+
+  it('sets the combined product tag only on the two shops with combined listings', () => {
+    for (const provider of PROVIDERS) {
+      const tag = provider.combinedProductTag;
+      if (provider.id === 'wasalaa' || provider.id === 'ooponka') {
+        expect(tag, provider.id).toBe('combinedParentProduct');
+      } else {
+        expect(tag, provider.id).toBeUndefined();
       }
     }
   });
