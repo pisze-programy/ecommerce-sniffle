@@ -1,9 +1,18 @@
 import { Hono } from 'hono';
 import { runGetPipeline } from '../services/run.ts';
 import { createTaskStore } from '../services/queue.ts';
+import { SEED_WINDOWS } from '../services/schedule.ts';
 import type { ProviderModule } from '@ecommerce-sniffle/providers';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
+
+// A manual run uses the first seed window. The window name must match a
+// SEED_WINDOWS entry. Any other value hides the events from the shop
+// page, because the report groups the changes by seed window.
+function manualWindow(): string {
+  const first = SEED_WINDOWS[0];
+  return first === undefined ? 'manual' : first.id;
+}
 
 export function createRunRoutes(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   const api = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -26,7 +35,7 @@ export function createRunRoutes(): Hono<{ Bindings: Env; Variables: AppVariables
       if (!module.config.enabled || module.config.mode !== 'cf-get') {
         continue;
       }
-      await seedCfTask(store, module, `manual-${now}-${module.config.id}`, now);
+      await seedCfTask(store, module, `manual-${now}-${module.config.id}`, now, manualWindow());
       seeded += 1;
     }
     const results = await runGetPipeline(c.get('db'), c.env, logger, modules);
@@ -46,14 +55,15 @@ async function seedCfTask(
   store: ReturnType<typeof createTaskStore>,
   module: ProviderModule,
   taskId: string,
-  now: number
+  now: number,
+  window: string
 ): Promise<void> {
   await store.createTask({
     taskId,
     providerId: module.config.id,
     domain: module.config.domain,
     mode: 'cf-get',
-    window: 'both',
+    window,
     status: 'pending',
     attempts: 0,
     leaseUntil: null,

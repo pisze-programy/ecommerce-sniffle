@@ -8,6 +8,7 @@ import type { AppVariables } from '../../../../backend/src/routes/api.ts';
 import type { Env } from '../../../../backend/src/env/types.ts';
 import type { D1Like, D1Statement, Storage, SeriesPoint, DayEvent } from '../../../../backend/src/services/storage.ts';
 import { MemoryQueueDb } from '../services/memory-queue-db.ts';
+import { SEED_WINDOWS } from '../../../../backend/src/services/schedule.ts';
 import type { DailyStats, Snapshot, StockEvent } from '@ecommerce-sniffle/analysis';
 import { dayBefore } from '../../../../backend/src/services/report/format.ts';
 
@@ -179,13 +180,14 @@ function silentLogger(): Logger {
 
 function buildApp(
   storage: Storage,
-  modules: readonly ProviderModule[] = []
+  modules: readonly ProviderModule[] = [],
+  db: MemoryQueueDb = new MemoryQueueDb()
 ): Hono<{ Bindings: Env; Variables: AppVariables }> {
   const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
   app.use('*', async (c, next) => {
     c.set('logger', silentLogger());
     c.set('storage', storage);
-    c.set('db', new MemoryQueueDb());
+    c.set('db', db);
     c.set('modules', modules);
     await next();
   });
@@ -333,6 +335,17 @@ describe('api /run', () => {
     const body = (await response.json()) as { results: { ok: boolean; providerId: string }[] };
     expect(body.results).toHaveLength(1);
     expect(body.results[0]?.ok).toBe(true);
+  });
+
+  it('seeds a manual task with a real seed window, not both', async () => {
+    const db = new MemoryQueueDb();
+    const app = buildApp(new MemoryStorage(), [mockProviderModule()], db);
+    await app.request('/run');
+    const seeded = [...db.tasks.values()];
+    expect(seeded).toHaveLength(1);
+    const window = seeded[0]?.window;
+    expect(SEED_WINDOWS.map((entry) => entry.id)).toContain(window);
+    expect(window).not.toBe('both');
   });
 
   it('returns 404 for an unknown shop', async () => {
