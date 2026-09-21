@@ -52,6 +52,16 @@ Useful parameters:
 - `limit`: page size, up to about 250
 - `fields`: comma-separated field list
 
+## Page id source
+
+The page id must come from the Ads Library `view_all_page_id`.
+Open the page in the Ads Library and copy the id from the URL.
+A `facebook.com/profile.php?id=` value is a profile, not a page.
+The API answers HTTP 400 `Invalid Page ID` for a profile id.
+One bad id fails the whole batch of ten.
+The fetch splits a failed batch and retries per half.
+Only the bad id fails. The good ids still return.
+
 ## Access token
 
 Store the token as the secret `META_AD_TOKEN`.
