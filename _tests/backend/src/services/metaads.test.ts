@@ -232,6 +232,42 @@ describe('fetchActiveAds', () => {
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].reason).toContain('page cap');
   });
+
+  it('isolates an invalid page id and keeps the good ones', async () => {
+    const good = ['1001', '1002', '1003'];
+    const bad = '9999';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        const url = new URL(String(input));
+        const ids = JSON.parse(url.searchParams.get('search_page_ids') ?? '[]') as readonly number[];
+        if (ids.includes(Number(bad))) {
+          return new Response(
+            JSON.stringify({ error: { code: 33, message: 'Invalid Page ID', error_subcode: 2334021 } }),
+            { status: 400 }
+          );
+        }
+        const data = ids.map((id) => adRow({ id: `ad-${id}`, page_id: String(id) }));
+        return new Response(JSON.stringify({ data, paging: {} }), { status: 200 });
+      })
+    );
+    const { logger, records } = makeLogger();
+    const deps: MetaFetchDeps = { token: 'tok', logger };
+    const result = await fetchActiveAds([...good, bad], new Map(), deps);
+    expect(result.failed.map((failure) => failure.pageId)).toEqual([bad]);
+    expect(result.failed[0]?.reason).toContain('HTTP 400');
+    expect([...result.ads.map((ad) => ad.pageId)].sort()).toEqual([...good].sort());
+    expect(records.some((record) => record.message === 'metaads.batchSplit')).toBe(true);
+  });
+
+  it('does not split a batch on a non-client error', async () => {
+    stubFetchSequential([{ error: { code: 190, message: 'token expired' } }]);
+    const { logger, records } = makeLogger();
+    const deps: MetaFetchDeps = { token: 'tok', logger };
+    const result = await fetchActiveAds(['page-a', 'page-b'], new Map(), deps);
+    expect(result.failed).toHaveLength(2);
+    expect(records.some((record) => record.message === 'metaads.batchSplit')).toBe(false);
+  });
 });
 
 describe('runMetaAdsFetch', () => {

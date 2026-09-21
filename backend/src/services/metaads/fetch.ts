@@ -241,10 +241,9 @@ function failAll(pageIds: readonly string[], reason: string): readonly MetaRunFa
   return pageIds.map((pageId) => ({ pageId, reason }));
 }
 
-// Fetches all active ads for a batch of page ids.
-// One call carries up to ten page ids.
+// Fetches all active ads for a batch of page ids in one call chain.
 // `failed` lists the page ids whose fetch did not complete and the reason.
-export async function fetchActiveAds(
+async function fetchBatchOnce(
   pageIds: readonly string[],
   entityIds: ReadonlyMap<string, string>,
   deps: MetaFetchDeps
@@ -332,4 +331,28 @@ export async function fetchActiveAds(
   }
   deps.logger.info('metaads.batchFetched', { pageIds: pageIds.length, pages, ads: result.length });
   return { ads: result, failed: [] };
+}
+
+// One bad page id poisons a whole batch. The API answers HTTP 400
+// "Invalid Page ID" for the batch. Split the batch and retry per half.
+// Only the truly bad id fails. A rate limit is not split: the call
+// already backed off.
+export async function fetchActiveAds(
+  pageIds: readonly string[],
+  entityIds: ReadonlyMap<string, string>,
+  deps: MetaFetchDeps
+): Promise<{ readonly ads: readonly MetaAd[]; readonly failed: readonly MetaRunFailure[] }> {
+  const result = await fetchBatchOnce(pageIds, entityIds, deps);
+  if (result.failed.length === 0 || pageIds.length <= 1) {
+    return result;
+  }
+  const reason = result.failed[0]?.reason ?? '';
+  if (!reason.includes('HTTP 400') && !reason.includes('code 33')) {
+    return result;
+  }
+  const mid = Math.ceil(pageIds.length / 2);
+  deps.logger.warn('metaads.batchSplit', { pages: pageIds.length, reason });
+  const left = await fetchActiveAds(pageIds.slice(0, mid), entityIds, deps);
+  const right = await fetchActiveAds(pageIds.slice(mid), entityIds, deps);
+  return { ads: [...left.ads, ...right.ads], failed: [...left.failed, ...right.failed] };
 }
