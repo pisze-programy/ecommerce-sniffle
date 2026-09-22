@@ -2,6 +2,7 @@ import type { ProviderModule } from './module.ts';
 import type { Logger } from './logger.ts';
 import { createRegistry } from './registry.ts';
 import { createLogger, consoleSink } from './logger.ts';
+import { PROVIDERS } from './config.ts';
 
 import { forcerModule } from './providers/shopify/forcer.ts';
 import { misbhvModule } from './providers/shopify/misbhv.ts';
@@ -128,6 +129,23 @@ export const ALL_MODULES: readonly ProviderModule[] = [
   wasalaaModule,
   ooponkaModule,
 ];
+
+// Every enabled provider in the config must have a module. A config
+// without a module would enqueue a task that no worker can run. The
+// worker would fail the task. Fail at import time instead.
+export function assertModuleCoverage(
+  modules: readonly ProviderModule[],
+  providers: readonly { id: string; enabled: boolean }[]
+): void {
+  const ids = new Set<string>(modules.map((module) => module.config.id));
+  for (const provider of providers) {
+    if (provider.enabled && !ids.has(provider.id)) {
+      throw new Error(`config provider ${provider.id} has no module`);
+    }
+  }
+}
+
+assertModuleCoverage(ALL_MODULES, PROVIDERS);
 
 export function createDefaultRegistry() {
   return createRegistry(ALL_MODULES);

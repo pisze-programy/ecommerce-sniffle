@@ -52,6 +52,14 @@ export default {
     const now = Date.now();
     const day = new Date(now).toISOString().slice(0, 10);
     if (controller.cron === '0 18 * * *' || controller.cron === '0 19 * * *') {
+      // The seed cron runs the cf-get pipeline with a short budget. A slow
+      // provider can push a later cf-get task past the budget. The task
+      // then waits until the next day. Drain the leftovers here, the same
+      // day. This cron fires at 20:00 Warsaw, after the 18:00 Warsaw seed.
+      const drained = await runGetPipeline(env.DB, env, logger);
+      if (drained.length > 0) {
+        logger.info('cf get drained', { processed: drained.length });
+      }
       const offset = warsawUtcOffsetHours(new Date(now));
       // The collection runs at 20:00 Warsaw time. Warsaw uses UTC+2 in
       // summer and UTC+1 in winter. Only the matching cron runs the job.

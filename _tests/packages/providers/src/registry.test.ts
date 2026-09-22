@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRegistry } from '../../../../packages/providers/src/registry.ts';
-import { ALL_MODULES } from '../../../../packages/providers/src/index.ts';
+import { ALL_MODULES, assertModuleCoverage } from '../../../../packages/providers/src/index.ts';
+import { PROVIDERS } from '../../../../packages/providers/src/config.ts';
 import type { ProviderModule } from '../../../../packages/providers/src/module.ts';
 
 const fixtureConfig = {
@@ -60,5 +61,21 @@ describe('createRegistry', () => {
     const registry = createRegistry([]);
     expect(registry.modules).toHaveLength(0);
     expect(registry.findModule('anything')).toBeNull();
+  });
+});
+
+describe('assertModuleCoverage', () => {
+  it('passes when every enabled provider has a module', () => {
+    expect(() => assertModuleCoverage(ALL_MODULES, PROVIDERS)).not.toThrow();
+  });
+
+  it('throws when an enabled provider has no module', () => {
+    expect(() => assertModuleCoverage([], [{ id: 'ghost', enabled: true }])).toThrow(
+      'config provider ghost has no module'
+    );
+  });
+
+  it('ignores a disabled provider without a module', () => {
+    expect(() => assertModuleCoverage([], [{ id: 'ghost', enabled: false }])).not.toThrow();
   });
 });
