@@ -591,7 +591,20 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
         storage.readSocialStories(userIds, day, socialTo, SOCIAL_REPORT_LIMIT),
         storage.readSocialReels(userIds, day, socialTo, SOCIAL_REPORT_LIMIT),
       ]);
-      return renderSocialCard(store, config.entityId, { profiles, posts, stories, reels });
+      const profileDaysForDay =
+        day === '' ? [] : (await storage.readSocialProfileDays(userIds, day)).filter((entry) => entry.day === day);
+      const latestProfiles = await storage.readLatestSocialProfileDays(userIds);
+      const profileByUser = new Map(latestProfiles.map((entry) => [entry.userId, entry]));
+      for (const entry of profileDaysForDay) {
+        profileByUser.set(entry.userId, entry);
+      }
+      return renderSocialCard(store, config.entityId, {
+        profiles,
+        posts,
+        stories,
+        reels,
+        profileDays: [...profileByUser.values()],
+      });
     })();
     const adsSection =
       adsData === null

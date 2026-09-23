@@ -83,6 +83,7 @@ export interface Storage {
   ): Promise<readonly SocialStory[]>;
   readSocialReels(userIds: readonly string[], from: string, to: string, limit: number): Promise<readonly SocialReel[]>;
   readSocialProfileDays(userIds: readonly string[], fromDay: string): Promise<readonly SocialProfileDay[]>;
+  readLatestSocialProfileDays(userIds: readonly string[]): Promise<readonly SocialProfileDay[]>;
   upsertEntityFinancials(entry: EntityFinancials): Promise<void>;
   readEntityFinancials(entityId: string): Promise<EntityFinancials | null>;
   setEntityLogo(entityId: string, logoKey: string): Promise<void>;
@@ -1341,6 +1342,22 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
           `SELECT platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at FROM social_profile_days WHERE user_id IN (${placeholders}) AND day >= ? ORDER BY day DESC`
         )
         .bind(...userIds, fromDay)
+        .all()) as { results: SocialProfileDayRow[] };
+      return result.results.map(fromSocialProfileDayRow);
+    },
+
+    async readLatestSocialProfileDays(userIds: readonly string[]): Promise<readonly SocialProfileDay[]> {
+      if (userIds.length === 0) {
+        return [];
+      }
+      const placeholders = userIds.map(() => '?').join(',');
+      const columns =
+        'platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at';
+      const result = (await db
+        .prepare(
+          `SELECT ${columns} FROM social_profile_days p WHERE user_id IN (${placeholders}) AND day = (SELECT MAX(day) FROM social_profile_days d WHERE d.user_id = p.user_id AND d.platform = p.platform)`
+        )
+        .bind(...userIds)
         .all()) as { results: SocialProfileDayRow[] };
       return result.results.map(fromSocialProfileDayRow);
     },

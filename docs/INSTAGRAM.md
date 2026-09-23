@@ -380,12 +380,19 @@ to the right. Each strip shows a fixed number of items. The database
 keeps every item.
 
 One item is one small tile. The image keeps a square shape. A post tile
-and a reel tile link to the Instagram permalink. A story tile has no
-link, because a story expires.
+and a reel tile link to the Instagram permalink. A story tile links to
+the full poster image, because a story expires.
 
 Each tile holds the handle and the owner. The owner is the shop name, or
 the person name and the role. This shows if the post belongs to the shop
 or to a related person.
+
+The card holds the daily profile snapshot too. The block shows the day,
+the followers, the engagement, the average likes and comments, the posts
+for each week, the score, the category, the country, and the ad rates.
+The block shows the snapshot of the selected day. When the selected day
+has no snapshot, the block shows the newest snapshot of the handle, with
+its own day.
 
 ## The deploy
 

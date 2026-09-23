@@ -855,6 +855,11 @@ describe('createStorage', () => {
       }
       const days = await storage.readSocialProfileDays(['331874442'], '2026-08-01');
       expect(days[0]?.followers).toBe(100);
+      const latestDays = await storage.readLatestSocialProfileDays(['331874442']);
+      expect(latestDays[0]?.followers).toBe(100);
+      expect(
+        db.calls.some((call) => call.query.includes('social_profile_days') && call.query.includes('MAX(day)'))
+      ).toBe(true);
       const profiles = await storage.readSocialProfiles();
       expect(profiles[0]?.handle).toBe('karolina_pisarek');
     });
