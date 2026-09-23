@@ -8,6 +8,7 @@ import type {
   SocialStory,
 } from '../../../../packages/providers/src/social/types.ts';
 import {
+  entitySocialUserIds,
   renderSocialCard,
   SOCIAL_REPORT_LIMIT,
   socialUserIds,
@@ -159,6 +160,12 @@ describe('socialUserIds', () => {
 
   it('returns nothing for a shop without instagram handles', () => {
     expect(socialUserIds(store(), 'other', profiles())).toEqual([]);
+  });
+});
+
+describe('entitySocialUserIds', () => {
+  it('keeps the company handles and drops the related persons', () => {
+    expect(entitySocialUserIds(store(), 'hdrey-group', profiles())).toEqual(['1']);
   });
 });
 

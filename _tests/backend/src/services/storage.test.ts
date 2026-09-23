@@ -864,6 +864,34 @@ describe('createStorage', () => {
       expect(profiles[0]?.handle).toBe('karolina_pisarek');
     });
 
+    it('counts the social activity of each day across the three tables', async () => {
+      const { logger } = capturingLogger();
+      const db = new MockD1((query) => {
+        if (query.startsWith('SELECT day, SUM(posts)')) {
+          return { results: [{ day: '2026-08-30', posts: 2, stories: 1, reels: 3 }] };
+        }
+        return { results: [] };
+      });
+      const storage = createStorage(db, logger);
+      const rows = await storage.readSocialActivityByDay(['331874442'], '2026-08-01', '2026-09-01');
+      expect(rows).toEqual([{ day: '2026-08-30', posts: 2, stories: 1, reels: 3 }]);
+      const call = db.calls.find((entry) => entry.query.startsWith('SELECT day, SUM(posts)'));
+      expect(call?.query).toContain('social_posts');
+      expect(call?.query).toContain('social_stories');
+      expect(call?.query).toContain('social_reels');
+      expect(call?.args).toEqual([
+        '331874442',
+        '2026-08-01',
+        '2026-09-01',
+        '331874442',
+        '2026-08-01',
+        '2026-09-01',
+        '331874442',
+        '2026-08-01',
+        '2026-09-01',
+      ]);
+    });
+
     it('logs and rethrows on a write failure', async () => {
       const capture = capturingLogger();
       const db = new MockD1(() => {

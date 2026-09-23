@@ -374,4 +374,75 @@ describe('collectSocial', () => {
     expect(payload.stories).toHaveLength(0);
     expect(payload.reels).toHaveLength(0);
   });
+
+  it('falls back to the fetch time when the source sends no publish time', async () => {
+    const captured: Captured[] = [];
+    stubRouting((url) => {
+      if (url.includes('/stories/check/')) {
+        return jsonResponse({ status: 'success', data: { hasStories: true } });
+      }
+      if (url.includes('/stories/')) {
+        return jsonResponse({
+          data: {
+            stories: [{ id: 1, displayUrl: 'u1', takenAt: 0, expiringAt: 0, isVideo: false, owner: { pk: 9 } }],
+          },
+        });
+      }
+      if (url.includes('/reels/')) {
+        return jsonResponse({ data: { reels: [] } });
+      }
+      if (url.includes('/posts/')) {
+        return jsonResponse({
+          data: {
+            posts: {
+              data: {
+                user: {
+                  edge_owner_to_timeline_media: {
+                    page_info: { has_next_page: false, end_cursor: null },
+                    edges: [
+                      {
+                        node: {
+                          id: 3,
+                          shortcode: 'P',
+                          __typename: 'GraphImage',
+                          taken_at_timestamp: 0,
+                          display_url: 'u3',
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+      if (url.includes('/analytics/')) {
+        return jsonResponse({
+          data: {
+            profile: {
+              id: 9,
+              username: 'x',
+              name: 'X',
+              engagement: { followers: 1 },
+              publishing: {},
+              advertisement: {},
+            },
+          },
+        });
+      }
+      return null;
+    }, captured);
+    const payload = await collectSocial(
+      [{ handle: 'x', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null }],
+      { logger: createLogger(() => {}) }
+    );
+    const story = payload.stories[0];
+    const post = payload.posts[0];
+    expect(story?.takenAt).toBe(story?.fetchedAt);
+    expect(story?.takenAt).not.toContain('1970');
+    expect(story?.expiringAt).not.toContain('1970');
+    expect(post?.takenAt).toBe(post?.fetchedAt);
+    expect(post?.takenAt).not.toContain('1970');
+  });
 });

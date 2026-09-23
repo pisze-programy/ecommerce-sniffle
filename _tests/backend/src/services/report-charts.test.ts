@@ -130,14 +130,36 @@ describe('buildWeeklySalesConfig', () => {
 
   it('renders the daily chart with count tooltips', () => {
     const points = [day('2026-09-02', 8, 1200, 4), day('2026-09-03', 5, 700, 0)];
-    const config = buildDailyConfig(points);
+    const config = buildDailyConfig(points, new Map());
     const chart = config.series as Array<{ name: string; type: string }>;
     expect(chart[0]?.name).toBe('sprzedane');
     expect(chart[0]?.type).toBe('bar');
     expect(chart[1]?.name).toBe('dostawione');
-    const tooltip = config.tooltip as { y: { formatter: string } };
-    expect(tooltip.y.formatter).toBe('__FUNC_soldTooltip__');
-    expect(config.formatters?.soldTooltip).toContain("' szt'");
+    const tooltip = config.tooltip as { custom: string };
+    expect(tooltip.custom).toBe('__FUNC_dailyTooltip__');
+    expect(config.formatters?.dailyTooltip).toContain('sprzedane');
+    expect(config.annotations).toBeUndefined();
+  });
+
+  it('marks each day that holds company social activity', () => {
+    const points = [day('2026-09-02', 8, 1200, 4), day('2026-09-03', 5, 700, 0)];
+    const social = new Map([['2026-09-02', { day: '2026-09-02', posts: 2, stories: 1, reels: 3 }]]);
+    const config = buildDailyConfig(points, social);
+    const annotations = config.annotations as {
+      points: Array<{ x: string; y: number; customSVG: { SVG: string } }>;
+    };
+    expect(annotations.points).toHaveLength(1);
+    expect(annotations.points[0]?.x).toBe('09-02');
+    expect(annotations.points[0]?.y).toBe(8);
+    expect(annotations.points[0]?.customSVG.SVG).toContain('>6<');
+    expect(config.formatters?.dailyTooltip).toContain('"p":2');
+  });
+
+  it('skips a day with zero social items', () => {
+    const points = [day('2026-09-02', 8, 1200, 4)];
+    const social = new Map([['2026-09-02', { day: '2026-09-02', posts: 0, stories: 0, reels: 0 }]]);
+    const config = buildDailyConfig(points, social);
+    expect(config.annotations).toBeUndefined();
   });
 });
 

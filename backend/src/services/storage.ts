@@ -82,6 +82,7 @@ export interface Storage {
     limit: number
   ): Promise<readonly SocialStory[]>;
   readSocialReels(userIds: readonly string[], from: string, to: string, limit: number): Promise<readonly SocialReel[]>;
+  readSocialActivityByDay(userIds: readonly string[], from: string, to: string): Promise<readonly SocialDayActivity[]>;
   readSocialProfileDays(userIds: readonly string[], fromDay: string): Promise<readonly SocialProfileDay[]>;
   readLatestSocialProfileDays(userIds: readonly string[]): Promise<readonly SocialProfileDay[]>;
   upsertEntityFinancials(entry: EntityFinancials): Promise<void>;
@@ -117,6 +118,16 @@ export interface DailyPoint {
   // The price bounds of a unit sold that day. Null when nothing sold.
   readonly soldMinPrice?: number | null;
   readonly soldMaxPrice?: number | null;
+}
+
+// The social items one owner published on one day. The count covers every
+// platform that is stored. The value is for the chart overlay. See
+// docs/INSTAGRAM.md.
+export interface SocialDayActivity {
+  readonly day: string;
+  readonly posts: number;
+  readonly stories: number;
+  readonly reels: number;
 }
 
 interface SnapshotRow {
@@ -1330,6 +1341,36 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       const bound = hasRange ? statement.bind(...userIds, from, to, limit) : statement.bind(...userIds, limit);
       const result = (await bound.all()) as { results: SocialReelRow[] };
       return result.results.map(fromSocialReelRow);
+    },
+
+    // One row for each day that holds at least one social item. The three
+    // tables share the taken_at column, so one query counts them all.
+    async readSocialActivityByDay(
+      userIds: readonly string[],
+      from: string,
+      to: string
+    ): Promise<readonly SocialDayActivity[]> {
+      if (userIds.length === 0) {
+        return [];
+      }
+      const placeholders = userIds.map(() => '?').join(',');
+      const sql = `SELECT day, SUM(posts) posts, SUM(stories) stories, SUM(reels) reels FROM (
+        SELECT substr(taken_at, 1, 10) day, 1 posts, 0 stories, 0 reels FROM social_posts WHERE user_id IN (${placeholders}) AND taken_at >= ? AND taken_at < ?
+        UNION ALL
+        SELECT substr(taken_at, 1, 10) day, 0 posts, 1 stories, 0 reels FROM social_stories WHERE user_id IN (${placeholders}) AND taken_at >= ? AND taken_at < ?
+        UNION ALL
+        SELECT substr(taken_at, 1, 10) day, 0 posts, 0 stories, 1 reels FROM social_reels WHERE user_id IN (${placeholders}) AND taken_at >= ? AND taken_at < ?
+      ) GROUP BY day ORDER BY day`;
+      const result = (await db
+        .prepare(sql)
+        .bind(...userIds, from, to, ...userIds, from, to, ...userIds, from, to)
+        .all()) as { results: { day: string; posts: number; stories: number; reels: number }[] };
+      return result.results.map((row) => ({
+        day: row.day,
+        posts: row.posts,
+        stories: row.stories,
+        reels: row.reels,
+      }));
     },
 
     async readSocialProfileDays(userIds: readonly string[], fromDay: string): Promise<readonly SocialProfileDay[]> {

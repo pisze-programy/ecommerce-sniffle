@@ -46,8 +46,12 @@ export interface HandleResult {
   readonly reels: readonly SocialReel[];
 }
 
-function isoFromEpoch(seconds: number): string {
-  return new Date((seconds > 0 ? seconds : 0) * 1000).toISOString();
+// The source sends the publish time. The time is the day of the item, not
+// the day of the collection. A story that appears in the evening and is
+// collected the next day keeps the evening day. A missing time falls back
+// to the fallback, never to 1970.
+function isoFromEpoch(seconds: number, fallback: string): string {
+  return seconds > 0 ? new Date(seconds * 1000).toISOString() : fallback;
 }
 
 function dayFromEpoch(seconds: number): string {
@@ -140,14 +144,15 @@ async function collectHandle(
 
   const stories: SocialStory[] = [];
   for (const story of storiesRaw) {
+    const takenAt = isoFromEpoch(story.takenAt, fetchedAt);
     stories.push({
       platform: 'instagram',
       id: story.id,
       userId,
       mediaType: story.isVideo ? 'video' : 'photo',
       isVideo: story.isVideo,
-      takenAt: isoFromEpoch(story.takenAt),
-      expiringAt: isoFromEpoch(story.expiringAt),
+      takenAt,
+      expiringAt: isoFromEpoch(story.expiringAt, takenAt),
       posterUrl: story.posterUrl,
       r2Key: null,
       fetchedAt,
@@ -162,7 +167,7 @@ async function collectHandle(
       userId,
       shortcode: reel.shortcode,
       permalink: reel.permalink,
-      takenAt: isoFromEpoch(reel.takenAt),
+      takenAt: isoFromEpoch(reel.takenAt, fetchedAt),
       likeCount: reel.likeCount,
       commentCount: reel.commentCount,
       playCount: reel.playCount,
@@ -183,7 +188,7 @@ async function collectHandle(
       permalink: post.permalink,
       type: postType(post.typename),
       isReel: post.isReel,
-      takenAt: isoFromEpoch(post.takenAt),
+      takenAt: isoFromEpoch(post.takenAt, fetchedAt),
       caption: post.caption,
       likes: post.likes,
       comments: post.comments,

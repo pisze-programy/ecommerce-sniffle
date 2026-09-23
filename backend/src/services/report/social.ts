@@ -71,6 +71,32 @@ export function socialUserIds(
     .filter((userId): userId is string => userId !== undefined);
 }
 
+// The Instagram handles of the entity only. The related persons stay out.
+// The Trendy chart counts the company posts, not the person posts.
+function entityHandles(store: EntityStore, entityId: string): readonly string[] {
+  const handles: string[] = [];
+  const entity = findEntity(store, entityId);
+  if (entity !== null) {
+    for (const link of entity.socials) {
+      if (link.platform === 'instagram') {
+        handles.push(link.handle);
+      }
+    }
+  }
+  return handles;
+}
+
+export function entitySocialUserIds(
+  store: EntityStore,
+  entityId: string,
+  profiles: readonly SocialProfile[]
+): readonly string[] {
+  const handleToUserId = new Map(profiles.map((profile) => [profile.handle, profile.userId]));
+  return entityHandles(store, entityId)
+    .map((handle) => handleToUserId.get(handle))
+    .filter((userId): userId is string => userId !== undefined);
+}
+
 function thumb(r2Key: string | null, posterUrl: string | null): string {
   if (r2Key !== null) {
     return `/media/${esc(r2Key)}`;

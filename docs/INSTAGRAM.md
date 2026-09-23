@@ -394,6 +394,21 @@ The block shows the snapshot of the selected day. When the selected day
 has no snapshot, the block shows the newest snapshot of the handle, with
 its own day.
 
+## The chart overlay
+
+The daily chart in the Trendy card marks each day. A small badge floats
+above the bar of the day. The badge holds a circle and a number. The
+number counts the social items of that day: posts, stories, and reels.
+
+Only the handles of the entity count. The handles of the related persons
+stay out. The chart shows what the company published, not the persons.
+
+The day tooltip shows the split: the posts, the stories, and the reels
+of that day. The count comes from one storage read,
+`readSocialActivityByDay`. The read sums every stored platform. Today
+the platform is Instagram. YouTube and Facebook can join the same count
+later.
+
 ## The deploy
 
 Build the providers and the orchestrator.

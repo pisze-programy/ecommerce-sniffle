@@ -39,7 +39,13 @@ import { renderShopsTable } from '../services/report/dashboard.ts';
 import type { ShopCard } from '../services/report/dashboard.ts';
 import { renderEntityCard } from '../services/report/entities.ts';
 import type { EntityShopLink } from '../services/report/entities.ts';
-import { renderSocialCard, socialUserIds, SOCIAL_REPORT_LIMIT } from '../services/report/social.ts';
+import {
+  entitySocialUserIds,
+  renderSocialCard,
+  socialUserIds,
+  SOCIAL_REPORT_LIMIT,
+} from '../services/report/social.ts';
+import type { SocialDayActivity } from '../services/storage.ts';
 import { renderAdsSection } from '../services/report/ads.ts';
 import { metaAdsSummary } from '../services/report/metaads.ts';
 import { googleAdsSummary } from '../services/report/googleads.ts';
@@ -540,13 +546,28 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
             collapsed: true,
           });
 
+    // The Trendy daily chart marks the days with a company post, story or
+    // reel. Only the entity handles count. The related persons stay out.
+    const socialActivity = await (async (): Promise<ReadonlyMap<string, SocialDayActivity>> => {
+      const first = chartRange[0];
+      const last = chartRange[chartRange.length - 1];
+      if (config.entityId === undefined || first === undefined || last === undefined) {
+        return new Map<string, SocialDayActivity>();
+      }
+      const store = await storage.readEntityStore();
+      const profiles = await storage.readSocialProfiles();
+      const userIds = entitySocialUserIds(store, config.entityId, profiles);
+      const rows = await storage.readSocialActivityByDay(userIds, first.day, dayAfter(last.day));
+      return new Map(rows.map((row) => [row.day, row]));
+    })();
+
     const daySections: string[] = [];
     if (day !== '') {
       daySections.push(renderDayComparison(day, todayPoint, prevPoint));
       daySections.push(
         card({
           title: 'Trendy',
-          body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildWeeklySalesConfig(chartWeekly))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(chartRange))}</div></div>`,
+          body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildWeeklySalesConfig(chartWeekly))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(chartRange, socialActivity))}</div></div>`,
           collapsed: true,
         })
       );

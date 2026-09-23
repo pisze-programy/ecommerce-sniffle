@@ -1,5 +1,5 @@
 import { esc } from '../report-components.ts';
-import type { DailyPoint } from '../storage.ts';
+import type { DailyPoint, SocialDayActivity } from '../storage.ts';
 
 export interface ChartOpts {
   readonly type: string;
@@ -9,6 +9,7 @@ export interface ChartOpts {
   readonly plotOptions?: unknown;
   readonly dataLabels?: unknown;
   readonly tooltip?: unknown;
+  readonly annotations?: unknown;
   readonly height?: number;
   // Formatter functions cannot pass through JSON. Each entry replaces a
   // "__FUNC_<key>__" placeholder in the serialized config with raw JS.
@@ -20,7 +21,6 @@ export interface ChartOpts {
 // suffix. Without them ApexCharts shows 7.00 instead of 7 szt.
 const COUNT_AXIS_LABEL = `function(value) { return Number(value).toLocaleString('pl-PL'); }`;
 const PLN_AXIS_LABEL = `function(value) { return Number(value).toLocaleString('pl-PL', { maximumFractionDigits: 0 }) + ' zł'; }`;
-const SOLD_TOOLTIP = `function(value, opts) { var v = Number(value); return v.toLocaleString('pl-PL') + ' szt'; }`;
 
 // A full tooltip for one day of the week. It shows the sold count, the
 // revenue and the sold price range. The min and max arrays are baked in
@@ -61,6 +61,7 @@ export function chartBlock(containerId: string, opts: ChartOpts): string {
     ...(opts.yaxis === undefined ? {} : { yaxis: opts.yaxis }),
     ...(opts.plotOptions === undefined ? {} : { plotOptions: opts.plotOptions }),
     ...(opts.dataLabels === undefined ? {} : { dataLabels: opts.dataLabels }),
+    ...(opts.annotations === undefined ? {} : { annotations: opts.annotations }),
   };
   let json = JSON.stringify(config);
   if (opts.formatters !== undefined) {
@@ -124,7 +125,70 @@ export function buildWeeklySalesConfig(series: WeeklySalesSeries): ChartOpts {
   };
 }
 
-export function buildDailyConfig(dailyRange: readonly DailyPoint[]): ChartOpts {
+// A small badge for the daily chart. It floats above the bar of a day
+// that holds a company post, story or reel. The circle is the icon, the
+// number is the count of the social items of that day.
+function socialBadgeSvg(count: number): string {
+  const text = String(count);
+  const width = 18 + text.length * 6;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="16" viewBox="0 0 ${width} 16"><rect x="0.5" y="0.5" width="${width - 1}" height="15" rx="7.5" fill="#4263eb" stroke="#ffffff"></rect><circle cx="8" cy="8" r="3" fill="none" stroke="#ffffff" stroke-width="1.3"></circle><circle cx="8" cy="8" r="1" fill="#ffffff"></circle><text x="13" y="11.5" font-size="9" font-family="sans-serif" fill="#ffffff">${text}</text></svg>`;
+}
+
+function buildSocialAnnotations(
+  dailyRange: readonly DailyPoint[],
+  socialByDay: ReadonlyMap<string, SocialDayActivity>
+): { readonly points: readonly unknown[] } | undefined {
+  const points: unknown[] = [];
+  for (const point of dailyRange) {
+    const activity = socialByDay.get(point.day);
+    if (activity === undefined) {
+      continue;
+    }
+    const total = activity.posts + activity.stories + activity.reels;
+    if (total === 0) {
+      continue;
+    }
+    points.push({
+      x: point.day.slice(5),
+      y: point.sold,
+      marker: { size: 0 },
+      customSVG: { SVG: socialBadgeSvg(total), offsetY: -14 },
+    });
+  }
+  return points.length === 0 ? undefined : { points };
+}
+
+// The daily tooltip shows the sold count, the restocked count, and the
+// social split of the day. The social map is baked in, because a
+// formatter cannot close over chart data.
+function dailyTooltipSource(
+  dailyRange: readonly DailyPoint[],
+  socialByDay: ReadonlyMap<string, SocialDayActivity>
+): string {
+  const social = dailyRange.map((point) => {
+    const activity = socialByDay.get(point.day);
+    if (activity === undefined) {
+      return null;
+    }
+    return { p: activity.posts, s: activity.stories, r: activity.reels };
+  });
+  return `function({ series, dataPointIndex }) {
+  var i = dataPointIndex;
+  var count = function (v) { return Number(v).toLocaleString('pl-PL'); };
+  var social = ${JSON.stringify(social)}[i];
+  var html = '<div style="padding:8px;font-size:12px;line-height:1.5">sprzedane <b>' + count(series[0][i]) + ' szt</b><br>dostawione <b>' + count(series[1][i]) + ' szt</b>';
+  if (social !== null && social !== undefined) {
+    html += '<br>social <b>' + (social.p + social.s + social.r) + '</b> (posty ' + social.p + ', stories ' + social.s + ', reels ' + social.r + ')';
+  }
+  return html + '</div>';
+}`;
+}
+
+export function buildDailyConfig(
+  dailyRange: readonly DailyPoint[],
+  socialByDay: ReadonlyMap<string, SocialDayActivity>
+): ChartOpts {
+  const annotations = buildSocialAnnotations(dailyRange, socialByDay);
   return {
     type: 'line',
     height: 260,
@@ -135,10 +199,11 @@ export function buildDailyConfig(dailyRange: readonly DailyPoint[]): ChartOpts {
     xaxis: { categories: dailyRange.map((point) => point.day.slice(5)) },
     yaxis: [{ labels: { formatter: '__FUNC_soldAxis__' } }],
     plotOptions: { bar: { columnWidth: '55%' } },
-    tooltip: { theme: 'dark', y: { formatter: '__FUNC_soldTooltip__' } },
+    tooltip: { theme: 'dark', custom: '__FUNC_dailyTooltip__' },
+    ...(annotations === undefined ? {} : { annotations }),
     formatters: {
       soldAxis: COUNT_AXIS_LABEL,
-      soldTooltip: SOLD_TOOLTIP,
+      dailyTooltip: dailyTooltipSource(dailyRange, socialByDay),
     },
   };
 }
