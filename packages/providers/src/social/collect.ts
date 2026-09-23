@@ -10,7 +10,7 @@ import {
   inflactStoriesCheck,
   initInflact,
 } from './inflact.ts';
-import type { InflactSession } from './inflact.ts';
+import type { InflactPost, InflactSession } from './inflact.ts';
 import type {
   SocialPayload,
   SocialPost,
@@ -21,16 +21,24 @@ import type {
   SocialTarget,
 } from './types.ts';
 
-const DEFAULT_ROTATE_EVERY = 25;
+// One fresh session for each shop. A new session holds a new cookie,
+// a new CSRF token, and a new client id.
+const DEFAULT_ROTATE_EVERY = 1;
 const POST_PAGE_LIMIT = 40;
+// A handle with no shop seed has no floor. A deep backfill would run for
+// hours. The limit caps it.
+const NO_FLOOR_PAGE_LIMIT = 3;
 
 export interface CollectOptions {
   readonly logger: Logger;
   readonly secret?: string;
   readonly rotateEvery?: number;
+  // The VPS sends one payload for each handle. The callback holds the
+  // ingest. It keeps the memory flat on a small VPS.
+  readonly onHandle?: (target: SocialTarget, result: HandleResult) => Promise<void>;
 }
 
-interface HandleResult {
+export interface HandleResult {
   readonly profile: SocialProfile | null;
   readonly profileDay: SocialProfileDay | null;
   readonly posts: readonly SocialPost[];
@@ -71,6 +79,41 @@ function floorEpoch(target: SocialTarget): number | null {
   return dayStartEpoch(target.seedDay);
 }
 
+// Read every page above the floor. A pinned post appears first. The
+// order is not by time. Collect the posts above the floor on every page.
+// Stop when a whole page is at or below the floor.
+async function collectPostsRaw(
+  session: InflactSession,
+  target: SocialTarget,
+  logger: Logger
+): Promise<readonly InflactPost[]> {
+  const floor = floorEpoch(target);
+  const posts: InflactPost[] = [];
+  let cursor = '';
+  let page = 0;
+  while (true) {
+    const result = await inflactPosts(session, target.handle, cursor, logger);
+    let anyNewer = false;
+    for (const post of result.posts) {
+      if (floor !== null && post.takenAt <= floor) {
+        continue;
+      }
+      anyNewer = true;
+      posts.push(post);
+    }
+    page += 1;
+    const pageLimit = floor === null ? NO_FLOOR_PAGE_LIMIT : POST_PAGE_LIMIT;
+    if (!result.hasNext || result.cursor === null || page >= pageLimit) {
+      break;
+    }
+    if (floor !== null && !anyNewer) {
+      break;
+    }
+    cursor = result.cursor;
+  }
+  return posts;
+}
+
 async function collectHandle(
   session: InflactSession,
   target: SocialTarget,
@@ -79,30 +122,44 @@ async function collectHandle(
   const { logger } = options;
   const fetchedAt = new Date().toISOString();
 
+  // The calls do not depend on each other. Run them together. One slow
+  // endpoint no longer adds to the other three.
+  const [hasStories, reelsRaw, analytics, postsRaw] = await Promise.all([
+    inflactStoriesCheck(session, target.handle, logger),
+    inflactReels(session, target.handle, logger),
+    inflactAnalytics(session, target.handle, logger),
+    collectPostsRaw(session, target, logger),
+  ]);
+  const storiesRaw = hasStories ? await inflactStories(session, target.handle, logger) : [];
+
+  const userId = analytics === null ? (storiesRaw[0]?.ownerId ?? '') : analytics.id;
+  if (userId.length === 0) {
+    logger.warn('instagram.collect no user id', { handle: target.handle });
+    return { profile: null, profileDay: null, posts: [], stories: [], reels: [] };
+  }
+
   const stories: SocialStory[] = [];
-  if (await inflactStoriesCheck(session, target.handle, logger)) {
-    for (const story of await inflactStories(session, target.handle, logger)) {
-      stories.push({
-        platform: 'instagram',
-        id: story.id,
-        userId: story.ownerId ?? '',
-        mediaType: story.isVideo ? 'video' : 'photo',
-        isVideo: story.isVideo,
-        takenAt: isoFromEpoch(story.takenAt),
-        expiringAt: isoFromEpoch(story.expiringAt),
-        posterUrl: story.posterUrl,
-        r2Key: null,
-        fetchedAt,
-      });
-    }
+  for (const story of storiesRaw) {
+    stories.push({
+      platform: 'instagram',
+      id: story.id,
+      userId,
+      mediaType: story.isVideo ? 'video' : 'photo',
+      isVideo: story.isVideo,
+      takenAt: isoFromEpoch(story.takenAt),
+      expiringAt: isoFromEpoch(story.expiringAt),
+      posterUrl: story.posterUrl,
+      r2Key: null,
+      fetchedAt,
+    });
   }
 
   const reels: SocialReel[] = [];
-  for (const reel of await inflactReels(session, target.handle, logger)) {
+  for (const reel of reelsRaw) {
     reels.push({
       platform: 'instagram',
       id: reel.id,
-      userId: '',
+      userId,
       shortcode: reel.shortcode,
       permalink: reel.permalink,
       takenAt: isoFromEpoch(reel.takenAt),
@@ -116,61 +173,29 @@ async function collectHandle(
     });
   }
 
-  const analytics = await inflactAnalytics(session, target.handle, logger);
-  const userId = analytics === null ? (stories[0]?.userId ?? '') : analytics.id;
-  if (userId.length === 0) {
-    logger.warn('instagram.collect no user id', { handle: target.handle });
-    return { profile: null, profileDay: null, posts: [], stories: [], reels: [] };
-  }
-
-  const floor = floorEpoch(target);
   const posts: SocialPost[] = [];
-  let cursor = '';
-  let page = 0;
-  while (true) {
-    const result = await inflactPosts(session, target.handle, cursor, logger);
-    // A pinned post appears first. The order is not by time. Collect the
-    // posts above the floor on every page. Stop when a whole page is at
-    // or below the floor.
-    let anyNewer = false;
-    for (const post of result.posts) {
-      if (floor !== null && post.takenAt <= floor) {
-        continue;
-      }
-      anyNewer = true;
-      posts.push({
-        platform: 'instagram',
-        id: post.id,
-        userId,
-        shortcode: post.shortcode,
-        permalink: post.permalink,
-        type: postType(post.typename),
-        isReel: post.isReel,
-        takenAt: isoFromEpoch(post.takenAt),
-        caption: post.caption,
-        likes: post.likes,
-        comments: post.comments,
-        videoViews: post.videoViews,
-        posterUrl: post.posterUrl,
-        r2Key: null,
-        fetchedAt,
-      });
-    }
-    page += 1;
-    if (!result.hasNext || result.cursor === null || page >= POST_PAGE_LIMIT) {
-      break;
-    }
-    if (floor !== null && !anyNewer) {
-      break;
-    }
-    cursor = result.cursor;
+  for (const post of postsRaw) {
+    posts.push({
+      platform: 'instagram',
+      id: post.id,
+      userId,
+      shortcode: post.shortcode,
+      permalink: post.permalink,
+      type: postType(post.typename),
+      isReel: post.isReel,
+      takenAt: isoFromEpoch(post.takenAt),
+      caption: post.caption,
+      likes: post.likes,
+      comments: post.comments,
+      videoViews: post.videoViews,
+      posterUrl: post.posterUrl,
+      r2Key: null,
+      fetchedAt,
+    });
   }
-
-  const withUser = stories.map((story) => (story.userId.length === 0 ? { ...story, userId } : story));
-  const reelsWithUser = reels.map((reel) => ({ ...reel, userId }));
 
   if (analytics === null) {
-    return { profile: null, profileDay: null, posts, stories: withUser, reels: reelsWithUser };
+    return { profile: null, profileDay: null, posts, stories, reels };
   }
 
   const profile: SocialProfile = {
@@ -201,7 +226,7 @@ async function collectHandle(
     keywords: analytics.keywords,
     fetchedAt,
   };
-  return { profile, profileDay, posts, stories: withUser, reels: reelsWithUser };
+  return { profile, profileDay, posts, stories, reels };
 }
 
 // Collect every target. The session rotates after a number of handles.
@@ -224,15 +249,19 @@ export async function collectSocial(targets: readonly SocialTarget[], options: C
     callsSinceRotation += 1;
     try {
       const result = await collectHandle(session, target, options);
-      if (result.profile !== null) {
-        profiles.push(result.profile);
+      if (options.onHandle !== undefined) {
+        await options.onHandle(target, result);
+      } else {
+        if (result.profile !== null) {
+          profiles.push(result.profile);
+        }
+        if (result.profileDay !== null) {
+          profileDays.push(result.profileDay);
+        }
+        posts.push(...result.posts);
+        stories.push(...result.stories);
+        reels.push(...result.reels);
       }
-      if (result.profileDay !== null) {
-        profileDays.push(result.profileDay);
-      }
-      posts.push(...result.posts);
-      stories.push(...result.stories);
-      reels.push(...result.reels);
       options.logger.info('instagram.handle done', {
         handle: target.handle,
         posts: result.posts.length,

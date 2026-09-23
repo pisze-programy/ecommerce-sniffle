@@ -51,9 +51,11 @@ export function createSocialRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       targets.push({ handle, ownerKind, ownerId, seedDay, sinceEpoch });
     };
 
+    const entitySeed = new Map<string, string | null>();
     for (const entity of store.entities) {
       const domain = domainByEntity.get(entity.id);
       const seedDay = domain === undefined ? null : await storage.readFirstSeed(domain);
+      entitySeed.set(entity.id, seedDay);
       for (const link of entity.socials) {
         if (link.platform === 'instagram') {
           await push(link.handle, 'entity', entity.id, seedDay);
@@ -61,9 +63,23 @@ export function createSocialRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       }
     }
     for (const person of store.persons) {
+      // A person has no shop seed. Use the earliest seed of the related
+      // shops as the backfill floor.
+      const seeds: string[] = [];
+      for (const relation of store.personRelations) {
+        if (relation.personId !== person.id) {
+          continue;
+        }
+        const seed = entitySeed.get(relation.entityId);
+        if (seed !== undefined && seed !== null) {
+          seeds.push(seed);
+        }
+      }
+      seeds.sort();
+      const seedDay = seeds.length === 0 ? null : (seeds[0] ?? null);
       for (const link of person.socials) {
         if (link.platform === 'instagram') {
-          await push(link.handle, 'person', person.id, null);
+          await push(link.handle, 'person', person.id, seedDay);
         }
       }
     }

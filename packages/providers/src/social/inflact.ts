@@ -20,6 +20,26 @@ const ANALYZER_REFERER = `${INFLACT_HOST}/tools/profile-analyzer/`;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
+// One request each second. The source blocks a faster caller.
+export const MIN_REQUEST_INTERVAL_MS = 1000;
+let intervalMs = MIN_REQUEST_INTERVAL_MS;
+let lastRequestAt = 0;
+
+// The tests set the interval to zero. A test must not wait.
+export function setMinRequestIntervalMs(value: number): void {
+  intervalMs = value;
+}
+
+async function rateLimit(): Promise<void> {
+  const wait = intervalMs - (Date.now() - lastRequestAt);
+  if (wait > 0) {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, wait);
+    });
+  }
+  lastRequestAt = Date.now();
+}
+
 export interface InflactSession {
   readonly cookie: string;
   readonly csrf: string;
@@ -221,6 +241,7 @@ export function buildMultipart(fields: Readonly<Record<string, string>>): {
 // Start a session. The GET gives the cookies, the CSRF token, and the
 // server time delta.
 export async function initInflact(logger: Logger, secretOverride?: string): Promise<InflactSession> {
+  await rateLimit();
   const response = await fetch(VIEWER_REFERER, { headers: { 'User-Agent': USER_AGENT } });
   const html = await response.text();
   const cookie = cookieHeaderFrom(readSetCookies(response.headers));
@@ -252,6 +273,7 @@ async function signedFetch(
   const message = JSON.stringify(payload);
   const signature = await hmacHex(session.secret, message);
   const { body, contentType } = buildMultipart({ ...fields, _csrf: session.csrf });
+  await rateLimit();
   return fetchText(
     `${INFLACT_HOST}${path}`,
     {

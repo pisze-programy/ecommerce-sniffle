@@ -107,6 +107,8 @@ after its lease expires and retried later.
 #40 10 * * * flock -n /tmp/ecp-summary.lock /path/to/orchestrator/run-summary.sh morning >> /var/log/ecp-summary.log 2>&1
 0 20 * * * flock -n /tmp/ecp-summary2.lock /path/to/orchestrator/run-summary.sh evening >> /var/log/ecp-summary.log 2>&1
 0 22 * * * flock -n /tmp/ecp-exec2.lock timeout 1500 /path/to/orchestrator/run.sh >> /var/log/ecp.log 2>&1
+# ecommerce-pulse social. Runs after the evening executor. See INSTAGRAM.md.
+0 23 * * * flock -n /tmp/ecp-social.lock timeout 5400 /path/to/orchestrator/run-social.sh >> /var/log/ecp-social.log 2>&1
 ```
 
 The worker runs every 30 minutes inside the evening window

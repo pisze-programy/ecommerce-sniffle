@@ -1,18 +1,25 @@
 import { createHmac } from 'node:crypto';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createLogger } from '../../../../../packages/providers/src/logger.ts';
 import {
   INFLACT_DEFAULT_SECRET,
+  MIN_REQUEST_INTERVAL_MS,
   inflactAnalytics,
   inflactPosts,
   inflactReels,
   inflactStories,
   inflactStoriesCheck,
   initInflact,
+  setMinRequestIntervalMs,
 } from '../../../../../packages/providers/src/social/inflact.ts';
 import { collectSocial } from '../../../../../packages/providers/src/social/collect.ts';
 
+beforeEach(() => {
+  setMinRequestIntervalMs(0);
+});
+
 afterEach(() => {
+  setMinRequestIntervalMs(MIN_REQUEST_INTERVAL_MS);
   vi.unstubAllGlobals();
 });
 
@@ -56,6 +63,93 @@ function stubRouting(routes: (url: string) => Response | null, captured: Capture
     })
   );
 }
+
+function inflactRoutes(url: string): Response | null {
+  if (url.includes('/stories/check/')) {
+    return jsonResponse({ status: 'success', data: { hasStories: true } });
+  }
+  if (url.includes('/stories/')) {
+    return jsonResponse({
+      data: { stories: [{ id: 1, displayUrl: 'u1', takenAt: 1, expiringAt: 2, isVideo: false, owner: { pk: 9 } }] },
+    });
+  }
+  if (url.includes('/reels/')) {
+    return jsonResponse({
+      data: { reels: [{ id: 2, shortCode: 'R', createdAt: 1, imageUrl: 'u2', likeCount: 1 }] },
+    });
+  }
+  if (url.includes('/posts/')) {
+    return jsonResponse({
+      data: {
+        posts: {
+          data: {
+            user: {
+              edge_owner_to_timeline_media: {
+                page_info: { has_next_page: false, end_cursor: null },
+                edges: [
+                  {
+                    node: {
+                      id: 3,
+                      shortcode: 'P',
+                      __typename: 'GraphImage',
+                      taken_at_timestamp: 1790000000,
+                      display_url: 'u3',
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+  if (url.includes('/analytics/')) {
+    return jsonResponse({
+      data: {
+        profile: {
+          id: 9,
+          username: 'x',
+          name: 'X',
+          engagement: { followers: 1 },
+          publishing: {},
+          advertisement: {},
+        },
+      },
+    });
+  }
+  return null;
+}
+
+describe('rate limit', () => {
+  it('keeps one second between the requests', async () => {
+    setMinRequestIntervalMs(MIN_REQUEST_INTERVAL_MS);
+    const times: number[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown) => {
+        times.push(Date.now());
+        const response = inflactRoutes(String(input));
+        if (response !== null) {
+          return response;
+        }
+        return new Response(PAGE_HTML, {
+          status: 200,
+          headers: { 'set-cookie': 'ingram_sid=abc; path=/', 'content-type': 'text/html' },
+        });
+      })
+    );
+    const session = await initInflact(createLogger(() => {}));
+    await inflactReels(
+      session,
+      'x',
+      createLogger(() => {})
+    );
+    expect(times.length).toBeGreaterThanOrEqual(2);
+    const gap = times[times.length - 1]! - times[times.length - 2]!;
+    expect(gap).toBeGreaterThanOrEqual(999);
+  });
+});
 
 describe('initInflact', () => {
   it('reads the csrf token and the session cookie', async () => {
@@ -239,62 +333,7 @@ describe('parsers', () => {
 describe('collectSocial', () => {
   it('maps the responses to a payload', async () => {
     const captured: Captured[] = [];
-    stubRouting((url) => {
-      if (url.includes('/stories/check/')) {
-        return jsonResponse({ status: 'success', data: { hasStories: true } });
-      }
-      if (url.includes('/stories/')) {
-        return jsonResponse({
-          data: { stories: [{ id: 1, displayUrl: 'u1', takenAt: 1, expiringAt: 2, isVideo: false, owner: { pk: 9 } }] },
-        });
-      }
-      if (url.includes('/reels/')) {
-        return jsonResponse({
-          data: { reels: [{ id: 2, shortCode: 'R', createdAt: 1, imageUrl: 'u2', likeCount: 1 }] },
-        });
-      }
-      if (url.includes('/posts/')) {
-        return jsonResponse({
-          data: {
-            posts: {
-              data: {
-                user: {
-                  edge_owner_to_timeline_media: {
-                    page_info: { has_next_page: false, end_cursor: null },
-                    edges: [
-                      {
-                        node: {
-                          id: 3,
-                          shortcode: 'P',
-                          __typename: 'GraphImage',
-                          taken_at_timestamp: 1790000000,
-                          display_url: 'u3',
-                        },
-                      },
-                    ],
-                  },
-                },
-              },
-            },
-          },
-        });
-      }
-      if (url.includes('/analytics/')) {
-        return jsonResponse({
-          data: {
-            profile: {
-              id: 9,
-              username: 'x',
-              name: 'X',
-              engagement: { followers: 1 },
-              publishing: {},
-              advertisement: {},
-            },
-          },
-        });
-      }
-      return null;
-    }, captured);
+    stubRouting(inflactRoutes, captured);
     const payload = await collectSocial(
       [{ handle: 'x', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null }],
       { logger: createLogger(() => {}) }
@@ -305,5 +344,28 @@ describe('collectSocial', () => {
     expect(payload.stories).toHaveLength(1);
     expect(payload.reels).toHaveLength(1);
     expect(payload.posts[0]?.permalink).toBe('https://www.instagram.com/p/P/');
+  });
+
+  it('streams each handle through the callback and keeps the payload flat', async () => {
+    const captured: Captured[] = [];
+    stubRouting(inflactRoutes, captured);
+    const seen: string[] = [];
+    const payload = await collectSocial(
+      [
+        { handle: 'a', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null },
+        { handle: 'b', ownerKind: 'entity', ownerId: 'e2', seedDay: null, sinceEpoch: null },
+      ],
+      {
+        logger: createLogger(() => {}),
+        onHandle: async (target, result) => {
+          seen.push(`${target.handle}:${result.posts.length}`);
+        },
+      }
+    );
+    expect(seen).toEqual(['a:1', 'b:1']);
+    expect(payload.profiles).toHaveLength(0);
+    expect(payload.posts).toHaveLength(0);
+    expect(payload.stories).toHaveLength(0);
+    expect(payload.reels).toHaveLength(0);
   });
 });

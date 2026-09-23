@@ -370,14 +370,61 @@ The run does these steps for each handle.
 The worker fetches the poster image and writes R2. The payload holds the
 poster URL. The URL is fresh. The worker fetches it at once.
 
+## The deploy
+
+Build the providers and the orchestrator.
+
+```
+npm run build -w packages/providers
+npm run build -w orchestrator
+```
+
+Copy only the dist folder to the VPS. `rsync` is not installed. Use
+`scp`.
+
+```
+scp orchestrator/dist/*.js orchestrator/dist/*.js.map frog:/home/frog/ecommerce-sniffle/orchestrator/dist/
+```
+
+Remove an old chunk file from the VPS before the copy. NEVER run
+`npm install` on the VPS. The install dies of out-of-memory.
+
+The launcher `run-social.sh` lives next to `run.sh`.
+
+```
+#!/bin/sh
+set -e
+cd /home/frog/ecommerce-sniffle/orchestrator
+if [ -f ../.env ]; then
+  . ../.env
+fi
+export BACKEND_URL
+export INGEST_SECRET
+export SNITCH_URL
+export SNITCH_TOKEN
+export INFLACT_SIGNATURE_SECRET
+exec node dist/social.js
+```
+
+The cron line runs the launcher one time each day, after the evening
+executor.
+
+```
+0 23 * * * flock -n /tmp/ecp-social.lock timeout 5400 /home/frog/ecommerce-sniffle/orchestrator/run-social.sh >> /tmp/ecp-social.log 2>&1
+```
+
 ## The rotation
 
-The source has no hard request limit in the tests. The module still
-rotates the session. The rotation lowers the block risk.
+The module sends one request each second. The constant is
+`MIN_REQUEST_INTERVAL_MS` (1000 ms). A faster caller gets a block.
 
-The parameter: one new session for each 25 handle calls. The module also
-starts a new session on any HTTP 4xx or 5xx answer. The estimate is 4
-sessions for each full run.
+The module starts a new session for each shop. A new session holds a
+new cookie, a new CSRF token, and a new client id. One shop uses one
+session.
+
+The run takes about 8 minutes for 98 handles. One handle uses about
+four requests: the story check, the reels, the analytics, and the
+posts.
 
 The risk is low. A block would stop the run. The module reports the
 block with the snitch.
