@@ -833,14 +833,26 @@ describe('createStorage', () => {
           fetchedAt: '2026-08-30T11:00:00.000Z',
         },
       ]);
-      const posts = await storage.readSocialPosts(['331874442'], 10);
+      const posts = await storage.readSocialPosts(['331874442'], '', '', 10);
       expect(posts[0]?.permalink).toBe('https://www.instagram.com/p/ABC/');
       expect(posts[0]?.posterUrl).toBe('https://cdn/1.jpg');
       expect(posts[0]?.likes).toBe(10);
-      const stories = await storage.readSocialStories(['331874442'], 10);
+      const stories = await storage.readSocialStories(['331874442'], '', '', 10);
       expect(stories[0]?.isVideo).toBe(true);
-      const reels = await storage.readSocialReels(['331874442'], 10);
+      const reels = await storage.readSocialReels(['331874442'], '', '', 10);
       expect(reels[0]?.playCount).toBe(900);
+      await storage.readSocialPosts(['331874442'], '2026-08-30', '2026-08-31', 10);
+      await storage.readSocialStories(['331874442'], '2026-08-30', '2026-08-31', 10);
+      await storage.readSocialReels(['331874442'], '2026-08-30', '2026-08-31', 10);
+      const ranged = db.calls.filter(
+        (call) => call.query.includes('taken_at >= ?') && call.query.includes('taken_at < ?')
+      );
+      expect(ranged.length).toBe(3);
+      for (const call of ranged) {
+        expect(call.args[call.args.length - 3]).toBe('2026-08-30');
+        expect(call.args[call.args.length - 2]).toBe('2026-08-31');
+        expect(call.args[call.args.length - 1]).toBe(10);
+      }
       const days = await storage.readSocialProfileDays(['331874442'], '2026-08-01');
       expect(days[0]?.followers).toBe(100);
       const profiles = await storage.readSocialProfiles();

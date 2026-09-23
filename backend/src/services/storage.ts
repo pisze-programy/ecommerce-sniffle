@@ -74,9 +74,14 @@ export interface Storage {
   writeSocialReels(reels: readonly SocialReel[]): Promise<void>;
   writeSocialProfileDays(days: readonly SocialProfileDay[]): Promise<void>;
   readSocialProfiles(): Promise<readonly SocialProfile[]>;
-  readSocialPosts(userIds: readonly string[], limit: number): Promise<readonly SocialPost[]>;
-  readSocialStories(userIds: readonly string[], limit: number): Promise<readonly SocialStory[]>;
-  readSocialReels(userIds: readonly string[], limit: number): Promise<readonly SocialReel[]>;
+  readSocialPosts(userIds: readonly string[], from: string, to: string, limit: number): Promise<readonly SocialPost[]>;
+  readSocialStories(
+    userIds: readonly string[],
+    from: string,
+    to: string,
+    limit: number
+  ): Promise<readonly SocialStory[]>;
+  readSocialReels(userIds: readonly string[], from: string, to: string, limit: number): Promise<readonly SocialReel[]>;
   readSocialProfileDays(userIds: readonly string[], fromDay: string): Promise<readonly SocialProfileDay[]>;
   upsertEntityFinancials(entry: EntityFinancials): Promise<void>;
   readEntityFinancials(entityId: string): Promise<EntityFinancials | null>;
@@ -1254,45 +1259,75 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       }));
     },
 
-    async readSocialPosts(userIds: readonly string[], limit: number): Promise<readonly SocialPost[]> {
+    async readSocialPosts(
+      userIds: readonly string[],
+      from: string,
+      to: string,
+      limit: number
+    ): Promise<readonly SocialPost[]> {
       if (userIds.length === 0) {
         return [];
       }
       const placeholders = userIds.map(() => '?').join(',');
-      const result = (await db
-        .prepare(
-          `SELECT platform, id, user_id, shortcode, permalink, media_type, is_reel, taken_at, caption, media_urls, likes, comments, video_views, tagged_users, r2_key, fetched_at FROM social_posts WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
-        )
-        .bind(...userIds, limit)
-        .all()) as { results: SocialPostRow[] };
+      const hasRange = from.length > 0 && to.length > 0;
+      const columns =
+        'platform, id, user_id, shortcode, permalink, media_type, is_reel, taken_at, caption, media_urls, likes, comments, video_views, tagged_users, r2_key, fetched_at';
+      const condition = hasRange
+        ? `user_id IN (${placeholders}) AND taken_at >= ? AND taken_at < ?`
+        : `user_id IN (${placeholders})`;
+      const statement = db.prepare(
+        `SELECT ${columns} FROM social_posts WHERE ${condition} ORDER BY taken_at DESC LIMIT ?`
+      );
+      const bound = hasRange ? statement.bind(...userIds, from, to, limit) : statement.bind(...userIds, limit);
+      const result = (await bound.all()) as { results: SocialPostRow[] };
       return result.results.map(fromSocialPostRow);
     },
 
-    async readSocialStories(userIds: readonly string[], limit: number): Promise<readonly SocialStory[]> {
+    async readSocialStories(
+      userIds: readonly string[],
+      from: string,
+      to: string,
+      limit: number
+    ): Promise<readonly SocialStory[]> {
       if (userIds.length === 0) {
         return [];
       }
       const placeholders = userIds.map(() => '?').join(',');
-      const result = (await db
-        .prepare(
-          `SELECT platform, id, user_id, media_type, is_video, media_urls, taken_at, expiring_at, mentions, r2_key, fetched_at FROM social_stories WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
-        )
-        .bind(...userIds, limit)
-        .all()) as { results: SocialStoryRow[] };
+      const hasRange = from.length > 0 && to.length > 0;
+      const columns =
+        'platform, id, user_id, media_type, is_video, media_urls, taken_at, expiring_at, mentions, r2_key, fetched_at';
+      const condition = hasRange
+        ? `user_id IN (${placeholders}) AND taken_at >= ? AND taken_at < ?`
+        : `user_id IN (${placeholders})`;
+      const statement = db.prepare(
+        `SELECT ${columns} FROM social_stories WHERE ${condition} ORDER BY taken_at DESC LIMIT ?`
+      );
+      const bound = hasRange ? statement.bind(...userIds, from, to, limit) : statement.bind(...userIds, limit);
+      const result = (await bound.all()) as { results: SocialStoryRow[] };
       return result.results.map(fromSocialStoryRow);
     },
 
-    async readSocialReels(userIds: readonly string[], limit: number): Promise<readonly SocialReel[]> {
+    async readSocialReels(
+      userIds: readonly string[],
+      from: string,
+      to: string,
+      limit: number
+    ): Promise<readonly SocialReel[]> {
       if (userIds.length === 0) {
         return [];
       }
       const placeholders = userIds.map(() => '?').join(',');
-      const result = (await db
-        .prepare(
-          `SELECT platform, id, user_id, shortcode, permalink, taken_at, like_count, comment_count, play_count, video_view_count, media_url, r2_key, fetched_at FROM social_reels WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
-        )
-        .bind(...userIds, limit)
-        .all()) as { results: SocialReelRow[] };
+      const hasRange = from.length > 0 && to.length > 0;
+      const columns =
+        'platform, id, user_id, shortcode, permalink, taken_at, like_count, comment_count, play_count, video_view_count, media_url, r2_key, fetched_at';
+      const condition = hasRange
+        ? `user_id IN (${placeholders}) AND taken_at >= ? AND taken_at < ?`
+        : `user_id IN (${placeholders})`;
+      const statement = db.prepare(
+        `SELECT ${columns} FROM social_reels WHERE ${condition} ORDER BY taken_at DESC LIMIT ?`
+      );
+      const bound = hasRange ? statement.bind(...userIds, from, to, limit) : statement.bind(...userIds, limit);
+      const result = (await bound.all()) as { results: SocialReelRow[] };
       return result.results.map(fromSocialReelRow);
     },
 

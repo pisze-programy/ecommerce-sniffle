@@ -582,13 +582,14 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       if (config.entityId === undefined) {
         return '';
       }
+      const socialTo = day === '' ? '' : dayAfter(day);
       const store = await storage.readEntityStore();
       const profiles = await storage.readSocialProfiles();
       const userIds = socialUserIds(store, config.entityId, profiles);
       const [posts, stories, reels] = await Promise.all([
-        storage.readSocialPosts(userIds, SOCIAL_REPORT_LIMIT),
-        storage.readSocialStories(userIds, SOCIAL_REPORT_LIMIT),
-        storage.readSocialReels(userIds, SOCIAL_REPORT_LIMIT),
+        storage.readSocialPosts(userIds, day, socialTo, SOCIAL_REPORT_LIMIT),
+        storage.readSocialStories(userIds, day, socialTo, SOCIAL_REPORT_LIMIT),
+        storage.readSocialReels(userIds, day, socialTo, SOCIAL_REPORT_LIMIT),
       ]);
       return renderSocialCard(store, config.entityId, { profiles, posts, stories, reels });
     })();
@@ -616,11 +617,11 @@ ${
     : card({ title: 'Podsumowanie sklepu', titleNote: headerNote, body: headerBody })
 }
 ${entityCard}
-${socialCard}
 ${adsSection}
 ${priceDistributionCard}
 <div class="d-flex justify-content-end py-3">${dayControl}</div>
 ${daySections.join('\n')}
+${socialCard}
 ${card({ title: 'Top sprzedawane (ostatnie 30 dni)', body: renderTopSellers(topRows, names), collapsed: true })}
 ${card({ title: 'Stan magazynowy (aktualny)', body: renderStock({ domain, platform: config.platform }, latest, names), collapsed: true })}`;
     return c.html(pageShell(`ecommerce-sniffle — ${config.id}`, body));

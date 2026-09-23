@@ -26,6 +26,11 @@ export function pageShell(title: string, body: string): string {
   .qty-change { display: block; line-height: 1.1; }
   .qty-range { display: block; font-size: 10px; opacity: .75; color: var(--tblr-secondary-color); }
   .table-pager { display: flex; align-items: center; justify-content: flex-end; gap: .35rem; padding: .5rem 0; }
+  .social-strip { display: flex; gap: .5rem; overflow-x: auto; padding-bottom: .25rem; }
+  .social-tile { flex: 0 0 auto; width: 160px; }
+  .social-thumb { aspect-ratio: 1 / 1; overflow: hidden; background: var(--tblr-secondary-bg, #f1f5f9); display: flex; align-items: center; justify-content: center; }
+  .social-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .social-thumb span { font-size: 11px; color: var(--tblr-secondary-color); }
 </style>
 </head>
 <body>

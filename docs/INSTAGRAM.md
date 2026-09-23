@@ -212,7 +212,7 @@ The smallest image per media type:
 | Story        | `displayUrl`                | 52 to 263 KB |
 | Video poster | `display_url` or `imageUrl` | 90 to 183 KB |
 
-The R2 key is `social/instagram/<handle>/<kind>/<id>/poster.jpg`.
+The R2 key is `social/instagram/<user id>/<kind>/<id>/poster.jpg`.
 
 ## The links
 
@@ -297,7 +297,7 @@ The append row in `social_stories`:
   "is_video": false,
   "taken_at": "2026-09-23T09:29:12Z",
   "expiring_at": "2026-09-24T09:29:12Z",
-  "r2_key": "social/instagram/daag__torebki/stories/3992438281361201390/poster.jpg"
+  "r2_key": "social/instagram/28388909189/stories/3992438281361201390/poster.jpg"
 }
 ```
 
@@ -313,7 +313,7 @@ The append row in `social_posts`:
   "likes": 775,
   "comments": 12,
   "video_views": 18344,
-  "r2_key": "social/instagram/daag__torebki/posts/3990204290098353079/poster.jpg"
+  "r2_key": "social/instagram/28388909189/posts/3990204290098353079/poster.jpg"
 }
 ```
 
@@ -369,6 +369,23 @@ The run does these steps for each handle.
 
 The worker fetches the poster image and writes R2. The payload holds the
 poster URL. The URL is fresh. The worker fetches it at once.
+
+## The card
+
+The shop page holds a Social card. The card follows the selected day.
+The same calendar changes the stock view and the Social card.
+
+The card holds three strips: stories, posts, and reels. A strip scrolls
+to the right. Each strip shows a fixed number of items. The database
+keeps every item.
+
+One item is one small tile. The image keeps a square shape. A post tile
+and a reel tile link to the Instagram permalink. A story tile has no
+link, because a story expires.
+
+Each tile holds the handle and the owner. The owner is the shop name, or
+the person name and the role. This shows if the post belongs to the shop
+or to a related person.
 
 ## The deploy
 

@@ -1,8 +1,8 @@
-// Renders the Social card: recent IG posts, stories and reels of the
-// shop's entity and its related persons. See docs/INSTAGRAM.md.
+// Renders the Social card: the posts, stories and reels of the shop's
+// entity and its related persons, for one day. See docs/INSTAGRAM.md.
 
 import type { EntityStore } from '../../entities.ts';
-import { findEntity, findPerson } from '../../entities.ts';
+import { findEntity, findPerson, ROLE_LABELS } from '../../entities.ts';
 import type { SocialPost, SocialProfile, SocialReel, SocialStory } from '@ecommerce-sniffle/providers/social';
 import { badge, card, emptyState, esc } from '../report-components.ts';
 
@@ -13,17 +13,24 @@ export interface SocialRenderData {
   readonly reels: readonly SocialReel[];
 }
 
-// How many items the shop page shows for each kind. The collection is not
-// limited. The database keeps every item. This value is display only.
-export const SOCIAL_REPORT_LIMIT = 24;
+// How many items the strip shows for each kind. The strip scrolls. The
+// database keeps every item. This value is display only.
+export const SOCIAL_REPORT_LIMIT = 12;
 
-function relevantHandles(store: EntityStore, entityId: string): readonly string[] {
-  const handles = new Set<string>();
+interface HandleOwner {
+  readonly handle: string;
+  readonly label: string;
+}
+
+// The Instagram handles of the entity and its related persons. Each
+// entry holds the owner label: the shop name or the person name and role.
+function relevantHandles(store: EntityStore, entityId: string): readonly HandleOwner[] {
+  const owners = new Map<string, string>();
   const entity = findEntity(store, entityId);
   if (entity !== null) {
     for (const link of entity.socials) {
       if (link.platform === 'instagram') {
-        handles.add(link.handle);
+        owners.set(link.handle, entity.name);
       }
     }
   }
@@ -32,13 +39,18 @@ function relevantHandles(store: EntityStore, entityId: string): readonly string[
     if (person === null) {
       continue;
     }
+    const label = `${person.name} (${ROLE_LABELS[relation.role]})`;
     for (const link of person.socials) {
       if (link.platform === 'instagram') {
-        handles.add(link.handle);
+        owners.set(link.handle, label);
       }
     }
   }
-  return [...handles];
+  const result: HandleOwner[] = [];
+  for (const [handle, label] of owners) {
+    result.push({ handle, label });
+  }
+  return result;
 }
 
 export function socialUserIds(
@@ -48,7 +60,7 @@ export function socialUserIds(
 ): readonly string[] {
   const handleToUserId = new Map(profiles.map((profile) => [profile.handle, profile.userId]));
   return relevantHandles(store, entityId)
-    .map((handle) => handleToUserId.get(handle))
+    .map((entry) => handleToUserId.get(entry.handle))
     .filter((userId): userId is string => userId !== undefined);
 }
 
@@ -59,84 +71,107 @@ function thumb(r2Key: string | null, posterUrl: string | null): string {
   return posterUrl === null ? '' : esc(posterUrl);
 }
 
-function tile(image: string, href: string | null, badges: string, date: string): string {
-  const imageHtml =
-    image === ''
-      ? '<div class="card-body"><p class="text-secondary fs-6">brak mediów</p></div>'
-      : href === null
-        ? `<img class="card-img-top" src="${image}" loading="lazy" alt="media">`
-        : `<a href="${href}" target="_blank" rel="noopener"><img class="card-img-top" src="${image}" loading="lazy" alt="media"></a>`;
-  return `<div class="col-6 col-lg-3">
-  <div class="card card-sm h-100">
-    ${imageHtml}
-    <div class="card-body p-2">
-      <div class="d-flex flex-wrap gap-1">${badges}</div>
-      <div class="text-secondary fs-6">${esc(date.slice(0, 10))}</div>
-    </div>
-  </div>
-</div>`;
+function mapValue(source: ReadonlyMap<string, string>, key: string): string {
+  const value = source.get(key);
+  return value === undefined ? '' : value;
 }
 
-function renderStories(stories: readonly SocialStory[]): string {
-  if (stories.length === 0) {
-    return '';
-  }
-  const tiles = stories
-    .map((story) => {
-      const flags = story.isVideo ? badge('wideo', 'blue') : '';
-      return tile(thumb(story.r2Key, story.posterUrl), null, flags, story.takenAt);
-    })
-    .join('');
-  return `<div class="subheader mt-3 mb-1">Stories</div><div class="row row-cards">${tiles}</div>`;
+interface TileOptions {
+  readonly image: string;
+  readonly href: string | null;
+  readonly handle: string;
+  readonly owner: string;
+  readonly badges: string;
+  readonly date: string;
+  readonly alt: string;
 }
 
-function renderPosts(posts: readonly SocialPost[]): string {
-  if (posts.length === 0) {
-    return '';
+// One fixed tile. The image keeps a square shape. The whole tile is the
+// link when a permalink exists.
+function tile(options: TileOptions): string {
+  const media =
+    options.image === ''
+      ? '<div class="social-thumb"><span>brak</span></div>'
+      : `<div class="social-thumb"><img src="${options.image}" loading="lazy" alt="${esc(options.alt)}"></div>`;
+  const head = options.handle === '' ? '' : `<div class="text-truncate fw-medium">@${esc(options.handle)}</div>`;
+  const owner =
+    options.owner === '' ? '' : `<div class="text-truncate text-secondary fs-6">${esc(options.owner)}</div>`;
+  const badges = options.badges === '' ? '' : `<div class="d-flex flex-wrap gap-1">${options.badges}</div>`;
+  const date = `<div class="text-secondary fs-6">${esc(options.date.slice(0, 10))}</div>`;
+  const body = `<div class="card-body p-2">${head}${owner}${badges}${date}</div>`;
+  if (options.href === null) {
+    return `<div class="card card-sm social-tile">${media}${body}</div>`;
   }
-  const tiles = posts
-    .map((post) => {
-      const flags = [
-        post.isReel ? badge('reel', 'blue') : '',
-        post.likes === null ? '' : `<span class="text-secondary fs-6">${post.likes} ♥</span>`,
-      ].join('');
-      const href = post.permalink.length === 0 ? null : esc(post.permalink);
-      return tile(thumb(post.r2Key, post.posterUrl), href, flags, post.takenAt);
-    })
-    .join('');
-  return `<div class="subheader mt-3 mb-1">Posty</div><div class="row row-cards">${tiles}</div>`;
+  return `<a class="card card-sm social-tile text-reset text-decoration-none" href="${esc(options.href)}" target="_blank" rel="noopener">${media}${body}</a>`;
 }
 
-function renderReels(reels: readonly SocialReel[]): string {
-  if (reels.length === 0) {
+function strip(title: string, tiles: readonly string[]): string {
+  if (tiles.length === 0) {
     return '';
   }
-  const tiles = reels
-    .map((reel) => {
-      const flags = [
-        badge('reel', 'blue'),
-        reel.playCount === null ? '' : `<span class="text-secondary fs-6">${reel.playCount} ▶</span>`,
-      ].join('');
-      const href = reel.permalink.length === 0 ? null : esc(reel.permalink);
-      return tile(thumb(reel.r2Key, reel.posterUrl), href, flags, reel.takenAt);
-    })
-    .join('');
-  return `<div class="subheader mt-3 mb-1">Reels</div><div class="row row-cards">${tiles}</div>`;
+  return `<div class="subheader mt-3 mb-1">${esc(title)}</div><div class="social-strip">${tiles.join('')}</div>`;
+}
+
+function likesBadge(likes: number | null): string {
+  return likes === null ? '' : `<span class="text-secondary fs-6">${likes} ♥</span>`;
+}
+
+function playsBadge(plays: number | null): string {
+  return plays === null ? '' : `<span class="text-secondary fs-6">${plays} ▶</span>`;
 }
 
 export function renderSocialCard(store: EntityStore, entityId: string, data: SocialRenderData): string {
-  if (relevantHandles(store, entityId).length === 0) {
+  const handles = relevantHandles(store, entityId);
+  if (handles.length === 0) {
     return '';
   }
-  const userIds = socialUserIds(store, entityId, data.profiles);
-  const posts = data.posts.filter((post) => userIds.includes(post.userId)).slice(0, SOCIAL_REPORT_LIMIT);
-  const stories = data.stories.filter((story) => userIds.includes(story.userId)).slice(0, SOCIAL_REPORT_LIMIT);
-  const reels = data.reels.filter((reel) => userIds.includes(reel.userId)).slice(0, SOCIAL_REPORT_LIMIT);
-  const body = `${renderStories(stories)}${renderPosts(posts)}${renderReels(reels)}`;
+  const handleByUserId = new Map(data.profiles.map((profile) => [profile.userId, profile.handle]));
+  const handleToUserId = new Map(data.profiles.map((profile) => [profile.handle, profile.userId]));
+  const ownerByUserId = new Map<string, string>();
+  for (const entry of handles) {
+    const userId = handleToUserId.get(entry.handle);
+    if (userId !== undefined) {
+      ownerByUserId.set(userId, entry.label);
+    }
+  }
+  const storyTiles = data.stories.slice(0, SOCIAL_REPORT_LIMIT).map((story) =>
+    tile({
+      image: thumb(story.r2Key, story.posterUrl),
+      href: null,
+      handle: mapValue(handleByUserId, story.userId),
+      owner: mapValue(ownerByUserId, story.userId),
+      badges: story.isVideo ? badge('wideo', 'blue') : '',
+      date: story.takenAt,
+      alt: `stories ${story.takenAt.slice(0, 10)}`,
+    })
+  );
+  const postTiles = data.posts.slice(0, SOCIAL_REPORT_LIMIT).map((post) =>
+    tile({
+      image: thumb(post.r2Key, post.posterUrl),
+      href: post.permalink.length === 0 ? null : post.permalink,
+      handle: mapValue(handleByUserId, post.userId),
+      owner: mapValue(ownerByUserId, post.userId),
+      badges: [post.isReel ? badge('reel', 'blue') : '', likesBadge(post.likes)].join(''),
+      date: post.takenAt,
+      alt: post.caption === null ? `post ${post.takenAt.slice(0, 10)}` : post.caption.slice(0, 80),
+    })
+  );
+  const reelTiles = data.reels.slice(0, SOCIAL_REPORT_LIMIT).map((reel) =>
+    tile({
+      image: thumb(reel.r2Key, reel.posterUrl),
+      href: reel.permalink.length === 0 ? null : reel.permalink,
+      handle: mapValue(handleByUserId, reel.userId),
+      owner: mapValue(ownerByUserId, reel.userId),
+      badges: [badge('reel', 'blue'), playsBadge(reel.playCount)].join(''),
+      date: reel.takenAt,
+      alt: `reel ${reel.takenAt.slice(0, 10)}`,
+    })
+  );
+  const body = `${strip('Stories', storyTiles)}${strip('Posty', postTiles)}${strip('Reels', reelTiles)}`;
   if (body === '') {
     return card({
       title: 'Social',
-      body: emptyState('Brak danych', 'Nie pobrano jeszcze postów i stories.'),
+      body: emptyState('Brak danych', 'Brak postów i stories w wybranym dniu.'),
       collapsed: true,
     });
   }

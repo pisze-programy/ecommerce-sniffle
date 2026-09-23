@@ -39,7 +39,7 @@ export function createSocialRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       const userId = userIdByHandle.get(handle);
       let sinceEpoch: number | null = null;
       if (userId !== undefined) {
-        const newest = await storage.readSocialPosts([userId], 1);
+        const newest = await storage.readSocialPosts([userId], '', '', 1);
         const takenAt = newest[0]?.takenAt;
         if (takenAt !== undefined) {
           const parsed = Date.parse(takenAt);
