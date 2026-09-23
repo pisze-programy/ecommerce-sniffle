@@ -415,19 +415,20 @@ executor.
 
 ## The rotation
 
-The module sends one request each second. The constant is
+One shop uses one session. A new session holds a new cookie, a new
+CSRF token, and a new client id.
+
+One session sends one request each second. The constant is
 `MIN_REQUEST_INTERVAL_MS` (1000 ms). A faster caller gets a block.
 
-The module starts a new session for each shop. A new session holds a
-new cookie, a new CSRF token, and a new client id. One shop uses one
-session.
+Six shops run at the same time. The project standard is six shops in
+parallel. A new shop starts when an active shop finishes.
 
-The run takes about 8 minutes for 98 handles. One handle uses about
-four requests: the story check, the reels, the analytics, and the
-posts.
+One shop uses about four requests: the story check, the reels, the
+analytics, and the posts. A handle with no shop seed adds three post
+pages.
 
-The risk is low. A block would stop the run. The module reports the
-block with the snitch.
+The risk is a block. The module reports a block with the snitch.
 
 ## The failure report
 

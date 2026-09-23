@@ -21,9 +21,9 @@ import type {
   SocialTarget,
 } from './types.ts';
 
-// One fresh session for each shop. A new session holds a new cookie,
-// a new CSRF token, and a new client id.
-const DEFAULT_ROTATE_EVERY = 1;
+// Several shops run at the same time. Each shop still sends one request
+// each second. The project standard is six shops in parallel.
+const DEFAULT_CONCURRENCY = 6;
 const POST_PAGE_LIMIT = 40;
 // A handle with no shop seed has no floor. A deep backfill would run for
 // hours. The limit caps it.
@@ -32,7 +32,7 @@ const NO_FLOOR_PAGE_LIMIT = 3;
 export interface CollectOptions {
   readonly logger: Logger;
   readonly secret?: string;
-  readonly rotateEvery?: number;
+  readonly concurrency?: number;
   // The VPS sends one payload for each handle. The callback holds the
   // ingest. It keeps the memory flat on a small VPS.
   readonly onHandle?: (target: SocialTarget, result: HandleResult) => Promise<void>;
@@ -229,52 +229,57 @@ async function collectHandle(
   return { profile, profileDay, posts, stories, reels };
 }
 
-// Collect every target. The session rotates after a number of handles.
+// Collect every target. Each shop uses one session with one request each
+// second. Several shops run at the same time.
 export async function collectSocial(targets: readonly SocialTarget[], options: CollectOptions): Promise<SocialPayload> {
-  const rotateEvery = options.rotateEvery === undefined ? DEFAULT_ROTATE_EVERY : options.rotateEvery;
-  let session = await initInflact(options.logger, options.secret);
-  let callsSinceRotation = 0;
-
   const profiles: SocialProfile[] = [];
   const profileDays: SocialProfileDay[] = [];
   const posts: SocialPost[] = [];
   const stories: SocialStory[] = [];
   const reels: SocialReel[] = [];
 
-  for (const target of targets) {
-    if (callsSinceRotation >= rotateEvery) {
-      session = await initInflact(options.logger, options.secret);
-      callsSinceRotation = 0;
-    }
-    callsSinceRotation += 1;
-    try {
-      const result = await collectHandle(session, target, options);
-      if (options.onHandle !== undefined) {
-        await options.onHandle(target, result);
-      } else {
-        if (result.profile !== null) {
-          profiles.push(result.profile);
-        }
-        if (result.profileDay !== null) {
-          profileDays.push(result.profileDay);
-        }
-        posts.push(...result.posts);
-        stories.push(...result.stories);
-        reels.push(...result.reels);
+  const queue = [...targets];
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const target = queue.shift();
+      if (target === undefined) {
+        return;
       }
-      options.logger.info('instagram.handle done', {
-        handle: target.handle,
-        posts: result.posts.length,
-        stories: result.stories.length,
-        reels: result.reels.length,
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      options.logger.warn('instagram.handle failed', { handle: target.handle, error: message });
-      session = await initInflact(options.logger, options.secret);
-      callsSinceRotation = 0;
+      try {
+        const session = await initInflact(options.logger, options.secret);
+        const result = await collectHandle(session, target, options);
+        if (options.onHandle !== undefined) {
+          await options.onHandle(target, result);
+        } else {
+          if (result.profile !== null) {
+            profiles.push(result.profile);
+          }
+          if (result.profileDay !== null) {
+            profileDays.push(result.profileDay);
+          }
+          posts.push(...result.posts);
+          stories.push(...result.stories);
+          reels.push(...result.reels);
+        }
+        options.logger.info('instagram.handle done', {
+          handle: target.handle,
+          posts: result.posts.length,
+          stories: result.stories.length,
+          reels: result.reels.length,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        options.logger.warn('instagram.handle failed', { handle: target.handle, error: message });
+      }
     }
+  };
+
+  const size = options.concurrency === undefined ? DEFAULT_CONCURRENCY : options.concurrency;
+  const workers: Promise<void>[] = [];
+  for (let index = 0; index < size; index += 1) {
+    workers.push(worker());
   }
+  await Promise.all(workers);
 
   return { profiles, profileDays, posts, stories, reels };
 }

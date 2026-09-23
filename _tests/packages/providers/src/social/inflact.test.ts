@@ -122,7 +122,7 @@ function inflactRoutes(url: string): Response | null {
 }
 
 describe('rate limit', () => {
-  it('keeps one second between the requests', async () => {
+  it('keeps one second between the requests of one session', async () => {
     setMinRequestIntervalMs(MIN_REQUEST_INTERVAL_MS);
     const times: number[] = [];
     vi.stubGlobal(
@@ -140,6 +140,11 @@ describe('rate limit', () => {
       })
     );
     const session = await initInflact(createLogger(() => {}));
+    await inflactReels(
+      session,
+      'x',
+      createLogger(() => {})
+    );
     await inflactReels(
       session,
       'x',
@@ -357,6 +362,7 @@ describe('collectSocial', () => {
       ],
       {
         logger: createLogger(() => {}),
+        concurrency: 1,
         onHandle: async (target, result) => {
           seen.push(`${target.handle}:${result.posts.length}`);
         },

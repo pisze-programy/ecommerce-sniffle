@@ -20,24 +20,23 @@ const ANALYZER_REFERER = `${INFLACT_HOST}/tools/profile-analyzer/`;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
-// One request each second. The source blocks a faster caller.
+// One request each second for one session. A session is one shop.
 export const MIN_REQUEST_INTERVAL_MS = 1000;
 let intervalMs = MIN_REQUEST_INTERVAL_MS;
-let lastRequestAt = 0;
 
 // The tests set the interval to zero. A test must not wait.
 export function setMinRequestIntervalMs(value: number): void {
   intervalMs = value;
 }
 
-async function rateLimit(): Promise<void> {
-  const wait = intervalMs - (Date.now() - lastRequestAt);
+async function rateLimit(session: InflactSession): Promise<void> {
+  const wait = intervalMs - (Date.now() - session.limiter.lastAt);
   if (wait > 0) {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, wait);
     });
   }
-  lastRequestAt = Date.now();
+  session.limiter.lastAt = Date.now();
 }
 
 export interface InflactSession {
@@ -46,6 +45,7 @@ export interface InflactSession {
   readonly delta: number;
   readonly secret: string;
   readonly clientId: string;
+  readonly limiter: { lastAt: number };
 }
 
 export interface InflactStory {
@@ -241,7 +241,6 @@ export function buildMultipart(fields: Readonly<Record<string, string>>): {
 // Start a session. The GET gives the cookies, the CSRF token, and the
 // server time delta.
 export async function initInflact(logger: Logger, secretOverride?: string): Promise<InflactSession> {
-  await rateLimit();
   const response = await fetch(VIEWER_REFERER, { headers: { 'User-Agent': USER_AGENT } });
   const html = await response.text();
   const cookie = cookieHeaderFrom(readSetCookies(response.headers));
@@ -255,7 +254,7 @@ export async function initInflact(logger: Logger, secretOverride?: string): Prom
   if (csrf.length === 0) {
     logger.warn('instagram.session no csrf', { cookie: cookie.length > 0 });
   }
-  return { cookie, csrf, delta, secret, clientId: randomHex(16) };
+  return { cookie, csrf, delta, secret, clientId: randomHex(16), limiter: { lastAt: 0 } };
 }
 
 async function signedFetch(
@@ -273,7 +272,7 @@ async function signedFetch(
   const message = JSON.stringify(payload);
   const signature = await hmacHex(session.secret, message);
   const { body, contentType } = buildMultipart({ ...fields, _csrf: session.csrf });
-  await rateLimit();
+  await rateLimit(session);
   return fetchText(
     `${INFLACT_HOST}${path}`,
     {
