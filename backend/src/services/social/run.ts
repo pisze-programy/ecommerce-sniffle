@@ -18,13 +18,14 @@ export interface ApplyResult {
   readonly mediaStored: number;
 }
 
-function mediaKey(userId: string, kind: 'posts' | 'stories' | 'reels', id: string): string {
-  return `social/instagram/${userId}/${kind}/${id}/poster.jpg`;
+function mediaKey(platform: string, userId: string, kind: 'posts' | 'stories' | 'reels', id: string): string {
+  return `social/${platform}/${userId}/${kind}/${id}/poster.jpg`;
 }
 
 async function storePoster(
   media: SocialMedia | null,
   logger: Logger,
+  platform: string,
   userId: string,
   kind: 'posts' | 'stories' | 'reels',
   id: string,
@@ -33,7 +34,7 @@ async function storePoster(
   if (media === null || url === null || url.length === 0) {
     return null;
   }
-  const key = mediaKey(userId, kind, id);
+  const key = mediaKey(platform, userId, kind, id);
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -64,7 +65,7 @@ export async function applySocialPayload(
 
   const posts: SocialPost[] = [];
   for (const post of payload.posts) {
-    const r2Key = await storePoster(media, logger, post.userId, 'posts', post.id, post.posterUrl);
+    const r2Key = await storePoster(media, logger, post.platform, post.userId, 'posts', post.id, post.posterUrl);
     if (r2Key !== null) {
       mediaStored += 1;
     }
@@ -74,7 +75,7 @@ export async function applySocialPayload(
 
   const stories: SocialStory[] = [];
   for (const story of payload.stories) {
-    const r2Key = await storePoster(media, logger, story.userId, 'stories', story.id, story.posterUrl);
+    const r2Key = await storePoster(media, logger, story.platform, story.userId, 'stories', story.id, story.posterUrl);
     if (r2Key !== null) {
       mediaStored += 1;
     }
@@ -84,7 +85,7 @@ export async function applySocialPayload(
 
   const reels: SocialReel[] = [];
   for (const reel of payload.reels) {
-    const r2Key = await storePoster(media, logger, reel.userId, 'reels', reel.id, reel.posterUrl);
+    const r2Key = await storePoster(media, logger, reel.platform, reel.userId, 'reels', reel.id, reel.posterUrl);
     if (r2Key !== null) {
       mediaStored += 1;
     }

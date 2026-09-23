@@ -823,6 +823,7 @@ describe('createStorage', () => {
           postsPerDay: 0.1,
           postsPerWeek: 0.7,
           score: 3,
+          talkingAbout: null,
           isVerified: false,
           category: null,
           adReelPrice: 0,

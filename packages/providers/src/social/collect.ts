@@ -1,4 +1,5 @@
-// Collect the Instagram data for the tracked handles. See docs/INSTAGRAM.md.
+// Collect the Instagram and Facebook data for the tracked handles.
+// See docs/INSTAGRAM.md and docs/FACEBOOK.md.
 // The VPS runs this. The worker stores the result.
 
 import type { Logger } from '../logger.ts';
@@ -11,6 +12,7 @@ import {
   initInflact,
 } from './inflact.ts';
 import type { InflactPost, InflactSession } from './inflact.ts';
+import { facebookPage, facebookProfile, facebookStories, initFacebook } from './facebook.ts';
 import type {
   SocialPayload,
   SocialPost,
@@ -22,16 +24,20 @@ import type {
 } from './types.ts';
 
 // Several shops run at the same time. Each shop still sends one request
-// each second. The project standard is six shops in parallel.
+// each second. The project standard is six shops in parallel. The facebook
+// page is heavy, so facebook runs with a smaller pool.
 const DEFAULT_CONCURRENCY = 6;
+const FACEBOOK_CONCURRENCY = 2;
 const POST_PAGE_LIMIT = 40;
 // A handle with no shop seed has no floor. A deep backfill would run for
 // hours. The limit caps it.
 const NO_FLOOR_PAGE_LIMIT = 3;
+const STORY_LIFETIME_SECONDS = 86400;
 
 export interface CollectOptions {
   readonly logger: Logger;
   readonly secret?: string;
+  readonly facebookKey?: string;
   readonly concurrency?: number;
   // The VPS sends one payload for each handle. The callback holds the
   // ingest. It keeps the memory flat on a small VPS.
@@ -222,6 +228,7 @@ async function collectHandle(
     postsPerDay: analytics.postsPerDay,
     postsPerWeek: analytics.postsPerWeek,
     score: analytics.score,
+    talkingAbout: null,
     isVerified: analytics.isVerified,
     category: analytics.category,
     adReelPrice: analytics.adReelPrice,
@@ -234,8 +241,150 @@ async function collectHandle(
   return { profile, profileDay, posts, stories, reels };
 }
 
-// Collect every target. Each shop uses one session with one request each
-// second. Several shops run at the same time.
+function average(values: readonly (number | null)[]): number | null {
+  let sum = 0;
+  let count = 0;
+  for (const value of values) {
+    if (value !== null) {
+      sum += value;
+      count += 1;
+    }
+  }
+  return count === 0 ? null : sum / count;
+}
+
+function pickText(primary: string | null, secondary: string | null): string | null {
+  return primary === null ? secondary : primary;
+}
+
+function pickNumber(primary: number | null, secondary: number | null): number | null {
+  return primary === null ? secondary : primary;
+}
+
+// The facebook handle. The profile comes from the chocodata key. The
+// posts and the reels come from the public page. The stories come from a
+// public story viewer. A video post becomes a reel.
+async function collectFacebookHandle(target: SocialTarget, options: CollectOptions): Promise<HandleResult> {
+  const { logger } = options;
+  const fetchedAt = new Date().toISOString();
+  const session = await initFacebook(logger);
+  const profile = await facebookProfile(session, target.handle, logger, options.facebookKey);
+  const page = await facebookPage(session, target.handle, logger);
+  const storiesRaw = await facebookStories(session, target.handle, logger);
+
+  if (profile === null && page === null) {
+    logger.warn('facebook.collect no profile', { handle: target.handle });
+    return { profile: null, profileDay: null, posts: [], stories: [], reels: [] };
+  }
+
+  const profileId = profile === null ? null : profile.id;
+  const pageId = page === null ? null : page.id;
+  const userId = pickText(profileId, pageId);
+  if (userId === null) {
+    logger.warn('facebook.collect no id', { handle: target.handle });
+    return { profile: null, profileDay: null, posts: [], stories: [], reels: [] };
+  }
+
+  const profileName = profile === null ? null : profile.fullName;
+  const pageName = page === null ? null : page.fullName;
+  const fullName = pickText(profileName, pageName);
+
+  const profileFollowers = profile === null ? null : profile.followers;
+  const pageFollowers = page === null ? null : page.followers;
+  const followers = pickNumber(profileFollowers, pageFollowers);
+
+  const profileTalking = profile === null ? null : profile.talkingAbout;
+  const pageTalking = page === null ? null : page.talkingAbout;
+  const talkingAbout = pickNumber(profileTalking, pageTalking);
+
+  const pagePosts = page === null ? [] : page.posts;
+
+  const posts: SocialPost[] = [];
+  const reels: SocialReel[] = [];
+  for (const post of pagePosts) {
+    if (post.isVideo) {
+      reels.push({
+        platform: 'facebook',
+        id: post.id,
+        userId,
+        shortcode: '',
+        permalink: post.permalink,
+        takenAt: isoFromEpoch(post.takenAt, fetchedAt),
+        likeCount: post.likes,
+        commentCount: post.comments,
+        playCount: post.videoViews,
+        videoViewCount: post.videoViews,
+        posterUrl: post.posterUrl,
+        r2Key: null,
+        fetchedAt,
+      });
+      continue;
+    }
+    posts.push({
+      platform: 'facebook',
+      id: post.id,
+      userId,
+      shortcode: '',
+      permalink: post.permalink,
+      type: 'photo',
+      isReel: false,
+      takenAt: isoFromEpoch(post.takenAt, fetchedAt),
+      caption: post.caption,
+      likes: post.likes,
+      comments: post.comments,
+      videoViews: post.videoViews,
+      posterUrl: post.posterUrl,
+      r2Key: null,
+      fetchedAt,
+    });
+  }
+
+  const stories: SocialStory[] = [];
+  for (const story of storiesRaw) {
+    stories.push({
+      platform: 'facebook',
+      id: story.id,
+      userId,
+      mediaType: story.isVideo ? 'video' : 'photo',
+      isVideo: story.isVideo,
+      takenAt: isoFromEpoch(story.takenAt, fetchedAt),
+      expiringAt: isoFromEpoch(story.takenAt + STORY_LIFETIME_SECONDS, fetchedAt),
+      posterUrl: story.posterUrl,
+      r2Key: null,
+      fetchedAt,
+    });
+  }
+
+  const socialProfile: SocialProfile = { platform: 'facebook', userId, handle: target.handle, fullName };
+  const profileDay: SocialProfileDay = {
+    platform: 'facebook',
+    userId,
+    day: dayFromEpoch(Math.floor(Date.now() / 1000)),
+    handle: target.handle,
+    followers,
+    uploads: null,
+    avgLikes: average(pagePosts.map((post) => post.likes)),
+    avgComments: average(pagePosts.map((post) => post.comments)),
+    engagement: null,
+    postsPerDay: null,
+    postsPerWeek: null,
+    score: null,
+    talkingAbout,
+    isVerified: false,
+    category: null,
+    adReelPrice: null,
+    adPostPrice: null,
+    adStoryPrice: null,
+    country: null,
+    keywords: null,
+    fetchedAt,
+  };
+  return { profile: socialProfile, profileDay, posts, stories, reels };
+}
+
+// Collect every target. Each handle uses one session with one request each
+// second. Several handles run at the same time. Instagram and Facebook use
+// a separate pool, because the facebook page is heavy.
 export async function collectSocial(targets: readonly SocialTarget[], options: CollectOptions): Promise<SocialPayload> {
   const profiles: SocialProfile[] = [];
   const profileDays: SocialProfileDay[] = [];
@@ -243,48 +392,66 @@ export async function collectSocial(targets: readonly SocialTarget[], options: C
   const stories: SocialStory[] = [];
   const reels: SocialReel[] = [];
 
-  const queue = [...targets];
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      const target = queue.shift();
-      if (target === undefined) {
-        return;
-      }
-      try {
-        const session = await initInflact(options.logger, options.secret);
-        const result = await collectHandle(session, target, options);
-        if (options.onHandle !== undefined) {
-          await options.onHandle(target, result);
-        } else {
-          if (result.profile !== null) {
-            profiles.push(result.profile);
-          }
-          if (result.profileDay !== null) {
-            profileDays.push(result.profileDay);
-          }
-          posts.push(...result.posts);
-          stories.push(...result.stories);
-          reels.push(...result.reels);
+  const runPool = async (
+    list: readonly SocialTarget[],
+    size: number,
+    collect: (target: SocialTarget) => Promise<HandleResult>
+  ): Promise<void> => {
+    const queue = [...list];
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const target = queue.shift();
+        if (target === undefined) {
+          return;
         }
-        options.logger.info('instagram.handle done', {
-          handle: target.handle,
-          posts: result.posts.length,
-          stories: result.stories.length,
-          reels: result.reels.length,
-        });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        options.logger.warn('instagram.handle failed', { handle: target.handle, error: message });
+        try {
+          const result = await collect(target);
+          if (options.onHandle !== undefined) {
+            await options.onHandle(target, result);
+          } else {
+            if (result.profile !== null) {
+              profiles.push(result.profile);
+            }
+            if (result.profileDay !== null) {
+              profileDays.push(result.profileDay);
+            }
+            posts.push(...result.posts);
+            stories.push(...result.stories);
+            reels.push(...result.reels);
+          }
+          options.logger.info('social.handle done', {
+            platform: target.platform,
+            handle: target.handle,
+            posts: result.posts.length,
+            stories: result.stories.length,
+            reels: result.reels.length,
+          });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          options.logger.warn('social.handle failed', {
+            platform: target.platform,
+            handle: target.handle,
+            error: message,
+          });
+        }
       }
+    };
+    const workers: Promise<void>[] = [];
+    for (let index = 0; index < size; index += 1) {
+      workers.push(worker());
     }
+    await Promise.all(workers);
   };
 
+  const instagramTargets = targets.filter((target) => target.platform === 'instagram');
+  const facebookTargets = targets.filter((target) => target.platform === 'facebook');
   const size = options.concurrency === undefined ? DEFAULT_CONCURRENCY : options.concurrency;
-  const workers: Promise<void>[] = [];
-  for (let index = 0; index < size; index += 1) {
-    workers.push(worker());
-  }
-  await Promise.all(workers);
+
+  await runPool(instagramTargets, size, async (target) => {
+    const session = await initInflact(options.logger, options.secret);
+    return collectHandle(session, target, options);
+  });
+  await runPool(facebookTargets, FACEBOOK_CONCURRENCY, async (target) => collectFacebookHandle(target, options));
 
   return { profiles, profileDays, posts, stories, reels };
 }

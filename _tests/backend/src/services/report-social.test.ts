@@ -141,6 +141,7 @@ function profileDay(userId: string, overrides: Partial<SocialProfileDay>): Socia
     postsPerDay: 0.015,
     postsPerWeek: 0.102,
     score: 6,
+    talkingAbout: null,
     isVerified: false,
     category: null,
     adReelPrice: 0,

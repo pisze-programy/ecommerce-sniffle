@@ -36,7 +36,7 @@ function relevantHandles(store: EntityStore, entityId: string): readonly HandleO
   const entity = findEntity(store, entityId);
   if (entity !== null) {
     for (const link of entity.socials) {
-      if (link.platform === 'instagram') {
+      if (link.platform === 'instagram' || link.platform === 'facebook') {
         owners.set(link.handle, entity.name);
       }
     }
@@ -48,7 +48,7 @@ function relevantHandles(store: EntityStore, entityId: string): readonly HandleO
     }
     const label = `${person.name} (${ROLE_LABELS[relation.role]})`;
     for (const link of person.socials) {
-      if (link.platform === 'instagram') {
+      if (link.platform === 'instagram' || link.platform === 'facebook') {
         owners.set(link.handle, label);
       }
     }
@@ -78,7 +78,7 @@ function entityHandles(store: EntityStore, entityId: string): readonly string[] 
   const entity = findEntity(store, entityId);
   if (entity !== null) {
     for (const link of entity.socials) {
-      if (link.platform === 'instagram') {
+      if (link.platform === 'instagram' || link.platform === 'facebook') {
         handles.push(link.handle);
       }
     }
@@ -214,6 +214,7 @@ function renderProfiles(
   const rows = profileDays.map((entry) => {
     const handle = mapValue(handleByUserId, entry.userId);
     const owner = mapValue(ownerByUserId, entry.userId);
+    const scoreValue = entry.platform === 'facebook' ? entry.talkingAbout : entry.score;
     const stats = [
       stat('Dzień', entry.day),
       stat('Obserwujący', countText(entry.followers)),
@@ -221,7 +222,7 @@ function renderProfiles(
       stat('Śr. polubienia', countText(entry.avgLikes)),
       stat('Śr. komentarze', countText(entry.avgComments)),
       stat('Posty/tydz.', decimalText(entry.postsPerWeek, 2)),
-      stat('Ocena', countText(entry.score)),
+      stat('Ocena', countText(scoreValue)),
     ];
     if (entry.category !== null) {
       stats.push(stat('Kategoria', entry.category));

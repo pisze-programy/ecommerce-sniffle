@@ -32,6 +32,11 @@ function bool(value: unknown): boolean {
   return value === true;
 }
 
+// The instagram value is the default. The facebook value must be exact.
+function platform(value: unknown): 'instagram' | 'facebook' {
+  return value === 'facebook' ? 'facebook' : 'instagram';
+}
+
 function mapAll<T>(value: unknown, fn: (row: Json) => T | null): readonly T[] {
   const out: T[] = [];
   for (const entry of arr(value)) {
@@ -53,7 +58,7 @@ function parseProfile(row: Json): SocialProfile | null {
     return null;
   }
   return {
-    platform: 'instagram',
+    platform: platform(row['platform']),
     userId,
     handle: str(row['handle']) ?? userId,
     fullName: str(row['fullName']),
@@ -68,7 +73,7 @@ function parsePost(row: Json): SocialPost | null {
   }
   const kind = str(row['type']);
   return {
-    platform: 'instagram',
+    platform: platform(row['platform']),
     id,
     userId,
     shortcode: str(row['shortcode']) ?? '',
@@ -94,7 +99,7 @@ function parseStory(row: Json): SocialStory | null {
   }
   const kind = str(row['mediaType']);
   return {
-    platform: 'instagram',
+    platform: platform(row['platform']),
     id,
     userId,
     mediaType: kind === 'video' ? 'video' : 'photo',
@@ -114,7 +119,7 @@ function parseReel(row: Json): SocialReel | null {
     return null;
   }
   return {
-    platform: 'instagram',
+    platform: platform(row['platform']),
     id,
     userId,
     shortcode: str(row['shortcode']) ?? '',
@@ -137,7 +142,7 @@ function parseProfileDay(row: Json): SocialProfileDay | null {
     return null;
   }
   return {
-    platform: 'instagram',
+    platform: platform(row['platform']),
     userId,
     day,
     handle: str(row['handle']) ?? userId,
@@ -149,6 +154,7 @@ function parseProfileDay(row: Json): SocialProfileDay | null {
     postsPerDay: num(row['postsPerDay']),
     postsPerWeek: num(row['postsPerWeek']),
     score: num(row['score']),
+    talkingAbout: num(row['talkingAbout']),
     isVerified: bool(row['isVerified']),
     category: str(row['category']),
     adReelPrice: num(row['adReelPrice']),

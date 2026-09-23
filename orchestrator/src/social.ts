@@ -115,7 +115,12 @@ export async function main(): Promise<void> {
       return;
     }
     const secret = process.env['INFLACT_SIGNATURE_SECRET'];
-    const base = secret === undefined ? { logger } : { logger, secret };
+    const facebookKey = process.env['CHOCODATA_API_KEY'];
+    const base = {
+      logger,
+      ...(secret === undefined ? {} : { secret }),
+      ...(facebookKey === undefined ? {} : { facebookKey }),
+    };
     await collectSocial(targets, {
       ...base,
       onHandle: async (_target: SocialTarget, result) => {

@@ -246,6 +246,7 @@ interface SocialProfileDayRow {
   posts_per_day: number | null;
   posts_per_week: number | null;
   score: number | null;
+  talking_about?: number | null;
   is_verified: number;
   category: string | null;
   ad_reel_price: number | null;
@@ -408,7 +409,7 @@ function fromSocialReelRow(row: SocialReelRow): SocialReel {
 
 function fromSocialProfileDayRow(row: SocialProfileDayRow): SocialProfileDay {
   return {
-    platform: row.platform as 'instagram',
+    platform: row.platform as 'instagram' | 'facebook',
     userId: row.user_id,
     day: row.day,
     handle: row.handle,
@@ -420,6 +421,7 @@ function fromSocialProfileDayRow(row: SocialProfileDayRow): SocialProfileDay {
     postsPerDay: row.posts_per_day,
     postsPerWeek: row.posts_per_week,
     score: row.score,
+    talkingAbout: row.talking_about === undefined ? null : row.talking_about,
     isVerified: row.is_verified === 1,
     category: row.category,
     adReelPrice: row.ad_reel_price,
@@ -1226,7 +1228,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
           days.map((entry) =>
             db
               .prepare(
-                'INSERT OR REPLACE INTO social_profile_days (platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT OR REPLACE INTO social_profile_days (platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, talking_about, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
               )
               .bind(
                 entry.platform,
@@ -1241,6 +1243,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
                 entry.postsPerDay,
                 entry.postsPerWeek,
                 entry.score,
+                entry.talkingAbout,
                 entry.isVerified ? 1 : 0,
                 entry.category,
                 entry.adReelPrice,
@@ -1380,7 +1383,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       const placeholders = userIds.map(() => '?').join(',');
       const result = (await db
         .prepare(
-          `SELECT platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at FROM social_profile_days WHERE user_id IN (${placeholders}) AND day >= ? ORDER BY day DESC`
+          `SELECT platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, talking_about, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at FROM social_profile_days WHERE user_id IN (${placeholders}) AND day >= ? ORDER BY day DESC`
         )
         .bind(...userIds, fromDay)
         .all()) as { results: SocialProfileDayRow[] };
@@ -1393,7 +1396,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       }
       const placeholders = userIds.map(() => '?').join(',');
       const columns =
-        'platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at';
+        'platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, talking_about, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at';
       const result = (await db
         .prepare(
           `SELECT ${columns} FROM social_profile_days p WHERE user_id IN (${placeholders}) AND day = (SELECT MAX(day) FROM social_profile_days d WHERE d.user_id = p.user_id AND d.platform = p.platform)`

@@ -340,7 +340,7 @@ describe('collectSocial', () => {
     const captured: Captured[] = [];
     stubRouting(inflactRoutes, captured);
     const payload = await collectSocial(
-      [{ handle: 'x', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null }],
+      [{ platform: 'instagram', handle: 'x', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null }],
       { logger: createLogger(() => {}) }
     );
     expect(payload.profiles).toHaveLength(1);
@@ -357,8 +357,8 @@ describe('collectSocial', () => {
     const seen: string[] = [];
     const payload = await collectSocial(
       [
-        { handle: 'a', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null },
-        { handle: 'b', ownerKind: 'entity', ownerId: 'e2', seedDay: null, sinceEpoch: null },
+        { platform: 'instagram', handle: 'a', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null },
+        { platform: 'instagram', handle: 'b', ownerKind: 'entity', ownerId: 'e2', seedDay: null, sinceEpoch: null },
       ],
       {
         logger: createLogger(() => {}),
@@ -434,7 +434,7 @@ describe('collectSocial', () => {
       return null;
     }, captured);
     const payload = await collectSocial(
-      [{ handle: 'x', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null }],
+      [{ platform: 'instagram', handle: 'x', ownerKind: 'entity', ownerId: 'e1', seedDay: null, sinceEpoch: null }],
       { logger: createLogger(() => {}) }
     );
     const story = payload.stories[0];

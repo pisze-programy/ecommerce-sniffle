@@ -31,6 +31,7 @@ export function createSocialRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
 
     const targets: SocialTarget[] = [];
     const push = async (
+      platform: 'instagram' | 'facebook',
       handle: string,
       ownerKind: 'entity' | 'person',
       ownerId: string,
@@ -48,7 +49,7 @@ export function createSocialRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
           }
         }
       }
-      targets.push({ handle, ownerKind, ownerId, seedDay, sinceEpoch });
+      targets.push({ platform, handle, ownerKind, ownerId, seedDay, sinceEpoch });
     };
 
     const entitySeed = new Map<string, string | null>();
@@ -57,8 +58,8 @@ export function createSocialRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       const seedDay = domain === undefined ? null : await storage.readFirstSeed(domain);
       entitySeed.set(entity.id, seedDay);
       for (const link of entity.socials) {
-        if (link.platform === 'instagram') {
-          await push(link.handle, 'entity', entity.id, seedDay);
+        if (link.platform === 'instagram' || link.platform === 'facebook') {
+          await push(link.platform, link.handle, 'entity', entity.id, seedDay);
         }
       }
     }
@@ -78,8 +79,8 @@ export function createSocialRoutes(): Hono<{ Bindings: Env; Variables: AppVariab
       seeds.sort();
       const seedDay = seeds.length === 0 ? null : (seeds[0] ?? null);
       for (const link of person.socials) {
-        if (link.platform === 'instagram') {
-          await push(link.handle, 'person', person.id, seedDay);
+        if (link.platform === 'instagram' || link.platform === 'facebook') {
+          await push(link.platform, link.handle, 'person', person.id, seedDay);
         }
       }
     }

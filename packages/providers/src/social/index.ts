@@ -19,3 +19,25 @@ export type {
   InflactSession,
   InflactStory,
 } from './inflact.ts';
+export {
+  CHOCODATA_HOST,
+  FACEBOOK_CRAWLER_UA,
+  FACEBOOK_HOST,
+  FACEBOOK_STORIES_API,
+  facebookPage,
+  facebookProfile,
+  facebookStories,
+  initFacebook,
+  parseChocodataProfile,
+  parseFacebookPage,
+  parseFacebookPosts,
+  parseFacebookStories,
+  setFacebookMinIntervalMs,
+} from './facebook.ts';
+export type {
+  FacebookPageData,
+  FacebookPost,
+  FacebookProfileData,
+  FacebookSession,
+  FacebookStory,
+} from './facebook.ts';
