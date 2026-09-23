@@ -9,7 +9,13 @@ import type {
   SocialLink,
   SocialPlatform,
 } from '../entities.ts';
-import type { SocialPost, SocialProfile, SocialStory } from './social/types.ts';
+import type {
+  SocialPost,
+  SocialProfile,
+  SocialProfileDay,
+  SocialReel,
+  SocialStory,
+} from '@ecommerce-sniffle/providers/social';
 import type { MetaAd, MetaAdDay } from './metaads/types.ts';
 import { isMetaPlatform } from './metaads/types.ts';
 import type { GoogleAd, GoogleAdDay } from './googleads/types.ts';
@@ -65,9 +71,13 @@ export interface Storage {
   upsertSocialProfile(profile: SocialProfile): Promise<void>;
   writeSocialPosts(posts: readonly SocialPost[]): Promise<void>;
   writeSocialStories(stories: readonly SocialStory[]): Promise<void>;
+  writeSocialReels(reels: readonly SocialReel[]): Promise<void>;
+  writeSocialProfileDays(days: readonly SocialProfileDay[]): Promise<void>;
   readSocialProfiles(): Promise<readonly SocialProfile[]>;
   readSocialPosts(userIds: readonly string[], limit: number): Promise<readonly SocialPost[]>;
   readSocialStories(userIds: readonly string[], limit: number): Promise<readonly SocialStory[]>;
+  readSocialReels(userIds: readonly string[], limit: number): Promise<readonly SocialReel[]>;
+  readSocialProfileDays(userIds: readonly string[], fromDay: string): Promise<readonly SocialProfileDay[]>;
   upsertEntityFinancials(entry: EntityFinancials): Promise<void>;
   readEntityFinancials(entityId: string): Promise<EntityFinancials | null>;
   setEntityLogo(entityId: string, logoKey: string): Promise<void>;
@@ -162,13 +172,15 @@ interface SocialPostRow {
   id: string;
   user_id: string;
   shortcode: string;
+  permalink: string | null;
   media_type: string;
   is_reel: number;
   taken_at: string;
   caption: string | null;
   media_urls: string;
-  is_paid_partnership: number;
-  is_commercial: number;
+  likes: number | null;
+  comments: number | null;
+  video_views: number | null;
   tagged_users: string;
   r2_key: string | null;
   fetched_at: string;
@@ -179,14 +191,51 @@ interface SocialStoryRow {
   id: string;
   user_id: string;
   media_type: string;
+  is_video: number;
   media_urls: string;
   taken_at: string;
   expiring_at: string;
-  is_paid_partnership: number;
-  is_commercial: number;
-  has_cta_sticker: number;
   mentions: string;
   r2_key: string | null;
+  fetched_at: string;
+}
+
+interface SocialReelRow {
+  platform: string;
+  id: string;
+  user_id: string;
+  shortcode: string;
+  permalink: string | null;
+  taken_at: string;
+  like_count: number | null;
+  comment_count: number | null;
+  play_count: number | null;
+  video_view_count: number | null;
+  media_url: string | null;
+  r2_key: string | null;
+  fetched_at: string;
+}
+
+interface SocialProfileDayRow {
+  platform: string;
+  user_id: string;
+  day: string;
+  handle: string;
+  followers: number | null;
+  uploads: number | null;
+  avg_likes: number | null;
+  avg_comments: number | null;
+  engagement: number | null;
+  posts_per_day: number | null;
+  posts_per_week: number | null;
+  score: number | null;
+  is_verified: number;
+  category: string | null;
+  ad_reel_price: number | null;
+  ad_post_price: number | null;
+  ad_story_price: number | null;
+  country: string | null;
+  keywords: string | null;
   fetched_at: string;
 }
 
@@ -293,14 +342,15 @@ function fromSocialPostRow(row: SocialPostRow): SocialPost {
     id: row.id,
     userId: row.user_id,
     shortcode: row.shortcode,
+    permalink: row.permalink === null ? '' : row.permalink,
     type: row.media_type as 'photo' | 'video' | 'carousel',
     isReel: row.is_reel === 1,
     takenAt: row.taken_at,
     caption: row.caption,
-    mediaUrls: jsonArray(row.media_urls),
-    isPaidPartnership: row.is_paid_partnership === 1,
-    isCommercial: row.is_commercial === 1,
-    taggedUsers: jsonArray(row.tagged_users),
+    likes: row.likes,
+    comments: row.comments,
+    videoViews: row.video_views,
+    posterUrl: jsonArray(row.media_urls)[0] ?? null,
     r2Key: row.r2_key,
     fetchedAt: row.fetched_at,
   };
@@ -312,14 +362,54 @@ function fromSocialStoryRow(row: SocialStoryRow): SocialStory {
     id: row.id,
     userId: row.user_id,
     mediaType: row.media_type as 'photo' | 'video',
-    mediaUrls: jsonArray(row.media_urls),
+    isVideo: row.is_video === 1,
     takenAt: row.taken_at,
     expiringAt: row.expiring_at,
-    isPaidPartnership: row.is_paid_partnership === 1,
-    isCommercial: row.is_commercial === 1,
-    hasCtaSticker: row.has_cta_sticker === 1,
-    mentions: jsonArray(row.mentions),
+    posterUrl: jsonArray(row.media_urls)[0] ?? null,
     r2Key: row.r2_key,
+    fetchedAt: row.fetched_at,
+  };
+}
+
+function fromSocialReelRow(row: SocialReelRow): SocialReel {
+  return {
+    platform: row.platform as 'instagram',
+    id: row.id,
+    userId: row.user_id,
+    shortcode: row.shortcode,
+    permalink: row.permalink === null ? '' : row.permalink,
+    takenAt: row.taken_at,
+    likeCount: row.like_count,
+    commentCount: row.comment_count,
+    playCount: row.play_count,
+    videoViewCount: row.video_view_count,
+    posterUrl: row.media_url,
+    r2Key: row.r2_key,
+    fetchedAt: row.fetched_at,
+  };
+}
+
+function fromSocialProfileDayRow(row: SocialProfileDayRow): SocialProfileDay {
+  return {
+    platform: row.platform as 'instagram',
+    userId: row.user_id,
+    day: row.day,
+    handle: row.handle,
+    followers: row.followers,
+    uploads: row.uploads,
+    avgLikes: row.avg_likes,
+    avgComments: row.avg_comments,
+    engagement: row.engagement,
+    postsPerDay: row.posts_per_day,
+    postsPerWeek: row.posts_per_week,
+    score: row.score,
+    isVerified: row.is_verified === 1,
+    category: row.category,
+    adReelPrice: row.ad_reel_price,
+    adPostPrice: row.ad_post_price,
+    adStoryPrice: row.ad_story_price,
+    country: row.country,
+    keywords: row.keywords,
     fetchedAt: row.fetched_at,
   };
 }
@@ -1008,21 +1098,25 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
           posts.map((post) =>
             db
               .prepare(
-                'INSERT OR REPLACE INTO social_posts (platform, id, user_id, shortcode, media_type, is_reel, taken_at, caption, media_urls, is_paid_partnership, is_commercial, tagged_users, r2_key, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT OR REPLACE INTO social_posts (platform, id, user_id, shortcode, permalink, media_type, is_reel, taken_at, caption, media_urls, likes, comments, video_views, is_paid_partnership, is_commercial, tagged_users, r2_key, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
               )
               .bind(
                 post.platform,
                 post.id,
                 post.userId,
                 post.shortcode,
+                post.permalink,
                 post.type,
                 post.isReel ? 1 : 0,
                 post.takenAt,
                 post.caption,
-                jsonString(post.mediaUrls),
-                post.isPaidPartnership ? 1 : 0,
-                post.isCommercial ? 1 : 0,
-                jsonString(post.taggedUsers),
+                jsonString(post.posterUrl === null ? [] : [post.posterUrl]),
+                post.likes,
+                post.comments,
+                post.videoViews,
+                0,
+                0,
+                jsonString([]),
                 post.r2Key,
                 post.fetchedAt
               )
@@ -1044,20 +1138,21 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
           stories.map((story) =>
             db
               .prepare(
-                'INSERT OR REPLACE INTO social_stories (platform, id, user_id, media_type, media_urls, taken_at, expiring_at, is_paid_partnership, is_commercial, has_cta_sticker, mentions, r2_key, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT OR REPLACE INTO social_stories (platform, id, user_id, media_type, is_video, media_urls, taken_at, expiring_at, is_paid_partnership, is_commercial, has_cta_sticker, mentions, r2_key, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
               )
               .bind(
                 story.platform,
                 story.id,
                 story.userId,
                 story.mediaType,
-                jsonString(story.mediaUrls),
+                story.isVideo ? 1 : 0,
+                jsonString(story.posterUrl === null ? [] : [story.posterUrl]),
                 story.takenAt,
                 story.expiringAt,
-                story.isPaidPartnership ? 1 : 0,
-                story.isCommercial ? 1 : 0,
-                story.hasCtaSticker ? 1 : 0,
-                jsonString(story.mentions),
+                0,
+                0,
+                0,
+                jsonString([]),
                 story.r2Key,
                 story.fetchedAt
               )
@@ -1066,6 +1161,83 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         logger.error('storage.writeSocialStories failed', { count: stories.length, error: message });
+        throw error;
+      }
+    },
+
+    async writeSocialReels(reels: readonly SocialReel[]): Promise<void> {
+      if (reels.length === 0) {
+        return;
+      }
+      try {
+        await db.batch(
+          reels.map((reel) =>
+            db
+              .prepare(
+                'INSERT OR REPLACE INTO social_reels (platform, id, user_id, shortcode, permalink, taken_at, like_count, comment_count, play_count, video_view_count, media_url, r2_key, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+              )
+              .bind(
+                reel.platform,
+                reel.id,
+                reel.userId,
+                reel.shortcode,
+                reel.permalink,
+                reel.takenAt,
+                reel.likeCount,
+                reel.commentCount,
+                reel.playCount,
+                reel.videoViewCount,
+                reel.posterUrl,
+                reel.r2Key,
+                reel.fetchedAt
+              )
+          )
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.writeSocialReels failed', { count: reels.length, error: message });
+        throw error;
+      }
+    },
+
+    async writeSocialProfileDays(days: readonly SocialProfileDay[]): Promise<void> {
+      if (days.length === 0) {
+        return;
+      }
+      try {
+        await db.batch(
+          days.map((entry) =>
+            db
+              .prepare(
+                'INSERT OR REPLACE INTO social_profile_days (platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+              )
+              .bind(
+                entry.platform,
+                entry.userId,
+                entry.day,
+                entry.handle,
+                entry.followers,
+                entry.uploads,
+                entry.avgLikes,
+                entry.avgComments,
+                entry.engagement,
+                entry.postsPerDay,
+                entry.postsPerWeek,
+                entry.score,
+                entry.isVerified ? 1 : 0,
+                entry.category,
+                entry.adReelPrice,
+                entry.adPostPrice,
+                entry.adStoryPrice,
+                entry.country,
+                entry.keywords,
+                entry.fetchedAt
+              )
+          )
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.writeSocialProfileDays failed', { count: days.length, error: message });
         throw error;
       }
     },
@@ -1089,7 +1261,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       const placeholders = userIds.map(() => '?').join(',');
       const result = (await db
         .prepare(
-          `SELECT platform, id, user_id, shortcode, media_type, is_reel, taken_at, caption, media_urls, is_paid_partnership, is_commercial, tagged_users, r2_key, fetched_at FROM social_posts WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
+          `SELECT platform, id, user_id, shortcode, permalink, media_type, is_reel, taken_at, caption, media_urls, likes, comments, video_views, tagged_users, r2_key, fetched_at FROM social_posts WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
         )
         .bind(...userIds, limit)
         .all()) as { results: SocialPostRow[] };
@@ -1103,11 +1275,39 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       const placeholders = userIds.map(() => '?').join(',');
       const result = (await db
         .prepare(
-          `SELECT platform, id, user_id, media_type, media_urls, taken_at, expiring_at, is_paid_partnership, is_commercial, has_cta_sticker, mentions, r2_key, fetched_at FROM social_stories WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
+          `SELECT platform, id, user_id, media_type, is_video, media_urls, taken_at, expiring_at, mentions, r2_key, fetched_at FROM social_stories WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
         )
         .bind(...userIds, limit)
         .all()) as { results: SocialStoryRow[] };
       return result.results.map(fromSocialStoryRow);
+    },
+
+    async readSocialReels(userIds: readonly string[], limit: number): Promise<readonly SocialReel[]> {
+      if (userIds.length === 0) {
+        return [];
+      }
+      const placeholders = userIds.map(() => '?').join(',');
+      const result = (await db
+        .prepare(
+          `SELECT platform, id, user_id, shortcode, permalink, taken_at, like_count, comment_count, play_count, video_view_count, media_url, r2_key, fetched_at FROM social_reels WHERE user_id IN (${placeholders}) ORDER BY taken_at DESC LIMIT ?`
+        )
+        .bind(...userIds, limit)
+        .all()) as { results: SocialReelRow[] };
+      return result.results.map(fromSocialReelRow);
+    },
+
+    async readSocialProfileDays(userIds: readonly string[], fromDay: string): Promise<readonly SocialProfileDay[]> {
+      if (userIds.length === 0) {
+        return [];
+      }
+      const placeholders = userIds.map(() => '?').join(',');
+      const result = (await db
+        .prepare(
+          `SELECT platform, user_id, day, handle, followers, uploads, avg_likes, avg_comments, engagement, posts_per_day, posts_per_week, score, is_verified, category, ad_reel_price, ad_post_price, ad_story_price, country, keywords, fetched_at FROM social_profile_days WHERE user_id IN (${placeholders}) AND day >= ? ORDER BY day DESC`
+        )
+        .bind(...userIds, fromDay)
+        .all()) as { results: SocialProfileDayRow[] };
+      return result.results.map(fromSocialProfileDayRow);
     },
 
     async upsertEntityFinancials(entry: EntityFinancials): Promise<void> {

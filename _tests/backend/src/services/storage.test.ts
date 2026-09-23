@@ -648,45 +648,107 @@ describe('createStorage', () => {
   });
 
   describe('social storage', () => {
-    it('writes and reads profiles, posts and stories', async () => {
+    it('writes and reads profiles, posts, stories, reels and profile days', async () => {
       const { logger } = capturingLogger();
-      const postRows: Array<Record<string, unknown>> = [];
-      const profileRows: Array<Record<string, unknown>> = [];
       const db = new MockD1((query) => {
-        if (query.startsWith('INSERT OR REPLACE INTO social_posts')) {
-          const row = {
-            platform: 'instagram',
-            id: 'p1',
-            user_id: '331874442',
-            shortcode: 'ABC',
-            media_type: 'photo',
-            is_reel: 0,
-            taken_at: '2026-08-30T10:00:00.000Z',
-            caption: 'hello',
-            media_urls: '["https://cdn/1.jpg"]',
-            is_paid_partnership: 1,
-            is_commercial: 0,
-            tagged_users: '["hdrey_pl"]',
-            r2_key: null,
-            fetched_at: '2026-08-30T11:00:00.000Z',
+        if (query.startsWith('SELECT platform, id, user_id, shortcode, permalink, media_type')) {
+          return {
+            results: [
+              {
+                platform: 'instagram',
+                id: 'p1',
+                user_id: '331874442',
+                shortcode: 'ABC',
+                permalink: 'https://www.instagram.com/p/ABC/',
+                media_type: 'photo',
+                is_reel: 0,
+                taken_at: '2026-08-30T10:00:00.000Z',
+                caption: 'hello',
+                media_urls: '["https://cdn/1.jpg"]',
+                likes: 10,
+                comments: 2,
+                video_views: null,
+                tagged_users: '[]',
+                r2_key: 'social/instagram/x/posts/p1/poster.jpg',
+                fetched_at: '2026-08-30T11:00:00.000Z',
+              },
+            ],
           };
-          postRows.push(row);
-          return { results: [row] };
         }
-        if (query.startsWith('SELECT platform, id, user_id')) {
-          return { results: postRows };
+        if (query.startsWith('SELECT platform, id, user_id, media_type, is_video')) {
+          return {
+            results: [
+              {
+                platform: 'instagram',
+                id: 's1',
+                user_id: '331874442',
+                media_type: 'video',
+                is_video: 1,
+                media_urls: '["https://cdn/s1.jpg"]',
+                taken_at: '2026-08-30T10:00:00.000Z',
+                expiring_at: '2026-08-31T10:00:00.000Z',
+                mentions: '[]',
+                r2_key: null,
+                fetched_at: '2026-08-30T11:00:00.000Z',
+              },
+            ],
+          };
         }
-        if (query.startsWith('INSERT OR REPLACE INTO social_profiles')) {
-          profileRows.push({
-            platform: 'instagram',
-            user_id: '331874442',
-            handle: 'karolina_pisarek',
-            full_name: 'Karolina',
-          });
-          return { results: [] };
+        if (query.startsWith('SELECT platform, id, user_id, shortcode, permalink, taken_at')) {
+          return {
+            results: [
+              {
+                platform: 'instagram',
+                id: 'r1',
+                user_id: '331874442',
+                shortcode: 'REEL',
+                permalink: 'https://www.instagram.com/p/REEL/',
+                taken_at: '2026-08-30T10:00:00.000Z',
+                like_count: 5,
+                comment_count: 1,
+                play_count: 900,
+                video_view_count: 800,
+                media_url: 'https://cdn/r1.jpg',
+                r2_key: null,
+                fetched_at: '2026-08-30T11:00:00.000Z',
+              },
+            ],
+          };
+        }
+        if (query.startsWith('SELECT platform, user_id, day, handle')) {
+          return {
+            results: [
+              {
+                platform: 'instagram',
+                user_id: '331874442',
+                day: '2026-08-30',
+                handle: 'karolina_pisarek',
+                followers: 100,
+                uploads: 50,
+                avg_likes: 5,
+                avg_comments: 1,
+                engagement: 0.05,
+                posts_per_day: 0.1,
+                posts_per_week: 0.7,
+                score: 3,
+                is_verified: 0,
+                category: null,
+                ad_reel_price: 0,
+                ad_post_price: 0,
+                ad_story_price: 0,
+                country: 'Worldwide',
+                keywords: null,
+                fetched_at: '2026-08-30T11:00:00.000Z',
+              },
+            ],
+          };
         }
         if (query.startsWith('SELECT platform, user_id, handle')) {
-          return { results: profileRows };
+          return {
+            results: [
+              { platform: 'instagram', user_id: '331874442', handle: 'karolina_pisarek', full_name: 'Karolina' },
+            ],
+          };
         }
         return { results: [] };
       });
@@ -703,23 +765,84 @@ describe('createStorage', () => {
           id: 'p1',
           userId: '331874442',
           shortcode: 'ABC',
+          permalink: 'https://www.instagram.com/p/ABC/',
           type: 'photo',
           isReel: false,
           takenAt: '2026-08-30T10:00:00.000Z',
           caption: 'hello',
-          mediaUrls: ['https://cdn/1.jpg'],
-          isPaidPartnership: true,
-          isCommercial: false,
-          taggedUsers: ['hdrey_pl'],
+          likes: 10,
+          comments: 2,
+          videoViews: null,
+          posterUrl: 'https://cdn/1.jpg',
+          r2Key: 'social/instagram/x/posts/p1/poster.jpg',
+          fetchedAt: '2026-08-30T11:00:00.000Z',
+        },
+      ]);
+      await storage.writeSocialStories([
+        {
+          platform: 'instagram',
+          id: 's1',
+          userId: '331874442',
+          mediaType: 'video',
+          isVideo: true,
+          takenAt: '2026-08-30T10:00:00.000Z',
+          expiringAt: '2026-08-31T10:00:00.000Z',
+          posterUrl: 'https://cdn/s1.jpg',
           r2Key: null,
           fetchedAt: '2026-08-30T11:00:00.000Z',
         },
       ]);
+      await storage.writeSocialReels([
+        {
+          platform: 'instagram',
+          id: 'r1',
+          userId: '331874442',
+          shortcode: 'REEL',
+          permalink: 'https://www.instagram.com/p/REEL/',
+          takenAt: '2026-08-30T10:00:00.000Z',
+          likeCount: 5,
+          commentCount: 1,
+          playCount: 900,
+          videoViewCount: 800,
+          posterUrl: 'https://cdn/r1.jpg',
+          r2Key: null,
+          fetchedAt: '2026-08-30T11:00:00.000Z',
+        },
+      ]);
+      await storage.writeSocialProfileDays([
+        {
+          platform: 'instagram',
+          userId: '331874442',
+          day: '2026-08-30',
+          handle: 'karolina_pisarek',
+          followers: 100,
+          uploads: 50,
+          avgLikes: 5,
+          avgComments: 1,
+          engagement: 0.05,
+          postsPerDay: 0.1,
+          postsPerWeek: 0.7,
+          score: 3,
+          isVerified: false,
+          category: null,
+          adReelPrice: 0,
+          adPostPrice: 0,
+          adStoryPrice: 0,
+          country: 'Worldwide',
+          keywords: null,
+          fetchedAt: '2026-08-30T11:00:00.000Z',
+        },
+      ]);
       const posts = await storage.readSocialPosts(['331874442'], 10);
-      expect(posts).toHaveLength(1);
-      expect(posts[0]?.taggedUsers).toEqual(['hdrey_pl']);
-      expect(posts[0]?.isPaidPartnership).toBe(true);
-      expect(posts[0]?.mediaUrls).toEqual(['https://cdn/1.jpg']);
+      expect(posts[0]?.permalink).toBe('https://www.instagram.com/p/ABC/');
+      expect(posts[0]?.posterUrl).toBe('https://cdn/1.jpg');
+      expect(posts[0]?.likes).toBe(10);
+      const stories = await storage.readSocialStories(['331874442'], 10);
+      expect(stories[0]?.isVideo).toBe(true);
+      const reels = await storage.readSocialReels(['331874442'], 10);
+      expect(reels[0]?.playCount).toBe(900);
+      const days = await storage.readSocialProfileDays(['331874442'], '2026-08-01');
+      expect(days[0]?.followers).toBe(100);
       const profiles = await storage.readSocialProfiles();
       expect(profiles[0]?.handle).toBe('karolina_pisarek');
     });
@@ -731,27 +854,26 @@ describe('createStorage', () => {
       });
       const storage = createStorage(db, capture.logger);
       await expect(
-        storage.writeSocialPosts([
+        storage.writeSocialReels([
           {
             platform: 'instagram',
-            id: 'p1',
+            id: 'r1',
             userId: '1',
-            shortcode: 'ABC',
-            type: 'photo',
-            isReel: false,
+            shortcode: 'REEL',
+            permalink: 'https://www.instagram.com/p/REEL/',
             takenAt: '2026-08-30T10:00:00.000Z',
-            caption: null,
-            mediaUrls: [],
-            isPaidPartnership: false,
-            isCommercial: false,
-            taggedUsers: [],
+            likeCount: null,
+            commentCount: null,
+            playCount: null,
+            videoViewCount: null,
+            posterUrl: null,
             r2Key: null,
             fetchedAt: '2026-08-30T11:00:00.000Z',
           },
         ])
       ).rejects.toThrow('db down');
       expect(capture.records[0]?.level).toBe('error');
-      expect(capture.records[0]?.message).toBe('storage.writeSocialPosts failed');
+      expect(capture.records[0]?.message).toBe('storage.writeSocialReels failed');
     });
   });
 });

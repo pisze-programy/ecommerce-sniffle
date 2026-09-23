@@ -8,6 +8,7 @@ import { createRunRoutes } from './run.ts';
 import { createUsageRoutes } from './usage.ts';
 import { createSnitchRoutes } from './snitch.ts';
 import { createReportRoutes } from './report.ts';
+import { createSocialRoutes } from './social.ts';
 
 export type { AppVariables } from './types.ts';
 
@@ -20,5 +21,6 @@ export function createApi(): Hono<{ Bindings: Env; Variables: AppVariables }> {
   api.route('/', createUsageRoutes());
   api.route('/', createSnitchRoutes());
   api.route('/', createReportRoutes());
+  api.route('/', createSocialRoutes());
   return api;
 }

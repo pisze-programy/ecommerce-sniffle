@@ -39,7 +39,7 @@ import { renderShopsTable } from '../services/report/dashboard.ts';
 import type { ShopCard } from '../services/report/dashboard.ts';
 import { renderEntityCard } from '../services/report/entities.ts';
 import type { EntityShopLink } from '../services/report/entities.ts';
-import { renderSocialCard, socialUserIds } from '../services/report/social.ts';
+import { renderSocialCard, socialUserIds, SOCIAL_REPORT_LIMIT } from '../services/report/social.ts';
 import { renderAdsSection } from '../services/report/ads.ts';
 import { metaAdsSummary } from '../services/report/metaads.ts';
 import { googleAdsSummary } from '../services/report/googleads.ts';
@@ -584,11 +584,13 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       }
       const store = await storage.readEntityStore();
       const profiles = await storage.readSocialProfiles();
-      const [posts, stories] = await Promise.all([
-        storage.readSocialPosts(socialUserIds(store, config.entityId, profiles), 10),
-        storage.readSocialStories(socialUserIds(store, config.entityId, profiles), 10),
+      const userIds = socialUserIds(store, config.entityId, profiles);
+      const [posts, stories, reels] = await Promise.all([
+        storage.readSocialPosts(userIds, SOCIAL_REPORT_LIMIT),
+        storage.readSocialStories(userIds, SOCIAL_REPORT_LIMIT),
+        storage.readSocialReels(userIds, SOCIAL_REPORT_LIMIT),
       ]);
-      return renderSocialCard(store, config.entityId, { profiles, posts, stories });
+      return renderSocialCard(store, config.entityId, { profiles, posts, stories, reels });
     })();
     const adsSection =
       adsData === null

@@ -13,6 +13,10 @@
     "./mcp-inventory": {
       "types": "./dist/providers/shopify/implementations/mcp-inventory.d.ts",
       "import": "./dist/providers/shopify/implementations/mcp-inventory.js"
+    },
+    "./social": {
+      "types": "./dist/social/index.d.ts",
+      "import": "./dist/social/index.js"
     }
   },
   "scripts": {

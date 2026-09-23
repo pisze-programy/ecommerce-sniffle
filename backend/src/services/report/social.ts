@@ -1,36 +1,21 @@
-// Renders the Social card: recent IG posts and stories of the shop's
-// entity and its related persons. Sponsorship flags become badges.
-// Known tagged handles become loose connections.
+// Renders the Social card: recent IG posts, stories and reels of the
+// shop's entity and its related persons. See docs/INSTAGRAM.md.
 
 import type { EntityStore } from '../../entities.ts';
 import { findEntity, findPerson } from '../../entities.ts';
-import type { SocialPost, SocialProfile, SocialStory } from '../social/types.ts';
+import type { SocialPost, SocialProfile, SocialReel, SocialStory } from '@ecommerce-sniffle/providers/social';
 import { badge, card, emptyState, esc } from '../report-components.ts';
 
 export interface SocialRenderData {
   readonly profiles: readonly SocialProfile[];
   readonly posts: readonly SocialPost[];
   readonly stories: readonly SocialStory[];
+  readonly reels: readonly SocialReel[];
 }
 
-function knownHandleLabels(store: EntityStore): Map<string, string> {
-  const labels = new Map<string, string>();
-  for (const entity of store.entities) {
-    for (const link of entity.socials) {
-      if (link.platform === 'instagram') {
-        labels.set(link.handle, entity.name);
-      }
-    }
-  }
-  for (const person of store.persons) {
-    for (const link of person.socials) {
-      if (link.platform === 'instagram') {
-        labels.set(link.handle, person.name);
-      }
-    }
-  }
-  return labels;
-}
+// How many items the shop page shows for each kind. The collection is not
+// limited. The database keeps every item. This value is display only.
+export const SOCIAL_REPORT_LIMIT = 24;
 
 function relevantHandles(store: EntityStore, entityId: string): readonly string[] {
   const handles = new Set<string>();
@@ -67,101 +52,87 @@ export function socialUserIds(
     .filter((userId): userId is string => userId !== undefined);
 }
 
-function looseBadges(handles: readonly string[], known: ReadonlyMap<string, string>): string {
-  const names = new Set<string>();
-  for (const handle of handles) {
-    const label = known.get(handle);
-    if (label !== undefined) {
-      names.add(label);
-    }
+function thumb(r2Key: string | null, posterUrl: string | null): string {
+  if (r2Key !== null) {
+    return `/media/${esc(r2Key)}`;
   }
-  return [...names].map((name) => badge(`→ ${name}`, 'green')).join(' ');
+  return posterUrl === null ? '' : esc(posterUrl);
 }
 
-function thumb(post: SocialPost | SocialStory): string {
-  if (post.r2Key !== null) {
-    return `/media/${esc(post.r2Key)}`;
-  }
-  const url = post.mediaUrls[0];
-  return url === undefined ? '' : esc(url);
+function tile(image: string, href: string | null, badges: string, date: string): string {
+  const imageHtml =
+    image === ''
+      ? '<div class="card-body"><p class="text-secondary fs-6">brak mediów</p></div>'
+      : href === null
+        ? `<img class="card-img-top" src="${image}" loading="lazy" alt="media">`
+        : `<a href="${href}" target="_blank" rel="noopener"><img class="card-img-top" src="${image}" loading="lazy" alt="media"></a>`;
+  return `<div class="col-6 col-lg-3">
+  <div class="card card-sm h-100">
+    ${imageHtml}
+    <div class="card-body p-2">
+      <div class="d-flex flex-wrap gap-1">${badges}</div>
+      <div class="text-secondary fs-6">${esc(date.slice(0, 10))}</div>
+    </div>
+  </div>
+</div>`;
 }
 
-function renderStories(stories: readonly SocialStory[], known: ReadonlyMap<string, string>): string {
+function renderStories(stories: readonly SocialStory[]): string {
   if (stories.length === 0) {
     return '';
   }
   const tiles = stories
     .map((story) => {
-      const flags = [
-        story.isPaidPartnership ? badge('sponsorowane', 'yellow') : '',
-        story.isCommercial ? badge('reklama', 'blue') : '',
-        story.hasCtaSticker ? badge('CTA', 'blue') : '',
-      ].join('');
-      const loose = looseBadges(story.mentions, known);
-      const image = thumb(story);
-      const imageHtml =
-        image === ''
-          ? '<div class="card-body"><p class="text-secondary fs-6">brak mediów</p></div>'
-          : `<img class="card-img-top" src="${image}" loading="lazy" alt="story">`;
-      return `<div class="col-6 col-lg-3">
-  <div class="card card-sm h-100">
-    ${imageHtml}
-    <div class="card-body p-2">
-      <div class="d-flex flex-wrap gap-1">${flags}${loose}</div>
-      <div class="text-secondary fs-6">${esc(story.takenAt.slice(0, 10))}</div>
-    </div>
-  </div>
-</div>`;
+      const flags = story.isVideo ? badge('wideo', 'blue') : '';
+      return tile(thumb(story.r2Key, story.posterUrl), null, flags, story.takenAt);
     })
     .join('');
   return `<div class="subheader mt-3 mb-1">Stories</div><div class="row row-cards">${tiles}</div>`;
 }
 
-function renderPosts(posts: readonly SocialPost[], known: ReadonlyMap<string, string>): string {
+function renderPosts(posts: readonly SocialPost[]): string {
   if (posts.length === 0) {
     return '';
   }
   const tiles = posts
     .map((post) => {
       const flags = [
-        post.isPaidPartnership ? badge('sponsorowane', 'yellow') : '',
-        post.isCommercial ? badge('reklama', 'blue') : '',
+        post.isReel ? badge('reel', 'blue') : '',
+        post.likes === null ? '' : `<span class="text-secondary fs-6">${post.likes} ♥</span>`,
       ].join('');
-      const loose = looseBadges(post.taggedUsers, known);
-      const image = thumb(post);
-      const href = `https://www.instagram.com/p/${esc(post.shortcode)}/`;
-      const imageHtml =
-        image === ''
-          ? '<div class="card-body"><p class="text-secondary fs-6">brak mediów</p></div>'
-          : `<a href="${href}" target="_blank" rel="noopener"><img class="card-img-top" src="${image}" loading="lazy" alt="post"></a>`;
-      const caption =
-        post.caption === null || post.caption.length === 0
-          ? ''
-          : `<div class="text-secondary fs-6 text-truncate">${esc(post.caption)}</div>`;
-      return `<div class="col-6 col-lg-3">
-  <div class="card card-sm h-100">
-    ${imageHtml}
-    <div class="card-body p-2">
-      <div class="d-flex flex-wrap gap-1">${flags}${loose}</div>
-      <div class="text-secondary fs-6">${esc(post.takenAt.slice(0, 10))}</div>
-      ${caption}
-    </div>
-  </div>
-</div>`;
+      const href = post.permalink.length === 0 ? null : esc(post.permalink);
+      return tile(thumb(post.r2Key, post.posterUrl), href, flags, post.takenAt);
     })
     .join('');
   return `<div class="subheader mt-3 mb-1">Posty</div><div class="row row-cards">${tiles}</div>`;
 }
 
+function renderReels(reels: readonly SocialReel[]): string {
+  if (reels.length === 0) {
+    return '';
+  }
+  const tiles = reels
+    .map((reel) => {
+      const flags = [
+        badge('reel', 'blue'),
+        reel.playCount === null ? '' : `<span class="text-secondary fs-6">${reel.playCount} ▶</span>`,
+      ].join('');
+      const href = reel.permalink.length === 0 ? null : esc(reel.permalink);
+      return tile(thumb(reel.r2Key, reel.posterUrl), href, flags, reel.takenAt);
+    })
+    .join('');
+  return `<div class="subheader mt-3 mb-1">Reels</div><div class="row row-cards">${tiles}</div>`;
+}
+
 export function renderSocialCard(store: EntityStore, entityId: string, data: SocialRenderData): string {
-  const known = knownHandleLabels(store);
   if (relevantHandles(store, entityId).length === 0) {
     return '';
   }
   const userIds = socialUserIds(store, entityId, data.profiles);
-  const posts = data.posts.filter((post) => userIds.includes(post.userId)).slice(0, 8);
-  const stories = data.stories.filter((story) => userIds.includes(story.userId)).slice(0, 8);
-  const body = `${renderStories(stories, known)}${renderPosts(posts, known)}`;
+  const posts = data.posts.filter((post) => userIds.includes(post.userId)).slice(0, SOCIAL_REPORT_LIMIT);
+  const stories = data.stories.filter((story) => userIds.includes(story.userId)).slice(0, SOCIAL_REPORT_LIMIT);
+  const reels = data.reels.filter((reel) => userIds.includes(reel.userId)).slice(0, SOCIAL_REPORT_LIMIT);
+  const body = `${renderStories(stories)}${renderPosts(posts)}${renderReels(reels)}`;
   if (body === '') {
     return card({
       title: 'Social',
