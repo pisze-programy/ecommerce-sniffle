@@ -48,12 +48,28 @@ describe('parseIdoSellProductId', () => {
 });
 
 describe('parseIdoSellPrice', () => {
-  it('parses the gross price', () => {
+  it('parses the nested gross price', () => {
+    expect(parseIdoSellPrice('"price":{\n"value":"12.99",\n"price_net":"12.37"\n}')).toBe(12.99);
+  });
+
+  it('parses the nested price with other fields before the value', () => {
+    expect(parseIdoSellPrice('"price":{"price_formatted":"12,99 zł","value":"12.99"}')).toBe(12.99);
+  });
+
+  it('parses the flat price from an older page', () => {
     expect(parseIdoSellPrice('"price":"59.99"')).toBe(59.99);
+  });
+
+  it('returns zero when the nested object has no value', () => {
+    expect(parseIdoSellPrice('"price":{"price_formatted":"12,99 zł"}')).toBe(0);
   });
 
   it('returns zero when the price is missing', () => {
     expect(parseIdoSellPrice('<html></html>')).toBe(0);
+  });
+
+  it('returns zero for a non-numeric value', () => {
+    expect(parseIdoSellPrice('"price":{"value":"brak"}')).toBe(0);
   });
 });
 
@@ -68,7 +84,7 @@ describe('foodsbyannModule', () => {
         ? '<urlset><url><loc>https://foodsbyann.com/product-pol-200-Kubek.html</loc></url></urlset>'
         : url.includes('sitemap')
           ? '<?xml version="1.0"?><urlset><url><loc>https://foodsbyann.com/sitemap-1.xml.gz</loc></url></urlset>'
-          : '<html><head><title>Kubek</title></head><body>"sizes":{"uniw":{"type":"uniw","amount":7}}</body></html>';
+          : '<html><head><title>Kubek</title></head><body>"sizes":{"uniw":{"type":"uniw","amount":7}},"price":{"value":"7.50"}</body></html>';
       const buffer = Buffer.from(body);
       return {
         ok: true,
@@ -89,5 +105,6 @@ describe('foodsbyannModule', () => {
     expect(directCalls.length).toBeGreaterThan(0);
     expect(catalog.products).toHaveLength(1);
     expect(catalog.products[0]?.variants[0]?.quantity).toBe(7);
+    expect(catalog.products[0]?.variants[0]?.price.amount).toBe(7.5);
   });
 });

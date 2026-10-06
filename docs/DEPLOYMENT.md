@@ -65,6 +65,10 @@ shows a solvable Turnstile widget. A missing key disables solving.
 endpoint. The secret must match the one set with
 `wrangler secret put INGEST_SECRET`.
 
+`INGEST_SECRET` is shared by the worker and the VPS.
+A mismatch returns 401 and the tasks stay `pending`.
+See [Secret rotation](#secret-rotation).
+
 4. Create a launcher `run.sh` in the orchestrator folder:
 
 ```
@@ -173,6 +177,49 @@ Verify the block with this command on the VPS:
 The script lives in `orchestrator/check-npm-block.sh` in the repo.
 It proves that `npm install` is blocked and that other npm commands
 still work.
+
+## Secret rotation
+
+`INGEST_SECRET` is shared by the worker and the VPS.
+The VPS uses it for `queue/claim`, `queue/complete`, `queue/fail`
+and the ingest. A rotation on one layer only breaks the other layer.
+The VPS then logs `queue.claim rejected` with status 401.
+Every task stays `pending`. The seed looks healthy but nothing runs.
+
+Rotate in this order:
+
+1. Set the new value on the worker:
+
+```
+cd backend
+npx wrangler secret put INGEST_SECRET
+```
+
+2. Write the same value to the local `.env` (the repo root).
+3. Write the same value to `~/ecommerce-sniffle/.env` on the VPS:
+
+```
+ssh frog 'sed -i "s|^INGEST_SECRET=.*|INGEST_SECRET=<NEW>|" ~/ecommerce-sniffle/.env'
+```
+
+4. Verify the pair from the VPS. The status route reads the secret
+   and does not claim a task:
+
+```
+ssh frog 'set -a; . ~/ecommerce-sniffle/.env; set +a; \
+  curl -sS -o /dev/null -w "%{http_code}\n" \
+  "$BACKEND_URL/queue/status" -H "Authorization: Bearer $INGEST_SECRET"'
+```
+
+HTTP 200 proves the pair matches. HTTP 401 proves a mismatch.
+
+5. Watch the next VPS run in `/tmp/ecp-orchestrator.log`.
+   `queue.claim rejected` must not appear.
+
+A stale `pending` backlog drains on the next VPS run.
+The lease reaper returns the tasks to the queue.
+
+Do not rotate `INGEST_SECRET` without step 3.
 
 ## Storage bindings
 

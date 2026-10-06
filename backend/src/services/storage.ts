@@ -18,7 +18,7 @@ import type {
 } from '@ecommerce-sniffle/providers/social';
 import type { MetaAd, MetaAdDay } from './metaads/types.ts';
 import { isMetaPlatform } from './metaads/types.ts';
-import type { GoogleAd, GoogleAdDay } from './googleads/types.ts';
+import type { GoogleAd, GoogleAdCore, GoogleAdStatic, GoogleAdSurfaces, GoogleAdDay } from './googleads/types.ts';
 import { sanitizeBounds } from './googleads/estimate.ts';
 
 export interface D1Statement {
@@ -95,7 +95,9 @@ export interface Storage {
   readMetaAdsActive(pageId: string): Promise<readonly MetaAd[]>;
   readMetaAdDays(pageId: string, dayFrom: string): Promise<readonly MetaAdDay[]>;
   endMetaAds(pageId: string, stopDate: string, beforeDay: string): Promise<number>;
-  upsertGoogleAds(ads: readonly GoogleAd[]): Promise<void>;
+  upsertGoogleAdsCore(ads: readonly GoogleAdCore[]): Promise<void>;
+  upsertGoogleAdsStatic(ads: readonly GoogleAdStatic[]): Promise<void>;
+  updateGoogleAdsSurfaces(ads: readonly GoogleAdSurfaces[]): Promise<void>;
   writeGoogleAdDays(rows: readonly GoogleAdDay[]): Promise<void>;
   readGoogleAdsActive(advertiserId: string, activeSince: string): Promise<readonly GoogleAd[]>;
   readGoogleAdDays(advertiserId: string, dayFrom: string): Promise<readonly GoogleAdDay[]>;
@@ -286,15 +288,12 @@ interface GoogleAdRow {
   creative_id: string;
   advertiser_id: string;
   entity_id: string | null;
-  disclosed_name: string | null;
   format: string | null;
   topic: string | null;
-  page_url: string | null;
   first_shown: string | null;
   last_shown: string | null;
   imp_lo: number | null;
   imp_hi: number | null;
-  audience: string | null;
   surfaces: string | null;
   first_seen: string;
   last_seen: string;
@@ -332,21 +331,12 @@ function fromGoogleAdRow(row: GoogleAdRow): GoogleAd {
     creativeId: row.creative_id,
     advertiserId: row.advertiser_id,
     entityId: row.entity_id,
-    disclosedName: row.disclosed_name,
     format: row.format,
     topic: row.topic,
-    pageUrl: row.page_url,
     firstShown: row.first_shown,
     lastShown: row.last_shown,
     impLo: bounds.lo,
     impHi: bounds.hi,
-    audience: jsonParse<GoogleAd['audience']>(row.audience) ?? {
-      demographic: null,
-      geo: null,
-      contextual: null,
-      customerLists: null,
-      topics: null,
-    },
     surfaces: surfaces.map((entry) => {
       const clean = sanitizeBounds(entry.lo, entry.hi);
       return { surface: entry.surface, lo: clean.lo, hi: clean.hi };
@@ -1590,43 +1580,95 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       }
     },
 
-    async upsertGoogleAds(ads: readonly GoogleAd[]): Promise<void> {
+    async upsertGoogleAdsCore(ads: readonly GoogleAdCore[]): Promise<void> {
       if (ads.length === 0) {
         return;
       }
       const today = new Date().toISOString().slice(0, 10);
-      const statement = (ad: GoogleAd): D1Statement =>
+      const statement = (ad: GoogleAdCore): D1Statement =>
         db
           .prepare(
-            'INSERT INTO google_ads (creative_id, advertiser_id, entity_id, disclosed_name, format, topic, page_url, first_shown, last_shown, imp_lo, imp_hi, audience, surfaces, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT first_seen FROM google_ads WHERE creative_id = ?), ?), ?) ON CONFLICT(creative_id) DO UPDATE SET advertiser_id = excluded.advertiser_id, entity_id = excluded.entity_id, disclosed_name = excluded.disclosed_name, format = excluded.format, topic = excluded.topic, page_url = excluded.page_url, first_shown = excluded.first_shown, last_shown = excluded.last_shown, imp_lo = excluded.imp_lo, imp_hi = excluded.imp_hi, audience = excluded.audience, surfaces = excluded.surfaces, last_seen = excluded.last_seen'
+            "INSERT INTO google_ads (creative_id, advertiser_id, entity_id, disclosed_name, format, topic, page_url, first_shown, last_shown, imp_lo, imp_hi, audience, surfaces, first_seen, last_seen) VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, '[]', ?, ?) ON CONFLICT(creative_id) DO UPDATE SET advertiser_id = excluded.advertiser_id, entity_id = excluded.entity_id, last_shown = excluded.last_shown, imp_lo = excluded.imp_lo, imp_hi = excluded.imp_hi, last_seen = excluded.last_seen"
           )
           .bind(
             ad.creativeId,
             ad.advertiserId,
             ad.entityId,
-            ad.disclosedName,
-            ad.format,
-            ad.topic,
-            ad.pageUrl,
-            ad.firstShown,
             ad.lastShown,
             ad.impLo,
             ad.impHi,
-            jsonObjectString(ad.audience),
-            jsonObjectString(ad.surfaces),
-            ad.creativeId,
+            '{"demographic":null,"geo":null,"contextual":null,"customerLists":null,"topics":null}',
             today,
             today
           );
       try {
-        // One batch holds at most a few hundred rows. The fetch can
-        // return thousands of creatives, so chunk the writes.
         for (let i = 0; i < ads.length; i += 200) {
           await db.batch(ads.slice(i, i + 200).map(statement));
         }
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error('storage.upsertGoogleAds failed', { count: ads.length, error: message });
+        logger.error('storage.upsertGoogleAdsCore failed', { count: ads.length, error: message });
+        throw error;
+      }
+    },
+
+    async upsertGoogleAdsStatic(ads: readonly GoogleAdStatic[]): Promise<void> {
+      if (ads.length === 0) {
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const statement = (ad: GoogleAdStatic): D1Statement =>
+        db
+          .prepare(
+            "INSERT INTO google_ads (creative_id, advertiser_id, entity_id, disclosed_name, format, topic, page_url, first_shown, last_shown, imp_lo, imp_hi, audience, surfaces, first_seen, last_seen) VALUES (?, ?, ?, NULL, ?, ?, NULL, ?, NULL, NULL, NULL, ?, '[]', ?, ?) ON CONFLICT(creative_id) DO UPDATE SET advertiser_id = excluded.advertiser_id, entity_id = excluded.entity_id, format = excluded.format, topic = excluded.topic, first_shown = excluded.first_shown, last_seen = excluded.last_seen"
+          )
+          .bind(
+            ad.creativeId,
+            ad.advertiserId,
+            ad.entityId,
+            ad.format,
+            ad.topic,
+            ad.firstShown,
+            '{"demographic":null,"geo":null,"contextual":null,"customerLists":null,"topics":null}',
+            today,
+            today
+          );
+      try {
+        for (let i = 0; i < ads.length; i += 200) {
+          await db.batch(ads.slice(i, i + 200).map(statement));
+        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.upsertGoogleAdsStatic failed', { count: ads.length, error: message });
+        throw error;
+      }
+    },
+
+    async updateGoogleAdsSurfaces(ads: readonly GoogleAdSurfaces[]): Promise<void> {
+      if (ads.length === 0) {
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const statement = (ad: GoogleAdSurfaces): D1Statement =>
+        db
+          .prepare(
+            'INSERT INTO google_ads (creative_id, advertiser_id, entity_id, disclosed_name, format, topic, page_url, first_shown, last_shown, imp_lo, imp_hi, audience, surfaces, first_seen, last_seen) VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?) ON CONFLICT(creative_id) DO UPDATE SET surfaces = excluded.surfaces, last_seen = excluded.last_seen'
+          )
+          .bind(
+            ad.creativeId,
+            ad.advertiserId,
+            '{"demographic":null,"geo":null,"contextual":null,"customerLists":null,"topics":null}',
+            jsonObjectString(ad.surfaces),
+            today,
+            today
+          );
+      try {
+        for (let i = 0; i < ads.length; i += 200) {
+          await db.batch(ads.slice(i, i + 200).map(statement));
+        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error('storage.updateGoogleAdsSurfaces failed', { count: ads.length, error: message });
         throw error;
       }
     },
@@ -1660,7 +1702,7 @@ export function createStorage(db: D1Like, logger: Logger): Storage {
       try {
         const result = (await db
           .prepare(
-            'SELECT creative_id, advertiser_id, entity_id, disclosed_name, format, topic, page_url, first_shown, last_shown, imp_lo, imp_hi, audience, surfaces, first_seen, last_seen FROM google_ads WHERE advertiser_id = ? AND last_shown >= ? ORDER BY imp_hi DESC'
+            'SELECT creative_id, advertiser_id, entity_id, format, topic, first_shown, last_shown, imp_lo, imp_hi, surfaces, first_seen, last_seen FROM google_ads WHERE advertiser_id = ? AND last_shown >= ? ORDER BY imp_hi DESC'
           )
           .bind(advertiserId, activeSince)
           .all()) as { results: GoogleAdRow[] };

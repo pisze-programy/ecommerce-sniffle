@@ -1,10 +1,15 @@
 import { Hono } from 'hono';
 import type { Env } from '../env/types.ts';
 import type { AppVariables } from './types.ts';
+import type { Storage } from '../services/storage.ts';
 import { isAuthorized } from './auth.ts';
 import { aggregateDaily } from '@ecommerce-sniffle/analysis';
 import { runMetaAdsFetch } from '../services/metaads/run.ts';
-import { runGoogleAdsFetch } from '../services/googleads/run.ts';
+import {
+  runGoogleAdsCoreFetch,
+  runGoogleAdsStaticFetch,
+  runGoogleAdsSurfacesFetch,
+} from '../services/googleads/run.ts';
 
 function extForContentType(contentType: string): string {
   const type = contentType.toLowerCase();
@@ -64,6 +69,23 @@ function parseUsageBody(body: unknown): UsageBody | null {
     masked: obj['masked'],
     variants: obj['variants'],
   };
+}
+
+// Rebuild the daily stats from the stored events. One pass per day.
+// The sanity cap drops the phantom diffs from the totals.
+async function recomputeShopDays(storage: Storage, shops: readonly string[]): Promise<number> {
+  let days = 0;
+  for (const shop of shops) {
+    const maxQuantity = await storage.readMaxObservedQuantity(shop);
+    const availableDays = await storage.readAvailableDays(shop);
+    for (const day of availableDays) {
+      const events = (await storage.readEvents(shop, day)).map((entry) => entry.event);
+      const stats = aggregateDaily({ shop, day, events }, { maxQuantity });
+      await storage.writeDailyStats(stats);
+      days += 1;
+    }
+  }
+  return days;
 }
 
 export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariables }> {
@@ -222,16 +244,7 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     }
     let days = 0;
     try {
-      for (const shop of shops) {
-        const maxQuantity = await storage.readMaxObservedQuantity(shop);
-        const availableDays = await storage.readAvailableDays(shop);
-        for (const day of availableDays) {
-          const events = (await storage.readEvents(shop, day)).map((entry) => entry.event);
-          const stats = aggregateDaily({ shop, day, events }, { maxQuantity });
-          await storage.writeDailyStats(stats);
-          days += 1;
-        }
-      }
+      days = await recomputeShopDays(storage, shops);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('recompute failed', { error: message });
@@ -392,16 +405,20 @@ export function createUsageRoutes(): Hono<{ Bindings: Env; Variables: AppVariabl
     const storage = c.get('storage');
     const logger = c.get('logger');
     try {
-      const result = await runGoogleAdsFetch(storage, logger, keyJson);
+      const core = await runGoogleAdsCoreFetch(storage, logger, keyJson);
+      const stat = await runGoogleAdsStaticFetch(storage, logger, keyJson);
+      const surf = await runGoogleAdsSurfacesFetch(storage, logger, keyJson);
       logger.info('fetch-google-ads done', {
-        shops: result.shops,
-        ads: result.ads,
-        daysWritten: result.daysWritten,
-        ended: result.ended,
-        capped: result.capped,
-        errors: result.failures.length,
+        coreShops: core.shops,
+        coreAds: core.ads,
+        daysWritten: core.daysWritten,
+        ended: core.ended,
+        capped: core.capped,
+        staticAds: stat.ads,
+        surfaceAds: surf.ads,
+        errors: core.failures.length + stat.failures.length + surf.failures.length,
       });
-      return c.json({ ok: true, ...result });
+      return c.json({ ok: true, core, static: stat, surfaces: surf });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('fetch-google-ads failed', { error: message });

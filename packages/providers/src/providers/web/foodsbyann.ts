@@ -43,10 +43,20 @@ export function parseIdoSellProductId(url: string): string {
   return url;
 }
 
+// IdoSell moved the embedded price into an object. The old page used
+// "price":"12.99". The new page uses "price":{"value":"12.99",...}.
+// Read the nested value first. Keep the flat shape for older pages.
 export function parseIdoSellPrice(html: string): number {
-  const match = /"price":"(\d+(?:\.\d+)?)"/.exec(html);
-  if (match !== null) {
-    const value = Number(match[1]);
+  const nested = /"price"\s*:\s*\{[^{}]*?"value"\s*:\s*"(\d+(?:\.\d+)?)"/.exec(html);
+  if (nested !== null) {
+    const value = Number(nested[1]);
+    if (!Number.isNaN(value)) {
+      return value;
+    }
+  }
+  const flat = /"price":"(\d+(?:\.\d+)?)"/.exec(html);
+  if (flat !== null) {
+    const value = Number(flat[1]);
     if (!Number.isNaN(value)) {
       return value;
     }

@@ -30,6 +30,10 @@ No Polish comments.
 - Write tests for every change.
 - No shortcuts. No "it should work".
 
+## Stock (must)
+
+Boolean in inventory is forbidden. Every provider must report the exact count. Without it the app has no value. A store with no exact source stays on the cart probe.
+
 ## No shortcuts (must)
 
 - Test every change end-to-end on the real system before deploy.
@@ -38,6 +42,10 @@ No Polish comments.
 - Never claim a change is tested without a proof of the full path.
 - Unit tests alone are not enough. They never catch deploy-path errors.
 - Prove it. Do not say "it should work".
+- The VPS host `frog` is production. Never probe a shop or an
+  external service from it. Probe from the developer machine only.
+  The VPS IP is the production egress. A probe can rate-limit it
+  and break the daily collection.
 
 ## Tests (must)
 
@@ -98,6 +106,14 @@ One provider gives 100% stock coverage:
 
 Never put secrets in the repo.
 Webshare proxy and captcha keys come from environment variables.
+
+### Shared `INGEST_SECRET`
+
+`INGEST_SECRET` is shared by the Cloudflare Worker and the VPS.
+A rotation on one layer breaks the other layer.
+The VPS logs `queue.claim rejected` (401). The tasks stay `pending`.
+Update both layers in the same change.
+Procedure: [DEPLOYMENT.md](./docs/DEPLOYMENT.md).
 
 ## Commands
 

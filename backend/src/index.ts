@@ -9,7 +9,7 @@ import { sendSnitchReport } from './services/snitch.ts';
 import { createTaskStore, enqueueProviders } from './services/queue.ts';
 import { findSeedWindow, findSummaryWindow } from './services/schedule.ts';
 import { runMetaAdsFetch } from './services/metaads/run.ts';
-import { runGoogleAdsFetch } from './services/googleads/run.ts';
+import { runGoogleAdsCoreFetch, runGoogleAdsStaticFetch, runGoogleAdsSurfacesFetch } from './services/googleads/run.ts';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 app.use('*', async (c, next) => {
@@ -143,8 +143,8 @@ export default {
         logger.warn('google ads skipped: no key');
       } else {
         try {
-          const result = await runGoogleAdsFetch(storage, logger, bqKey);
-          logger.info('google ads done', {
+          const result = await runGoogleAdsCoreFetch(storage, logger, bqKey);
+          logger.info('google ads core done', {
             shops: result.shops,
             ads: result.ads,
             daysWritten: result.daysWritten,
@@ -174,6 +174,34 @@ export default {
             capped: result.capped,
             failedAdvertisers: result.failures.map((failure) => failure.advertiserId),
           });
+          // The static fields change once per creative. Run them weekly.
+          if (await googleSyncDue(env.STATE, 'googleads:static:last', 7, day)) {
+            const stat = await runGoogleAdsStaticFetch(storage, logger, bqKey);
+            if (stat.failures.length === 0) {
+              await env.STATE.put('googleads:static:last', day);
+            } else {
+              logger.warn('google ads static deferred', { errors: stat.failures.length });
+            }
+            logger.info('google ads static done', {
+              shops: stat.shops,
+              ads: stat.ads,
+              errors: stat.failures.length,
+            });
+          }
+          // The surfaces split changes slowly. Run it monthly.
+          if (await googleSyncDue(env.STATE, 'googleads:surfaces:last', 30, day)) {
+            const surf = await runGoogleAdsSurfacesFetch(storage, logger, bqKey);
+            if (surf.failures.length === 0) {
+              await env.STATE.put('googleads:surfaces:last', day);
+            } else {
+              logger.warn('google ads surfaces deferred', { errors: surf.failures.length });
+            }
+            logger.info('google ads surfaces done', {
+              shops: surf.shops,
+              ads: surf.ads,
+              errors: surf.failures.length,
+            });
+          }
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
           logger.error('google ads cron failed', { error: message });
@@ -332,6 +360,24 @@ function warsawUtcOffsetHours(now: Date): number {
   const get = (type: string): number => Number(parts.find((part) => part.type === type)?.value ?? 0);
   const warsawMs = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
   return Math.round((warsawMs - now.getTime()) / 3600000);
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+}
+
+// The static and surfaces jobs run on a slower cadence. The KV marker holds
+// the last run day. A fresh project runs both on the first cron.
+export interface StateReader {
+  get(key: string): Promise<string | null>;
+}
+
+export async function googleSyncDue(state: StateReader, key: string, minDays: number, day: string): Promise<boolean> {
+  const last = await state.get(key);
+  if (last === null) {
+    return true;
+  }
+  return daysBetween(last, day) >= minDays;
 }
 
 async function sendGoogleAdsReport(

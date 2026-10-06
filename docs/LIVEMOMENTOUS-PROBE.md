@@ -83,6 +83,22 @@ It costs zero webshare. The proxy is not used.
 The MCP or UCP cart is not needed. The XML gives the exact count
 for free. The `.js` clamp and the product page scripts are not used.
 
+## Disabled on 2026-09-29
+
+The provider is disabled. Shopify returns 429 to the Cloudflare
+Worker egress. The last good snapshot is 2026-09-26 16:04. The
+masked count grew to 15 variants in that snapshot.
+
+The same `.xml` returns 200 from the VPS and from a home IP, at
+one request per second, with a keep-alive connection. The full
+catalog answered 90 of 90.
+
+Every other Shopify provider runs on the VPS. This shop is the
+only Shopify provider on the Cloudflare Worker.
+
+To collect again, move the provider to `mode: 'vps-get'` and set
+`enabled: true`. The provider code does not change.
+
 ## Config
 
 See `packages/providers/src/config.ts`, provider id `momentous`.
@@ -93,4 +109,5 @@ See `packages/providers/src/config.ts`, provider id `momentous`.
 - ratePerSecond: 1
 - durationSeconds: 180
 - requiresProxy: false
+- enabled: false
 - entityId: `momentous`

@@ -20,9 +20,6 @@ function fmtInt(value: number): string {
 }
 
 function previewUrl(ad: GoogleAd): string {
-  if (ad.pageUrl !== null) {
-    return ad.pageUrl;
-  }
   return `https://adstransparency.google.com/advertiser/${ad.advertiserId}/creative/${ad.creativeId}?region=anywhere`;
 }
 

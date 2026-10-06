@@ -118,12 +118,22 @@ function fakeGetModule(): ProviderModule {
 
 describe('isStockRevealer', () => {
   it('returns true for a cart-probe provider', () => {
-    const provider = findModule('booso').build({ logger: silentLogger() });
+    const provider = findModule('nago').build({ logger: silentLogger() });
     expect(isStockRevealer(provider)).toBe(true);
   });
 
   it('returns false for an embedded-json provider', () => {
     const provider = findModule('rever').build({ logger: silentLogger() });
+    expect(isStockRevealer(provider)).toBe(false);
+  });
+
+  it('returns false for the V2 embedded provider', () => {
+    const provider = findModule('booso').build({ logger: silentLogger() });
+    expect(isStockRevealer(provider)).toBe(false);
+  });
+
+  it('returns false for the V2 graphql provider', () => {
+    const provider = findModule('gymglamour').build({ logger: silentLogger() });
     expect(isStockRevealer(provider)).toBe(false);
   });
 });

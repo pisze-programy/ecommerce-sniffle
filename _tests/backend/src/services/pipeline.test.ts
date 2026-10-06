@@ -151,6 +151,18 @@ describe('storeSnapshot guards', () => {
     expect(latest?.variants[0]?.quantity).toBe(100);
   });
 
+  it('rejects a fully masked snapshot even when every variant is unavailable', async () => {
+    // The provider masks a failed pull with quantity null and
+    // available false. A mask must reject. It must not read as a
+    // mass sold out.
+    const storage = new MemoryStorage();
+    await storeSnapshot(storage, snap('2026-09-04T16:00:00Z', 100), silentLogger());
+    const result = await storeSnapshot(storage, snap('2026-09-05T16:00:00Z', null, false), silentLogger());
+    expect(result.rejected).toBe(true);
+    expect(result.maskedCount).toBe(1);
+    expect(storage.snapshots).toHaveLength(1);
+  });
+
   it('keeps a legit sold out snapshot (all zero, unavailable)', async () => {
     const storage = new MemoryStorage();
     await storeSnapshot(storage, snap('2026-09-04T16:00:00Z', 100), silentLogger());

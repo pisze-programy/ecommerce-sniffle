@@ -7,15 +7,12 @@ function ad(overrides: Partial<GoogleAd> = {}): GoogleAd {
     creativeId: 'CR05850846188550488065',
     advertiserId: 'AR10613569593844695041',
     entityId: 'laboratoriumpanidomu',
-    disclosedName: 'Laboratorium Pani Domu Sp. z o.o.',
     format: 'VIDEO',
     topic: 'Home & Garden',
-    pageUrl: 'https://adstransparency.google.com/advertiser/AR/creative/CR?region=anywhere',
     firstShown: '2025-09-10',
     lastShown: '2026-09-02',
     impLo: 15000,
     impHi: 20000,
-    audience: { demographic: null, geo: null, contextual: null, customerLists: null, topics: null },
     surfaces: [{ surface: 'YOUTUBE', lo: 15000, hi: 20000 }],
     ...overrides,
   };
@@ -29,7 +26,6 @@ describe('renderGoogleAdsInner', () => {
         creativeId: 'CR01740043198962597889',
         format: 'IMAGE',
         topic: null,
-        pageUrl: null,
         firstShown: '2026-08-28',
         lastShown: '2026-09-02',
         impLo: 0,
@@ -63,7 +59,7 @@ describe('renderGoogleAdsInner', () => {
     expect(html).toContain('Lista reklam');
     expect(html).toContain('Wyśw./dzień');
     expect(html).toContain('VIDEO · Home &amp; Garden');
-    expect(html).toContain('/advertiser/AR/creative/CR?region=anywhere');
+    expect(html).toContain('/advertiser/AR10613569593844695041/creative/CR05850846188550488065?region=anywhere');
     expect(html).toContain('data-page-size="5"');
     expect(html).not.toContain('CPA');
     expect(html).not.toContain('wydatek');

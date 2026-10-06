@@ -178,6 +178,15 @@ export type { ProviderRegistry } from './registry.ts';
 export { createCaptchaClient } from './captcha/client.ts';
 export type { CaptchaClient, CaptchaClientOptions, CaptchaSolution, TurnstileTask } from './captcha/client.ts';
 export { isCloudflareChallenge, findTurnstileSitekey } from './captcha/detect.ts';
+export {
+  parseDataInventoryQuantity,
+  parseGrowInventory,
+  parseKachingInventory,
+  parseRestockProducts,
+  parseRestockQuantity,
+} from './providers/shopify/implementations/embedded-inventory.ts';
+export type { LeakVector } from './providers/shopify/implementations/embedded-inventory.ts';
+export { parseShopDomain, parseStorefrontToken } from './providers/shopify/implementations/embedded-graphql.ts';
 export function buildLogger(): Logger {
   return createLogger(consoleSink);
 }

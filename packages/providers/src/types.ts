@@ -3,6 +3,8 @@ export type Platform = 'shopify' | 'shoper' | 'woocommerce' | 'custom' | 'presta
 export type StockSource =
   | 'embedded-json'
   | 'embedded-quantity'
+  | 'embedded-graphql'
+  | 'cache-stock'
   | 'cart-probe'
   | 'basket-reveal'
   | 'html'

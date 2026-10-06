@@ -108,6 +108,8 @@ describe('PROVIDERS config', () => {
     const allowed = new Set([
       'embedded-json',
       'embedded-quantity',
+      'embedded-graphql',
+      'cache-stock',
       'cart-probe',
       'basket-reveal',
       'html',
@@ -139,25 +141,34 @@ describe('PROVIDERS config', () => {
     expect(phlov?.requiresProxy).toBe(false);
   });
 
-  it('has 45 mutation providers, 8 get providers, 15 vps-get providers', () => {
+  it('has 38 mutation providers, 8 get providers, 22 vps-get providers', () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === 'vps-mutation');
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
-    expect(mutation.length).toBe(45);
+    expect(mutation.length).toBe(38);
     expect(get.length).toBe(8);
-    expect(vpsGet.length).toBe(15);
+    expect(vpsGet.length).toBe(22);
   });
 
-  it('paces every shoper provider at 5 requests per second', () => {
-    const shoper = PROVIDERS.filter((provider) => provider.platform === 'shoper');
+  it('paces every shoper basket provider at 5 requests per second', () => {
+    const shoper = PROVIDERS.filter((provider) => provider.platform === 'shoper' && provider.mode === 'vps-mutation');
     expect(shoper.length).toBeGreaterThan(0);
     for (const provider of shoper) {
       expect(provider.ratePerSecond, provider.id).toBe(5);
     }
   });
 
+  it('keeps the sklepskolim cache provider on the direct V2 shape', () => {
+    const provider = PROVIDERS.find((entry) => entry.id === 'sklepskolim');
+    expect(provider?.stockSource).toBe('cache-stock');
+    expect(provider?.mode).toBe('vps-get');
+    expect(provider?.requiresProxy).toBe(false);
+    expect(provider?.durationSeconds).toBe(1200);
+    expect(provider?.adaptiveRate).toBeUndefined();
+  });
+
   it('enables the adaptive rate for the heavy shoper shops', () => {
-    const heavy = new Set(['wkdzik', 'e-daag', 'sklepskolim']);
+    const heavy = new Set(['wkdzik', 'e-daag']);
     for (const provider of PROVIDERS) {
       if (heavy.has(provider.id)) {
         expect(provider.adaptiveRate, provider.id).toBeDefined();

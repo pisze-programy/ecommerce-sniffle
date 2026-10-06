@@ -32,13 +32,14 @@ function calendarDayGap(fromIso: string, toIso: string): number {
 export async function storeSnapshot(storage: Storage, snapshot: Snapshot, logger: Logger): Promise<PipelineResult> {
   const previous = await storage.readLatestSnapshot(snapshot.shop);
 
-  // A run where every available variant is masked is not a valid seed.
+  // A run where every variant is masked is not a valid seed.
   // The shop returned no counts (for example the proxy or the clamp
   // failed). Storing it makes the real stock look empty and poisons the
   // next diff. Keep the previous snapshot as the latest instead.
+  // A real sold out run writes quantity 0, not null. So a tracked
+  // count of zero still accepts. The `available` flag does not decide.
   const tracked = snapshot.variants.filter((variant) => variant.quantity !== null);
-  const fullyMasked =
-    snapshot.variants.length > 0 && tracked.length === 0 && snapshot.variants.some((variant) => variant.available);
+  const fullyMasked = snapshot.variants.length > 0 && tracked.length === 0;
   if (fullyMasked) {
     logger.warn('pipeline.rejected', {
       shop: snapshot.shop,

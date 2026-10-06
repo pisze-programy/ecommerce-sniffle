@@ -33,15 +33,12 @@ function googleAd(): GoogleAd {
     creativeId: 'CR05850846188550488065',
     advertiserId: 'AR10613569593844695041',
     entityId: 'laboratoriumpanidomu',
-    disclosedName: 'Laboratorium Pani Domu Sp. z o.o.',
     format: 'VIDEO',
     topic: 'Home & Garden',
-    pageUrl: null,
     firstShown: '2025-09-10',
     lastShown: '2026-09-02',
     impLo: 15000,
     impHi: 20000,
-    audience: { demographic: null, geo: null, contextual: null, customerLists: null, topics: null },
     surfaces: [],
   };
 }

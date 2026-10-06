@@ -29,20 +29,36 @@ bigquery-public-data.google_ads_transparency_center.creative_stats
 
 The dataset holds commercial ads shown in the EEA and Turkey only.
 Ads shown outside the EEA are not in the dataset.
-The table has 168M rows and 146 GB. It has no partitioning.
-Every query scans the selected columns in full.
+
+Verified on 2026-10-02:
+
+- The table holds 163 140 756 rows and 131.29 GB of logical data.
+- The table has no partition and no cluster.
+- A `WHERE advertiser_id IN (...)` filter does not prune bytes.
+- Only column pruning reduces the scan.
 
 Request only these columns and subfields:
 
 ```
-advertiser_id, creative_id, creative_page_url,
-ad_format_type, topic, advertiser_disclosed_name,
-audience_selection_approach_info,
+advertiser_id, creative_id,
+ad_format_type, topic,
 region_stats.region_code, region_stats.first_shown,
 region_stats.last_shown, region_stats.times_shown_lower_bound,
 region_stats.times_shown_upper_bound,
 region_stats.surface_serving_stats
 ```
+
+Do not request these columns. The card does not use them:
+
+- `audience_selection_approach_info` (19.71 GB)
+- `advertiser_disclosed_name` (7.18 GB)
+- `creative_page_url` (19.14 GB, the report builds the URL from the ids)
+- `region_stats.times_shown_start_date`, `times_shown_end_date`,
+  `times_shown_availability_date` (about 11 GB together)
+
+The surfaces job still reads the nested `surface_serving_stats` record.
+That record holds its own `times_shown_availability_date`.
+The saving is small, so the job keeps the whole record.
 
 Verified on 2026-09-03:
 
@@ -73,8 +89,20 @@ npx wrangler secret put GOOGLE_BQ_KEY < key.json
 ```
 
 The service account needs `BigQuery Job User` on the project.
-The first 1 TB per month is free. The daily collector scans
-about 10-20 GB per day for 20 advertisers.
+The first 1 TB per month is free.
+The collector splits the read into three jobs to stay under the free tier:
+
+| Job      | Columns                         | Scan     | Cadence | GB/month |
+| -------- | ------------------------------- | -------- | ------- | -------- |
+| core     | region code, last shown, bounds | 22.33 GB | daily   | ~679     |
+| static   | format, topic, first shown      | 19 GB    | weekly  | ~83      |
+| surfaces | surface serving stats           | 55.94 GB | monthly | ~56      |
+| **all**  |                                 |          |         | **~818** |
+
+The old note said "10-20 GB per day". That was wrong.
+Every job sets `maximumBytesBilled` to 80 GB.
+The worker logs the real `totalBytesProcessed` as `googleads.bytesProcessed`.
+The worker reads every result page through the `pageToken` cursor.
 
 ## Advertiser ids
 
@@ -191,18 +219,33 @@ The Meta default range (15-30) never applies to Google ads.
 
 The daily cron runs on the Cloudflare Worker.
 It runs in the same 20:00 Warsaw slot as the Meta job.
-One BigQuery call carries all advertiser ids in `IN (...)`.
-The handler skips the Google job when `GOOGLE_BQ_KEY` is missing.
+The handler skips the Google jobs when `GOOGLE_BQ_KEY` is missing.
 It never fails the Meta job.
 
-A manual endpoint triggers the same job:
+The code lives in three layers:
+
+- `services/bigquery/` - auth, REST client and value coercions. Reusable.
+- `services/googleads/sql.ts` - the three SQL builders.
+- `services/googleads/parse.ts` - the row parsers.
+- `services/googleads/fetch.ts` - the thin public fetch API.
+- `services/googleads/run.ts` - the three run functions.
+
+The core job runs every day.
+The static job runs when the KV marker `googleads:static:last` is 7 days old.
+The surfaces job runs when the KV marker `googleads:surfaces:last` is 30 days old.
+A fresh project runs both on the first cron.
+
+Each job carries all advertiser ids in one `IN (...)`.
+
+A manual endpoint runs all three jobs:
 `POST /admin/fetch-google-ads`.
 The first manual run imports all current creatives.
 History arrives through `first_shown` dates.
 Daily deltas accumulate forward only.
 
-After every run the job sends one cf-snitch email.
+After the core run the job sends one cf-snitch email.
 The source is `ecommerce-pulse/google-ads`.
+The static and surfaces runs only log.
 
 The shop page shows the collected data next to the Meta card:
 active ads, new ads, impression midpoint sum, daily estimate,

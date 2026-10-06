@@ -100,6 +100,13 @@ Open question: the morning seed on 09-06 did not enqueue three shops
 (e-daag, sklepskolim, acewarsaw). The cause is unknown. It is likely a
 race with the schedule refactor deploy. No data was lost.
 
+### 2026-10-02 INGEST_SECRET rotation stalled the VPS
+
+The worker secret rotated. The VPS kept the old value.
+The VPS claim returned 401. 37 `vps-*` tasks stayed `pending`
+each day until 2026-10-04. The fix: update both layers.
+See DEPLOYMENT.md.
+
 ## What is next
 
 The entities pilot is built and live.

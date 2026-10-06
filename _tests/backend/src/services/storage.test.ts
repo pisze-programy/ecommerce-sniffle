@@ -1129,15 +1129,12 @@ describe('google ads storage', () => {
       creativeId: 'CR05850846188550488065',
       advertiserId: 'AR10613569593844695041',
       entityId: 'laboratoriumpanidomu',
-      disclosedName: 'Laboratorium Pani Domu Sp. z o.o.',
       format: 'VIDEO',
       topic: 'Home & Garden',
-      pageUrl: 'https://adstransparency.google.com/advertiser/AR/creative/CR?region=anywhere',
       firstShown: '2025-09-10',
       lastShown: '2026-09-02',
       impLo: 15000,
       impHi: 20000,
-      audience: { demographic: null, geo: null, contextual: null, customerLists: null, topics: null },
       surfaces: [{ surface: 'YOUTUBE', lo: 15000, hi: 20000 }],
     };
   }
@@ -1157,20 +1154,27 @@ describe('google ads storage', () => {
       return { results: [] };
     });
     const storage = createStorage(db, logger);
-    await storage.upsertGoogleAds([googleAd()]);
+    const seed = googleAd();
+    await storage.upsertGoogleAdsCore([
+      {
+        creativeId: seed.creativeId,
+        advertiserId: seed.advertiserId,
+        entityId: seed.entityId,
+        lastShown: seed.lastShown,
+        impLo: seed.impLo,
+        impHi: seed.impHi,
+      },
+    ]);
     rows.push({
       creative_id: 'CR05850846188550488065',
       advertiser_id: 'AR10613569593844695041',
       entity_id: 'laboratoriumpanidomu',
-      disclosed_name: 'Laboratorium Pani Domu Sp. z o.o.',
       format: 'VIDEO',
       topic: 'Home & Garden',
-      page_url: 'https://adstransparency.google.com/advertiser/AR/creative/CR?region=anywhere',
       first_shown: '2025-09-10',
       last_shown: '2026-09-02',
       imp_lo: 15000,
       imp_hi: 20000,
-      audience: '{"demographic":null,"geo":null,"contextual":null,"customerLists":null,"topics":null}',
       surfaces: '[{"surface":"YOUTUBE","lo":15000,"hi":20000}]',
       first_seen: '2026-09-03',
       last_seen: '2026-09-03',
@@ -1179,7 +1183,6 @@ describe('google ads storage', () => {
     expect(ads).toHaveLength(1);
     expect(ads[0].impLo).toBe(15000);
     expect(ads[0].surfaces[0].surface).toBe('YOUTUBE');
-    expect(ads[0].audience.geo).toBe(null);
     expect(selectArgs).toEqual(['AR10613569593844695041', '2026-08-27']);
   });
 
@@ -1224,15 +1227,12 @@ describe('google ads storage', () => {
         creative_id: 'CR1',
         advertiser_id: 'AR1',
         entity_id: null,
-        disclosed_name: null,
         format: 'VIDEO',
         topic: null,
-        page_url: null,
         first_shown: null,
         last_shown: null,
         imp_lo: 10000000,
         imp_hi: 9223372036854776000,
-        audience: null,
         surfaces: '[{"surface":"SEARCH","lo":10000000,"hi":9223372036854776000}]',
         first_seen: '2026-09-03',
         last_seen: '2026-09-03',
@@ -1262,8 +1262,88 @@ describe('google ads storage', () => {
       return { results: [] };
     });
     const storage = createStorage(db, logger);
-    await expect(storage.upsertGoogleAds([googleAd()])).rejects.toThrow('boom');
-    expect(records.some((record) => record.message === 'storage.upsertGoogleAds failed')).toBe(true);
+    const seed = googleAd();
+    await expect(
+      storage.upsertGoogleAdsCore([
+        {
+          creativeId: seed.creativeId,
+          advertiserId: seed.advertiserId,
+          entityId: seed.entityId,
+          lastShown: seed.lastShown,
+          impLo: seed.impLo,
+          impHi: seed.impHi,
+        },
+      ])
+    ).rejects.toThrow('boom');
+    expect(records.some((record) => record.message === 'storage.upsertGoogleAdsCore failed')).toBe(true);
+  });
+
+  it('writes the static fields without the bounds', async () => {
+    const { logger, records } = capturingLogger();
+    const calls: string[] = [];
+    const db = new MockD1((query) => {
+      calls.push(query);
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.upsertGoogleAdsStatic([
+      {
+        creativeId: 'CR1',
+        advertiserId: 'AR1',
+        entityId: null,
+        firstShown: '2025-09-10',
+        format: 'VIDEO',
+        topic: 'Home & Garden',
+      },
+    ]);
+    expect(calls.some((query) => query.includes('format = excluded.format'))).toBe(true);
+    expect(records.some((record) => record.message.includes('failed'))).toBe(false);
+  });
+
+  it('writes the surfaces split', async () => {
+    const { logger } = capturingLogger();
+    const calls: string[] = [];
+    const db = new MockD1((query) => {
+      calls.push(query);
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await storage.updateGoogleAdsSurfaces([
+      { creativeId: 'CR1', advertiserId: 'AR1', surfaces: [{ surface: 'YOUTUBE', lo: 1, hi: 2 }] },
+    ]);
+    expect(calls.some((query) => query.includes('surfaces = excluded.surfaces'))).toBe(true);
+  });
+
+  it('logs and rethrows a failed static upsert', async () => {
+    const { logger, records } = capturingLogger();
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT INTO google_ads')) {
+        throw new Error('boom');
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await expect(
+      storage.upsertGoogleAdsStatic([
+        { creativeId: 'CR1', advertiserId: 'AR1', entityId: null, firstShown: null, format: null, topic: null },
+      ])
+    ).rejects.toThrow('boom');
+    expect(records.some((record) => record.message === 'storage.upsertGoogleAdsStatic failed')).toBe(true);
+  });
+
+  it('logs and rethrows a failed surfaces upsert', async () => {
+    const { logger, records } = capturingLogger();
+    const db = new MockD1((query) => {
+      if (query.startsWith('INSERT INTO google_ads')) {
+        throw new Error('boom');
+      }
+      return { results: [] };
+    });
+    const storage = createStorage(db, logger);
+    await expect(
+      storage.updateGoogleAdsSurfaces([{ creativeId: 'CR1', advertiserId: 'AR1', surfaces: [] }])
+    ).rejects.toThrow('boom');
+    expect(records.some((record) => record.message === 'storage.updateGoogleAdsSurfaces failed')).toBe(true);
   });
 
   it('logs and rethrows a failed days write', async () => {

@@ -469,8 +469,8 @@ describe('usage routes', () => {
       env
     );
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { ok: boolean; shops: number };
+    const body = (await response.json()) as { ok: boolean; core: { shops: number } };
     expect(body.ok).toBe(true);
-    expect(body.shops).toBe(0);
+    expect(body.core.shops).toBe(0);
   });
 });

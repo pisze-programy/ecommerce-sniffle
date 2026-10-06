@@ -18,7 +18,8 @@
     "probe": "npm run build && node dist/probe.js",
     "deep": "npm run build && node dist/deep.js",
     "merchradar": "npm run build && node dist/merchradar.js",
-    "recon": "npm run build && node dist/recon-cli.js"
+    "recon": "npm run build && node dist/recon-cli.js",
+    "clamp": "npm run build && node dist/clamp-cli.js"
   },
   "dependencies": {
     "@ecommerce-sniffle/providers": "0.1.0",

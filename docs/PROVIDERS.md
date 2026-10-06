@@ -129,13 +129,17 @@ The UCP cart clamps to the exact stock without a fixed cap.
 
 ### Shopify - product XML inventory (cf-get)
 
-| id        | domain                | stock source  | mode   |
-| --------- | --------------------- | ------------- | ------ |
-| momentous | www.livemomentous.com | xml-inventory | cf-get |
+| id        | domain                | stock source  | mode   | enabled |
+| --------- | --------------------- | ------------- | ------ | ------- |
+| momentous | www.livemomentous.com | xml-inventory | cf-get | no      |
 
 The catalog comes from products.json (89 products). The shop hides the
 count in products.json. The product `.js` endpoint clamps the count at 60. The product `.xml` endpoint reveals the exact count per variant.
 One GET per product adds the count. The run is free and direct.
+
+The provider is disabled. Shopify returns 429 to the Cloudflare
+Worker egress. Every other Shopify provider runs on the VPS. To
+collect again, move the provider to `mode: 'vps-get'`.
 See [LIVEMOMENTOUS-PROBE.md](./LIVEMOMENTOUS-PROBE.md).
 
 ### Web - exact stock notes
@@ -147,6 +151,8 @@ See [LIVEMOMENTOUS-PROBE.md](./LIVEMOMENTOUS-PROBE.md).
 - foodsbyann.com is IdoSell. The page embeds `sizes` with `amount`.
   Each size is a variant and `amount` is the exact count. vps-get.
   The sitemap index has gzipped sub-sitemaps with product urls.
+  The price lives in the nested object `"price":{"value":"12.99"}`.
+  The older flat shape `"price":"12.99"` is kept as a fallback.
 
 ## Stock coverage
 
