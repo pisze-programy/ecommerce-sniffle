@@ -20,7 +20,7 @@ function captureLogger(): { records: LogRecord[]; logger: Logger } {
 describe('sendReport', () => {
   it('sends a report with the token, source and notify', async () => {
     const capture = captureLogger();
-    vi.stubEnv('SNITCH_URL', 'https://cf-snitch.dev-4cb.workers.dev');
+    vi.stubEnv('SNITCH_URL', 'https://snitch.example.com');
     vi.stubEnv('SNITCH_TOKEN', 'token-123');
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     vi.stubGlobal('fetch', fetchMock);
@@ -35,7 +35,7 @@ describe('sendReport', () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://cf-snitch.dev-4cb.workers.dev/v1/report');
+    expect(url).toBe('https://snitch.example.com/v1/report');
     const headers = init.headers as Record<string, string>;
     expect(headers['Authorization']).toBe('Bearer token-123');
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;

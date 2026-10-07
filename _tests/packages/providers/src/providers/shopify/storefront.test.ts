@@ -14,8 +14,8 @@ const seembolsConfig = requireValue(
 
 describe('parseStorefrontToken', () => {
   it('parses the storefrontAccessTokens map format', () => {
-    const html = 'window.vtlsLiquidData.storefrontAccessTokens={"2":"864b05b0012fb2070b0ecb95130bc774"};';
-    expect(parseStorefrontToken(html)).toBe('864b05b0012fb2070b0ecb95130bc774');
+    const html = 'window.vtlsLiquidData.storefrontAccessTokens={"2":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"};';
+    expect(parseStorefrontToken(html)).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   });
 
   it('returns the first string value in the map', () => {

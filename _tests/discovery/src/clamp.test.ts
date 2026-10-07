@@ -168,8 +168,8 @@ describe('parseClampMessage', () => {
 
 describe('storefront hints', () => {
   it('reads the storefront token', () => {
-    const body = 'storefrontAccessToken = "beeb0153754a4126decfb761eed267a9"';
-    expect(extractStorefrontToken(body)).toBe('beeb0153754a4126decfb761eed267a9');
+    const body = 'storefrontAccessToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"';
+    expect(extractStorefrontToken(body)).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
   });
 
   it('returns null without a token', () => {
@@ -177,6 +177,6 @@ describe('storefront hints', () => {
   });
 
   it('reads the permanent shop domain', () => {
-    expect(extractShopDomain('window.shop = "kw62pd-hj.myshopify.com"')).toBe('kw62pd-hj.myshopify.com');
+    expect(extractShopDomain('window.shop = "test-shop.myshopify.com"')).toBe('test-shop.myshopify.com');
   });
 });

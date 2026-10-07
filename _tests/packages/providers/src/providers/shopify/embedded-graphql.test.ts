@@ -94,7 +94,7 @@ describe('parseStorefrontToken', () => {
 
 describe('parseShopDomain', () => {
   it('reads the permanent myshopify domain', () => {
-    expect(parseShopDomain('window.shop = "kw62pd-hj.myshopify.com"')).toBe('kw62pd-hj.myshopify.com');
+    expect(parseShopDomain('window.shop = "test-shop.myshopify.com"')).toBe('test-shop.myshopify.com');
   });
 
   it('returns null without the domain', () => {

@@ -6,7 +6,7 @@ import { hostname } from 'node:os';
 import { fetch } from 'undici';
 import { createLogger, consoleSink } from '@ecommerce-sniffle/providers';
 import type { Logger } from '@ecommerce-sniffle/providers';
-import { detectLeaks, extractShopDomain, extractStorefrontToken, parseClampMessage, pickVerifiable } from './clamp.ts';
+import { detectLeaks, extractStorefrontToken, parseClampMessage, pickVerifiable } from './clamp.ts';
 import type { LeakHit } from './clamp.ts';
 import { detectPlatform } from './platform.ts';
 import { isChallengePage } from './recon.ts';
@@ -184,7 +184,6 @@ async function main(): Promise<void> {
   }
   const hits = new Map<string, LeakHit>();
   let token: string | null = null;
-  let shopDomain: string | null = null;
   let challenged = false;
   let first = true;
   for (const productUrl of productUrls) {
@@ -208,9 +207,6 @@ async function main(): Promise<void> {
     first = false;
     if (token === null) {
       token = extractStorefrontToken(page.body);
-    }
-    if (shopDomain === null) {
-      shopDomain = extractShopDomain(page.body);
     }
     for (const hit of detectLeaks(page.body, logger, domain)) {
       mergeHit(hits, hit);
@@ -237,7 +233,9 @@ async function main(): Promise<void> {
     console.log(`leak ${domain} none challenged=${challenged ? 'yes' : 'no'}`);
   }
   if (token !== null) {
-    console.log(`leak ${domain} storefrontToken=${token} shop=${shopDomain === null ? '-' : shopDomain}`);
+    // The token is a credential. Never print the value or the permanent
+    // shop handle. The operator reads the full value from the page.
+    console.log(`leak ${domain} storefrontToken=found`);
   }
 }
 

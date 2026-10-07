@@ -111,7 +111,8 @@ See DEPLOYMENT.md.
 
 The entities pilot is built and live.
 The data models are in `ENTITIES.md`.
-The harvested firm data is in `ENTITY-DATA.md`.
+The harvested firm data is in the private notes
+(`_internal/docs/ENTITY-DATA.md`). It is not in this repo.
 Entities live in D1 (migrations `0009_entities.sql`, `0011_shops.sql`).
 The shop page shows the entity sections (Podmiot, Powiązania) and the Social card.
 The Podmiot card shows bizraport financials (aktywa, przychód, zysk, wartość)

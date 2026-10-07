@@ -11,6 +11,9 @@ node_modules/
 dist/
 build/
 
+# Recon output (generated target lists, not for the repo)
+discovery/out/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
