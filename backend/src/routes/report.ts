@@ -73,14 +73,16 @@ function calendarSpanDays(points: readonly { day: string }[]): number {
   return Math.round((end - start) / 86400000) + 1;
 }
 
-// The days between the oldest and the newest seed that have no snapshot.
-function findMissingDays(validDays: readonly string[]): string[] {
-  if (validDays.length < 2) {
+// The days between the oldest and the newest present day that hold no
+// snapshot. The order of the input does not matter.
+function findMissingDays(presentDays: readonly string[]): string[] {
+  if (presentDays.length < 2) {
     return [];
   }
-  const present = new Set(validDays);
-  const oldest = validDays[validDays.length - 1] ?? '';
-  const newest = validDays[0] ?? '';
+  const present = new Set(presentDays);
+  const sorted = [...presentDays].sort();
+  const oldest = sorted[0] ?? '';
+  const newest = sorted[sorted.length - 1] ?? '';
   const missing: string[] = [];
   for (let day = oldest; day < newest; day = dayAfter(day)) {
     if (!present.has(day)) {
@@ -373,6 +375,8 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
 
     const seedDay = validDays.length === 0 ? null : (validDays[validDays.length - 1] ?? null);
     const chartRange = withoutSeedDay(dailyRange, seedDay);
+    // The Trendy daily chart marks a day without a snapshot with a band.
+    const chartMissing = findMissingDays(chartRange.map((point) => point.day));
     const chartWeekly = buildWeeklySalesSeries(chartRange.slice(-7));
     const dayAt = (days: readonly string[], index: number): string => {
       const value = days[index];
@@ -397,11 +401,6 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
     const badges: string[] = [];
     if (isCountdownShop(domain)) {
       badges.push(badge('countdown', 'yellow'));
-    }
-    const missingDays = findMissingDays(validDays);
-    if (missingDays.length > 0) {
-      const word = plural(missingDays.length, 'dzień', 'dni', 'dni');
-      badges.push(badge(`${missingDays.length} ${word} bez seeda`, 'yellow'));
     }
     if (summary.bias.sentinelVariants > 0) {
       badges.push(badge(`${summary.bias.sentinelVariants} sentinel`, 'yellow'));
@@ -567,7 +566,7 @@ ${resolved.length === 0 ? emptyState('Brak wyników', 'Żaden produkt ani sklep 
       daySections.push(
         card({
           title: 'Trendy',
-          body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildWeeklySalesConfig(chartWeekly))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(chartRange, socialActivity))}</div></div>`,
+          body: `<div class="row row-deck row-cards"><div class="col-12 col-lg-6">${chartBlock('chart-shop-trend', buildWeeklySalesConfig(chartWeekly))}</div><div class="col-12 col-lg-6">${chartBlock('chart-shop-daily', buildDailyConfig(chartRange, socialActivity, chartMissing))}</div></div>`,
           collapsed: true,
         })
       );

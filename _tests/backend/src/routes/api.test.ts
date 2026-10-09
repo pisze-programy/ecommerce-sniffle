@@ -735,10 +735,12 @@ describe('api /dashboard and /shop', () => {
     expect(html).toContain('Sprzedaż · 3 dni');
     expect(html).toContain('15 szt');
     expect(html).toContain('~5 szt/dzień');
-    expect(html).toContain('bez seeda');
+    // The missing day 08-29 is a band on the Trendy chart, not a badge.
+    expect(html).toContain('brak seeda');
+    expect(html).toContain('"x":"08-29"');
   });
 
-  it('does not show the gap badge for a continuous history', async () => {
+  it('does not mark a continuous history with a gap band', async () => {
     const storage = new MemoryStorage();
     storage.snapshots.push({
       shop: 'mock.pl',
@@ -749,7 +751,7 @@ describe('api /dashboard and /shop', () => {
     const app = buildApp(storage, [mockProviderModule()]);
     const response = await app.request('/shop/mock');
     const html = await response.text();
-    expect(html).not.toContain('bez seeda');
+    expect(html).not.toContain('brak seeda');
   });
 
   it('renders dashboard kpis, charts and deltas', async () => {

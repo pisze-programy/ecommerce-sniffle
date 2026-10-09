@@ -5,6 +5,7 @@ import {
   buildPriceDistributionConfig,
   buildWeeklySalesConfig,
   buildWeeklySalesSeries,
+  missingDayRanges,
   withoutSeedDay,
 } from '../../../../backend/src/services/report/charts.ts';
 import type { DailyPoint } from '../../../../backend/src/services/storage.ts';
@@ -193,5 +194,54 @@ describe('withoutSeedDay', () => {
   it('keeps the range when the seed day is older than the window', () => {
     const points = [day('2026-08-27', 200, 3000, 10)];
     expect(withoutSeedDay(points, '2026-08-01')).toHaveLength(1);
+  });
+});
+
+describe('buildDailyConfig missing days', () => {
+  it('draws missing days as empty columns with one band per run', () => {
+    const points = [day('2026-10-01', 5, 500, 1), day('2026-10-05', 8, 800, 2)];
+    const config = buildDailyConfig(points, new Map(), ['2026-10-02', '2026-10-03', '2026-10-04']);
+    const xaxis = config.xaxis as { categories: string[] };
+    expect(xaxis.categories).toEqual(['10-01', '10-02', '10-03', '10-04', '10-05']);
+    const series = config.series as Array<{ data: (number | null)[] }>;
+    expect(series[0]?.data).toEqual([5, null, null, null, 8]);
+    expect(series[1]?.data).toEqual([1, null, null, null, 2]);
+    const annotations = config.annotations as { xaxis: Array<{ x: string; x2: string }> };
+    expect(annotations.xaxis).toHaveLength(1);
+    expect(annotations.xaxis[0]?.x).toBe('10-02');
+    expect(annotations.xaxis[0]?.x2).toBe('10-04');
+    expect(config.formatters?.dailyTooltip).toContain('brak seeda');
+  });
+
+  it('draws one band per separate run', () => {
+    const points = [day('2026-10-01', 1, 1, 0), day('2026-10-03', 1, 1, 0), day('2026-10-05', 1, 1, 0)];
+    const config = buildDailyConfig(points, new Map(), ['2026-10-02', '2026-10-04']);
+    const annotations = config.annotations as { xaxis: Array<{ x: string; x2: string }> };
+    expect(annotations.xaxis).toHaveLength(2);
+    expect(annotations.xaxis[0]?.x).toBe('10-02');
+    expect(annotations.xaxis[0]?.x2).toBe('10-02');
+    expect(annotations.xaxis[1]?.x).toBe('10-04');
+  });
+
+  it('keeps the social points and the bands together', () => {
+    const points = [day('2026-10-01', 5, 500, 0)];
+    const social = new Map([['2026-10-01', { day: '2026-10-01', posts: 1, stories: 0, reels: 0 }]]);
+    const config = buildDailyConfig(points, social, ['2026-10-02']);
+    const annotations = config.annotations as { points: unknown[]; xaxis: unknown[] };
+    expect(annotations.points).toHaveLength(1);
+    expect(annotations.xaxis).toHaveLength(1);
+  });
+});
+
+describe('missingDayRanges', () => {
+  it('merges adjacent missing days into one range', () => {
+    const days = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'];
+    expect(missingDayRanges(days, new Set(['2026-10-02', '2026-10-03']))).toEqual([
+      { from: '2026-10-02', to: '2026-10-03' },
+    ]);
+  });
+
+  it('returns no range for no missing days', () => {
+    expect(missingDayRanges(['2026-10-01'], new Set())).toEqual([]);
   });
 });

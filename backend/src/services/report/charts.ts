@@ -162,21 +162,29 @@ function buildSocialAnnotations(
 // social split of the day. The social map is baked in, because a
 // formatter cannot close over chart data.
 function dailyTooltipSource(
-  dailyRange: readonly DailyPoint[],
-  socialByDay: ReadonlyMap<string, SocialDayActivity>
+  days: readonly string[],
+  socialByDay: ReadonlyMap<string, SocialDayActivity>,
+  hasMissing: boolean
 ): string {
-  const social = dailyRange.map((point) => {
-    const activity = socialByDay.get(point.day);
+  const social = days.map((day) => {
+    const activity = socialByDay.get(day);
     if (activity === undefined) {
       return null;
     }
     return { p: activity.posts, s: activity.stories, r: activity.reels };
   });
+  const missingBranch = hasMissing
+    ? `  if (sold === null || sold === undefined) {
+    return '<div style="padding:8px;font-size:12px;line-height:1.5">brak seeda<br><span style="opacity:.7">brak snapshotu tego dnia</span></div>';
+  }
+`
+    : '';
   return `function({ series, dataPointIndex }) {
   var i = dataPointIndex;
   var count = function (v) { return Number(v).toLocaleString('pl-PL'); };
-  var social = ${JSON.stringify(social)}[i];
-  var html = '<div style="padding:8px;font-size:12px;line-height:1.5">sprzedane <b>' + count(series[0][i]) + ' szt</b><br>dostawione <b>' + count(series[1][i]) + ' szt</b>';
+  var sold = series[0][i];
+${missingBranch}  var social = ${JSON.stringify(social)}[i];
+  var html = '<div style="padding:8px;font-size:12px;line-height:1.5">sprzedane <b>' + count(sold) + ' szt</b><br>dostawione <b>' + count(series[1][i]) + ' szt</b>';
   if (social !== null && social !== undefined) {
     html += '<br>social <b>' + (social.p + social.s + social.r) + '</b> (posty ' + social.p + ', stories ' + social.s + ', reels ' + social.r + ')';
   }
@@ -184,26 +192,96 @@ function dailyTooltipSource(
 }`;
 }
 
+// A day without a snapshot holds no column. The chart draws it anyway,
+// with a null value, and a shaded band marks it. The band shows where
+// the collection missed a day.
+export interface MissingDayRange {
+  readonly from: string;
+  readonly to: string;
+}
+
+// Groups the missing days into runs. One run of adjacent missing days
+// becomes one band. `days` must hold every day of the window, sorted.
+export function missingDayRanges(days: readonly string[], missing: ReadonlySet<string>): readonly MissingDayRange[] {
+  const ranges: MissingDayRange[] = [];
+  let from: string | null = null;
+  let to: string | null = null;
+  for (const day of days) {
+    if (missing.has(day)) {
+      if (from === null) {
+        from = day;
+      }
+      to = day;
+    } else if (from !== null && to !== null) {
+      ranges.push({ from, to });
+      from = null;
+      to = null;
+    }
+  }
+  if (from !== null && to !== null) {
+    ranges.push({ from, to });
+  }
+  return ranges;
+}
+
+// One ApexCharts xaxis band per missing run. See missingDayRanges.
+function buildMissingAnnotations(days: readonly string[], missing: ReadonlySet<string>): readonly unknown[] {
+  return missingDayRanges(days, missing).map((range) => ({
+    x: range.from.slice(5),
+    x2: range.to.slice(5),
+    borderColor: '#f59f00',
+    fillColor: '#f59f00',
+    opacity: 0.15,
+    label: {
+      text: 'brak seeda',
+      orientation: 'horizontal',
+      style: { color: '#7a4f00', background: '#ffe8b3', fontSize: '10px' },
+    },
+  }));
+}
+
 export function buildDailyConfig(
   dailyRange: readonly DailyPoint[],
-  socialByDay: ReadonlyMap<string, SocialDayActivity>
+  socialByDay: ReadonlyMap<string, SocialDayActivity>,
+  missingDays: readonly string[] = []
 ): ChartOpts {
-  const annotations = buildSocialAnnotations(dailyRange, socialByDay);
+  const missing = new Set(missingDays);
+  const pointByDay = new Map(dailyRange.map((point) => [point.day, point]));
+  // The window holds every day, the present ones and the missing ones.
+  // A missing day gets a null value, so it draws no bar.
+  const days = [...new Set([...dailyRange.map((point) => point.day), ...missingDays])].sort();
+  const sold = days.map((day) => {
+    const point = pointByDay.get(day);
+    return point === undefined ? null : point.sold;
+  });
+  const restocked = days.map((day) => {
+    const point = pointByDay.get(day);
+    return point === undefined ? null : point.restocked;
+  });
+  const social = buildSocialAnnotations(dailyRange, socialByDay);
+  const bands = buildMissingAnnotations(days, missing);
+  const annotations =
+    social === undefined && bands.length === 0
+      ? undefined
+      : {
+          ...(social === undefined ? {} : { points: social.points }),
+          ...(bands.length === 0 ? {} : { xaxis: bands }),
+        };
   return {
     type: 'line',
     height: 260,
     series: [
-      { name: 'sprzedane', type: 'bar', data: dailyRange.map((point) => point.sold) },
-      { name: 'dostawione', type: 'line', data: dailyRange.map((point) => point.restocked) },
+      { name: 'sprzedane', type: 'bar', data: sold },
+      { name: 'dostawione', type: 'line', data: restocked },
     ],
-    xaxis: { categories: dailyRange.map((point) => point.day.slice(5)) },
+    xaxis: { categories: days.map((day) => day.slice(5)) },
     yaxis: [{ labels: { formatter: '__FUNC_soldAxis__' } }],
     plotOptions: { bar: { columnWidth: '55%' } },
     tooltip: { theme: 'dark', custom: '__FUNC_dailyTooltip__' },
     ...(annotations === undefined ? {} : { annotations }),
     formatters: {
       soldAxis: COUNT_AXIS_LABEL,
-      dailyTooltip: dailyTooltipSource(dailyRange, socialByDay),
+      dailyTooltip: dailyTooltipSource(days, socialByDay, missing.size > 0),
     },
   };
 }
