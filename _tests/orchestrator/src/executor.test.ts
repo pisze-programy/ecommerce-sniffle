@@ -300,7 +300,7 @@ describe('runExecutorPass', () => {
     expect(capture.records.some((record) => record.message === 'process rss too high, stop executor')).toBe(true);
   });
 
-  it('fails and stops the pass when a task times out', async () => {
+  it('fails a timed-out task and continues the pass', async () => {
     vi.stubEnv('BACKEND_URL', 'https://backend.example.com');
     vi.stubEnv('INGEST_SECRET', 's3cret');
     const capture = capturingLogger();
@@ -310,11 +310,11 @@ describe('runExecutorPass', () => {
       modules: [hangingGetModule()],
       taskTimeoutMs: 50,
     });
-    expect(result.processed).toBe(1);
-    expect(result.failed).toBe(1);
+    expect(result.processed).toBe(2);
+    expect(result.failed).toBe(2);
     expect(queue.calls.some((call) => call.startsWith('fail:morning-forcer-2026-08-24:task timeout'))).toBe(true);
-    expect(queue.calls.filter((call) => call.startsWith('claim:')).length).toBe(1);
-    expect(capture.records.some((record) => record.message === 'task timeout, stop executor pass')).toBe(true);
+    expect(queue.calls.filter((call) => call.startsWith('claim:')).length).toBe(2);
+    expect(capture.records.some((record) => record.message === 'task timeout')).toBe(true);
   });
 
   it('returns early when the ingest env is missing', async () => {

@@ -17,8 +17,12 @@ import { fetchCatalogForConfig } from './adapter.ts';
 // A reached cap returns null. The run must never truncate in silence.
 const MAX_PAGES = 40;
 // Shopify retires an API version after about one year.
-// Raise this value when Shopify drops the version.
-const STOREFRONT_API_VERSION = '2026-07';
+// The env overrides the default. Raise the default when Shopify drops it.
+const DEFAULT_STOREFRONT_API_VERSION = '2026-07';
+const STOREFRONT_API_VERSION =
+  process.env['SHOPIFY_STOREFRONT_API_VERSION'] === undefined
+    ? DEFAULT_STOREFRONT_API_VERSION
+    : process.env['SHOPIFY_STOREFRONT_API_VERSION'];
 
 // The Storefront access token is 32 hex chars.
 export function parseStorefrontToken(html: string): string | null {

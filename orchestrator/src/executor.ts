@@ -14,8 +14,17 @@ import type { SnitchStatus } from './snitch.ts';
 import { storeTaskUsage } from './usage-store.ts';
 
 const MAX_TASKS = 20;
-const TASK_TIMEOUT_MS = 25 * 60 * 1000;
+// The task timeout is a safety net above the provider budget. The
+// provider budget is the config durationSeconds. The floor covers a
+// small durationSeconds. The slack lets the provider finish and log.
+const TASK_TIMEOUT_FLOOR_MS = 25 * 60 * 1000;
+const TASK_TIMEOUT_SLACK_MS = 60 * 1000;
 const MAX_PROCESS_RSS_MB = 150;
+
+// The per-task timeout. It must exceed the provider budget.
+export function taskTimeoutFor(durationSeconds: number): number {
+  return Math.max(durationSeconds * 1000 + TASK_TIMEOUT_SLACK_MS, TASK_TIMEOUT_FLOOR_MS);
+}
 
 export interface ExecutorPassResult {
   readonly processed: number;
@@ -119,7 +128,7 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
   const client = options.queueClient ?? createQueueClient(config.backendUrl, config.secret, logger);
   const workerId = options.workerId ?? process.env['WORKER_ID'] ?? 'vps-executor';
   const maxTasks = options.maxTasks ?? MAX_TASKS;
-  const taskTimeoutMs = options.taskTimeoutMs ?? TASK_TIMEOUT_MS;
+  const overrideTimeoutMs = options.taskTimeoutMs;
   const checkMemoryFn =
     options.checkMemoryFn === undefined ? () => checkMemory(logger, MIN_AVAILABLE_MB) : options.checkMemoryFn;
   const checkRssFn =
@@ -149,9 +158,10 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
     const taskLogger = tracking.wrapLogger(logger);
     const startedAt = Date.now();
     try {
+      const timeoutMs = overrideTimeoutMs === undefined ? taskTimeoutFor(task.durationSeconds) : overrideTimeoutMs;
       const executed = await withTaskTimeout(
         executeTask(taskLogger, client, config, registry, directFetch, task),
-        taskTimeoutMs,
+        timeoutMs,
         task.taskId
       );
       const elapsedMs = Date.now() - startedAt;
@@ -251,8 +261,8 @@ export async function runExecutorPass(logger: Logger, options: ExecutorPassOptio
       await client.fail(task.taskId, message);
       failed += 1;
       if (message.includes('task timeout after')) {
-        logger.error('task timeout, stop executor pass', { taskId: task.taskId });
-        break;
+        // A timed-out task must not stall the other tasks. Continue the pass.
+        logger.error('task timeout', { taskId: task.taskId });
       }
     }
   }

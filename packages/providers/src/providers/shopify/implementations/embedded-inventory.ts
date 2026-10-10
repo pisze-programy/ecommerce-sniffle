@@ -306,7 +306,7 @@ export function parseRestockProducts(
     logger.warn('embeddedinventory.restock truncated', { domain, size: html.length });
     return result;
   }
-  for (const item of html.matchAll(/\{[^{}]*\}/g)) {
+  for (const item of segment.matchAll(/\{[^{}]*\}/g)) {
     const text = item[0];
     if (text === undefined) {
       continue;
@@ -514,7 +514,8 @@ export function buildEmbeddedInventoryProvider(
     }
     return fetch(url, init);
   };
-  const budgetMs = Math.max(config.durationSeconds * 1000, 10 * 60 * 1000);
+  // The config is the source of truth for the run budget. No floor.
+  const budgetMs = config.durationSeconds * 1000;
   const catalogFetch = measureFetch(rawFetch, logger, config.id, 'direct');
   // The cookie fetch is a direct request. It is not a proxy request.
   const cookieFetch = measureFetch(rawFetch, logger, config.id, 'direct');
