@@ -7,6 +7,7 @@ import {
   probeBatch,
   probeBatchResolved,
   buildUcpInventoryProvider,
+  catalogFetchFor,
 } from '../../../../../../packages/providers/src/providers/shopify/implementations/ucp-inventory.ts';
 
 interface Capture {
@@ -398,5 +399,22 @@ describe('buildUcpInventoryProvider', () => {
     expect(catalog.products).toHaveLength(1);
     expect(catalog.products[0]?.id).toBe('1');
     expect(variantOf(catalog.products[0], 0).quantity).toBe(9);
+  });
+});
+
+describe('catalogFetchFor', () => {
+  const direct = async () => okResponse('{}');
+  const proxy = async () => okResponse('{}');
+
+  it('uses the proxy fetch when catalogViaProxy is true', () => {
+    expect(catalogFetchFor({ ...CFG, catalogViaProxy: true }, direct, proxy)).toBe(proxy);
+  });
+
+  it('uses the direct fetch when catalogViaProxy is false', () => {
+    expect(catalogFetchFor({ ...CFG, catalogViaProxy: false }, direct, proxy)).toBe(direct);
+  });
+
+  it('uses the direct fetch when catalogViaProxy is unset', () => {
+    expect(catalogFetchFor(CFG, direct, proxy)).toBe(direct);
   });
 });

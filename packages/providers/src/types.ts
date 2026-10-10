@@ -43,6 +43,10 @@ export interface ProviderConfig {
   readonly ratePerSecond: number;
   readonly durationSeconds: number;
   readonly requiresProxy: boolean;
+  // The shop hides the availability from datacenter IPs. The catalog GET
+  // must go through the residential proxy. The VPS IP is a datacenter.
+  // The catalog fetch runs direct by default. See docs/PROVIDERS.md.
+  readonly catalogViaProxy?: boolean;
   readonly endpoint: string;
   readonly enabled: boolean;
   // The shop reports prices in this currency. The display layer converts

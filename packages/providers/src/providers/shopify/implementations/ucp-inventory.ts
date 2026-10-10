@@ -388,6 +388,17 @@ async function revealStockImpl(
   return { domain: config.domain, fetchedAt: new Date().toISOString(), products };
 }
 
+// Picks the catalog fetch. A shop that hides the availability from
+// datacenter IPs needs the residential proxy for the catalog too. See
+// config.catalogViaProxy. The default is direct.
+export function catalogFetchFor(
+  config: ProviderConfig,
+  directCatalogFetch: WrappedFetch,
+  proxyFetch: WrappedFetch
+): WrappedFetch {
+  return config.catalogViaProxy === true ? proxyFetch : directCatalogFetch;
+}
+
 export function buildUcpInventoryProvider(
   config: ProviderConfig,
   logger: Logger,
@@ -400,8 +411,8 @@ export function buildUcpInventoryProvider(
     }
     return fetch(url, init);
   };
-  const catalogFetch = measureFetch(rawCatalogFetch, logger, config.id, 'direct');
   const probeFetch = measureFetch(createProbeFetch(), logger, config.id, 'proxy');
+  const catalogFetch = catalogFetchFor(config, measureFetch(rawCatalogFetch, logger, config.id, 'direct'), probeFetch);
   return buildStockRevealer(
     config,
     logger,

@@ -670,6 +670,10 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     durationSeconds: 30,
     requiresProxy: true,
     endpoint: 'https://wasalaa.myshopify.com/products.json',
+    // The shop hides the availability from datacenter IPs. The VPS IP is
+    // a datacenter. The catalog GET runs through the residential proxy.
+    // Direct reads available:false for almost every variant.
+    catalogViaProxy: true,
     entityId: 'wasalaa',
     enabled: true,
     currency: 'PLN',
