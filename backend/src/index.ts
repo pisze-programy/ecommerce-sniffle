@@ -391,7 +391,7 @@ async function sendGoogleAdsReport(
     await sendSnitchReport(env, {
       source: 'ecommerce-pulse/google-ads',
       status,
-      notify: 'always',
+      notify: 'on-error',
       data,
       message,
     });
@@ -417,7 +417,7 @@ async function sendMetaAdsReport(
     await sendSnitchReport(env, {
       source: 'ecommerce-pulse/meta-ads',
       status,
-      notify: 'always',
+      notify: 'on-error',
       data,
       message,
     });

@@ -15,7 +15,7 @@ interface BackendConfig {
   readonly secret: string;
 }
 
-interface SocialCounts {
+export interface SocialCounts {
   profiles: number;
   profileDays: number;
   posts: number;
@@ -66,7 +66,7 @@ async function sendPayload(config: BackendConfig, logger: Logger, payload: Socia
   return true;
 }
 
-function buildReport(targets: number, counts: SocialCounts, message?: string): SnitchReport {
+export function buildReport(targets: number, counts: SocialCounts, message?: string): SnitchReport {
   const failed = counts.failed > 0;
   const data = {
     targets,
@@ -87,7 +87,8 @@ function buildReport(targets: number, counts: SocialCounts, message?: string): S
     status: failed ? 'failed' : 'ok',
     data,
     message: text,
-    notify: failed ? 'on-error' : 'always',
+    // The social run reports only on failure. A clean run is silent.
+    notify: 'on-error',
   };
 }
 
