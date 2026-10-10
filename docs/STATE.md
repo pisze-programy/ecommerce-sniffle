@@ -63,8 +63,8 @@ This is why mutations run on the VPS.
 
 ## Deploy status
 
-- The worker is live at:
-  `https://ecommerce-sniffle-backend.dev-4cb.workers.dev`
+- The worker is live. The URL is in the deploy output and in `.env`
+  (`BACKEND_URL`). It is not in the repo.
 - The VPS orchestrator lives on host `frog`:
   `/home/frog/ecommerce-sniffle/orchestrator/dist`
 - Deploy uses `scp` (rsync is not on the VPS).

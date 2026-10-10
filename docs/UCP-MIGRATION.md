@@ -80,8 +80,8 @@ It does not need gzip.
 
 The agent profile drives the negotiated payload. A profile
 with only the cart capability returns a small payload.
-The profile lives on the worker:
-`https://ecommerce-sniffle-backend.dev-4cb.workers.dev/ucp/agent-profile.json`.
+The profile lives on the worker at `/ucp/agent-profile.json`.
+The provider builds the full URL from `BACKEND_URL`.
 
 ## The provider
 

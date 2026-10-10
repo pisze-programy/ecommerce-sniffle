@@ -24,7 +24,21 @@ const MAX_SPLIT_DEPTH = 4;
 // The profile drives the UCP negotiation. It declares the cart
 // capability only. A smaller profile returns a smaller payload.
 // The gzip request cuts the proxy transfer by about 4 to 11 times.
-const PROFILE_URL = 'https://ecommerce-sniffle-backend.dev-4cb.workers.dev/ucp/agent-profile.json';
+// The UCP agent profile URL. The env overrides it. The default is the
+// worker from BACKEND_URL. The VPS env holds BACKEND_URL. The repo holds
+// no deployment URL.
+function resolveProfileUrl(): string {
+  const override = process.env['UCP_PROFILE_URL'];
+  if (override !== undefined) {
+    return override;
+  }
+  const base = process.env['BACKEND_URL'];
+  if (base === undefined) {
+    return '/ucp/agent-profile.json';
+  }
+  return `${base}/ucp/agent-profile.json`;
+}
+const PROFILE_URL = resolveProfileUrl();
 
 export interface UcpEntry {
   readonly product: Product;
