@@ -95,12 +95,20 @@ See [PROBING.md](./PROBING.md).
 
 ### Web - HTML stock (cf-get)
 
-| id          | domain         | stock source | mode    |
-| ----------- | -------------- | ------------ | ------- |
-| rever       | rever.com.pl   | html         | cf-get  |
-| royalwatch  | royalwatch.pl  | html         | cf-get  |
-| mushi       | mushi.pl       | html         | cf-get  |
-| dobrerzeczy | dobrerzeczy.pl | html         | vps-get |
+| id          | domain          | stock source | mode    |
+| ----------- | --------------- | ------------ | ------- |
+| rever       | rever.com.pl    | html         | cf-get  |
+| royalwatch  | royalwatch.pl   | html         | cf-get  |
+| mushi       | mushi.pl        | html         | cf-get  |
+| dobrerzeczy | dobrerzeczy.pl  | html         | vps-get |
+| korczakisyn | korczakisyn.com | html         | cf-get  |
+
+The korczakisyn shop runs Sylius with the Codarius theme.
+The product page renders the exact count per variant in
+`#variants-pricing` (`data-availability`). The value is the Sylius
+`ProductVariant.onHand`. The sitemap lists 341 `pl_PL` urls. Four
+products render no variant block. The config excludes them. The shop
+has no WAF and no rate limit. The read runs direct from the CF worker.
 
 ### Shopify - Restock Rocket embedded (vps-get)
 

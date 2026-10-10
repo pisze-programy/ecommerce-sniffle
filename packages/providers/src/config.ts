@@ -45,7 +45,8 @@ export function validateConfig(config: ProviderConfig): ProviderConfig {
 const RAW_CONFIGS: readonly ProviderConfig[] = [
   // Web - exact stock via HTML/JSON (GET), no mutation, no proxy
   // The rever run fetches about 500 product pages. It takes about four
-  // minutes. The task timeout is three times durationSeconds. The old
+  // minutes. The cf-get task timeout is three times durationSeconds. The
+  // vps task timeout is a 25 minute floor plus durationSeconds. The old
   // value 40 timed out on every run and wrote duplicate seeds.
   {
     id: 'rever',
@@ -87,7 +88,7 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     schedule: '45 3 * * *',
     window: 'both',
     mode: 'vps-get',
-    stockSource: 'embedded-quantity',
+    stockSource: 'embedded-json',
     ratePerSecond: 1,
     durationSeconds: 1800,
     requiresProxy: false,
@@ -129,6 +130,29 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     enabled: true,
     currency: 'PLN',
     entityId: 'foodsbyann',
+  },
+  // Sylius (Codarius syliusshop theme). The product page renders the
+  // exact stock per variant in #variants-pricing (data-availability).
+  // The read is a GET. It runs direct. It uses no proxy.
+  // Four products render no variant block. The config excludes them.
+  // The shop is plain nginx. No WAF, no challenge, no rate limit.
+  // See docs/PROVIDERS.md.
+  {
+    id: 'korczakisyn',
+    domain: 'korczakisyn.com',
+    platform: 'custom',
+    schedule: '15 6 * * *',
+    window: 'both',
+    mode: 'cf-get',
+    stockSource: 'html',
+    ratePerSecond: 1,
+    durationSeconds: 600,
+    requiresProxy: false,
+    endpoint: 'https://korczakisyn.com/sitemap.xml',
+    enabled: true,
+    currency: 'PLN',
+    entityId: 'korczakisyn',
+    excludedProductIds: ['597', '596', '632', '290'],
   },
   // Shopify - product page XML inventory (cf-get, direct, free)
   // products.json hides the count. The .js endpoint clamps at 60.
@@ -245,7 +269,9 @@ const RAW_CONFIGS: readonly ProviderConfig[] = [
     // V2: true stock from the page, direct. Rollback: 'ucp-inventory', vps-mutation, proxy.
     stockSource: 'embedded-json',
     ratePerSecond: 1,
-    durationSeconds: 1200,
+    // 735 product pages. The run takes about 17 minutes. The budget
+    // must exceed it. A short budget leaves the tail masked.
+    durationSeconds: 1800,
     requiresProxy: false,
     endpoint: 'https://booso.pl/products.json',
     enabled: true,

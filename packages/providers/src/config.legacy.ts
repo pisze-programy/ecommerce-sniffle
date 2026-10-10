@@ -136,6 +136,14 @@ export const LEGACY_PROVIDERS: readonly ProviderConfig[] = [
     enabled: false,
     currency: 'PLN',
   },
+  // influcenter and lexon are Magento shops. They stay disabled.
+  // The old embedded-qty parser was wrong. It read the swatch option
+  // ids as stock. Proof on 2026-10-07: on influcenter the index value
+  // 34 is the size option "134 cm", not a count. On lexon 1527 is the
+  // colour "Black". The embedded JSON holds no stock. The free Magento
+  // getQty endpoint returns 0 or null. The REST stock API returns 401.
+  // The cart clamp is the only exact source. It is a mutation, it caps
+  // at 50, and it needs the proxy. The broken module is deleted.
   {
     id: 'influcenter',
     domain: 'influcenter.pl',

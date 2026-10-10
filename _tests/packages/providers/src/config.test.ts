@@ -27,6 +27,7 @@ const EXPECTED_IDS = [
   'icon-amsterdam',
   'influcenter',
   'kfd',
+  'korczakisyn',
   'laboratoriumpanidomu',
   'lecollet',
   'lexon',
@@ -74,8 +75,8 @@ const EXPECTED_IDS = [
 ].sort();
 
 describe('PROVIDERS config', () => {
-  it('defines exactly 68 providers', () => {
-    expect(PROVIDERS.length).toBe(68);
+  it('defines exactly 69 providers', () => {
+    expect(PROVIDERS.length).toBe(69);
   });
 
   it('uses unique ids', () => {
@@ -141,12 +142,12 @@ describe('PROVIDERS config', () => {
     expect(phlov?.requiresProxy).toBe(false);
   });
 
-  it('has 38 mutation providers, 8 get providers, 22 vps-get providers', () => {
+  it('has 38 mutation providers, 9 get providers, 22 vps-get providers', () => {
     const mutation = PROVIDERS.filter((provider) => provider.mode === 'vps-mutation');
     const get = PROVIDERS.filter((provider) => provider.mode === 'cf-get');
     const vpsGet = PROVIDERS.filter((provider) => provider.mode === 'vps-get');
     expect(mutation.length).toBe(38);
-    expect(get.length).toBe(8);
+    expect(get.length).toBe(9);
     expect(vpsGet.length).toBe(22);
   });
 
@@ -185,6 +186,17 @@ describe('PROVIDERS config', () => {
         expect(ids, provider.id).toHaveLength(82);
       } else if (provider.id === 'ooponka') {
         expect(ids, provider.id).toHaveLength(30);
+      } else {
+        expect(ids, provider.id).toBeUndefined();
+      }
+    }
+  });
+
+  it('excludes the faulty korczakisyn products only on korczakisyn', () => {
+    for (const provider of PROVIDERS) {
+      const ids = provider.excludedProductIds;
+      if (provider.id === 'korczakisyn') {
+        expect(ids).toEqual(['597', '596', '632', '290']);
       } else {
         expect(ids, provider.id).toBeUndefined();
       }

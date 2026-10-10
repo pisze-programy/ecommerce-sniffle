@@ -56,6 +56,10 @@ export interface ProviderConfig {
   // report layer to draw the entity graph. The VPS does not use it.
   readonly entityId?: string;
   readonly excludedStockIds?: readonly number[];
+  // Product ids the provider skips on purpose. The shop renders no
+  // exact count for these products. The provider logs the skip and
+  // never emits the product. See the korczakisyn provider.
+  readonly excludedProductIds?: readonly string[];
   // Product ids the shopify catalog fetch skips. The shop lists the same
   // variant under two products. The clone breaks the snapshot insert.
   // See providers/shopify/duplicate-products.ts. The combinedProductTag
